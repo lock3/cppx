@@ -183,15 +183,11 @@ Token CharacterScanner::operator()() {
     case '&':
       if (getLookahead(1) == '&')
         return matchToken(tok::AmpersandAmpersand);
-      if (getLookahead(1) =='=')
-        return matchToken(tok::AmpersandEqual);
       return matchToken(tok::Ampersand);
 
     case '|':
       if (getLookahead(1) == '|')
         return matchToken(tok::BarBar);
-      if (getLookahead(1) =='=')
-        return matchToken(tok::BarEqual);
       return matchToken(tok::Bar);
 
     case '<':
@@ -203,31 +199,18 @@ Token CharacterScanner::operator()() {
         return matchToken(tok::LessGreater);
       else if (getLookahead(1) == '/')
         return matchToken(tok::LessSlash);
-      else if (getLookahead(1) == '<') {
-        if (getLookahead(2) == '=')
-          return matchToken(tok::LessLessEqual);
-        else
-          return matchToken(tok::LessLess);
-      } else if(getLookahead(1) == '|')
+      else if(getLookahead(1) == '|')
         return matchToken(tok::LessBar);
       return matchToken(tok::Less);
 
     case '>':
       if (getLookahead(1) == '=')
         return matchToken(tok::GreaterEqual);
-      else if (getLookahead(1) == '>') {
-        if (getLookahead(2) == '=')
-          return matchToken(tok::GreaterGreaterEqual);
-        else
-          return matchToken(tok::GreaterGreater);
-      }
       return matchToken(tok::Greater);
 
     case '~':
       return matchToken(tok::Tilde);
     case '^':
-      if (getLookahead(1) == '=')
-        return matchToken(tok::CaretEqual);
       return matchToken(tok::Caret);
 
     case '=':
@@ -277,7 +260,6 @@ Token CharacterScanner::operator()() {
       }
       break;
     case '\'':
-      // return matchCharacter();
       return matchToken(tok::SingleQuote);
     case '"':
       return matchToken(tok::DoubleQuote);

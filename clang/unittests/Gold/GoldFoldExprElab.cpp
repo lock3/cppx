@@ -147,15 +147,6 @@ TEST(GoldFoldExpr, BinaryRight_Div) {
 TEST(GoldFoldExpr, BinaryRight_Rem) {
   doBinaryRightFoldExprTest("%", clang::BinaryOperatorKind::BO_Rem);
 }
-TEST(GoldFoldExpr, BinaryRight_Xor) {
-  doBinaryRightFoldExprTest("^", clang::BinaryOperatorKind::BO_Xor);
-}
-TEST(GoldFoldExpr, BinaryRight_And) {
-  doBinaryRightFoldExprTest("&", clang::BinaryOperatorKind::BO_And);
-}
-TEST(GoldFoldExpr, BinaryRight_Or) {
-  doBinaryRightFoldExprTest("|", clang::BinaryOperatorKind::BO_Or);
-}
 TEST(GoldFoldExpr, BinaryRight_Assign) {
   doBinaryRightFoldExprTest("=", clang::BinaryOperatorKind::BO_Assign);
 }
@@ -164,12 +155,6 @@ TEST(GoldFoldExpr, BinaryRight_LT) {
 }
 TEST(GoldFoldExpr, BinaryRight_GT) {
   doBinaryRightFoldExprTest(">", clang::BinaryOperatorKind::BO_GT);
-}
-TEST(GoldFoldExpr, BinaryRight_Shl) {
-  doBinaryRightFoldExprTest("<<", clang::BinaryOperatorKind::BO_Shl);
-}
-TEST(GoldFoldExpr, BinaryRight_Shr) {
-  doBinaryRightFoldExprTest(">>", clang::BinaryOperatorKind::BO_Shr);
 }
 TEST(GoldFoldExpr, BinaryRight_AddAssign) {
   doBinaryRightFoldExprTest("+=", clang::BinaryOperatorKind::BO_AddAssign);
@@ -186,26 +171,11 @@ TEST(GoldFoldExpr, BinaryRight_DivAssign) {
 TEST(GoldFoldExpr, BinaryRight_RemAssign) {
   doBinaryRightFoldExprTest("%=", clang::BinaryOperatorKind::BO_RemAssign);
 }
-TEST(GoldFoldExpr, BinaryRight_XorAssign) {
-  doBinaryRightFoldExprTest("^=", clang::BinaryOperatorKind::BO_XorAssign);
-}
-TEST(GoldFoldExpr, BinaryRight_AndAssign) {
-  doBinaryRightFoldExprTest("&=", clang::BinaryOperatorKind::BO_AndAssign);
-}
-TEST(GoldFoldExpr, BinaryRight_OrAssign) {
-  doBinaryRightFoldExprTest("|=", clang::BinaryOperatorKind::BO_OrAssign);
-}
 TEST(GoldFoldExpr, BinaryRight_LE) {
   doBinaryRightFoldExprTest("<=", clang::BinaryOperatorKind::BO_LE);
 }
 TEST(GoldFoldExpr, BinaryRight_GE) {
   doBinaryRightFoldExprTest(">=", clang::BinaryOperatorKind::BO_GE);
-}
-TEST(GoldFoldExpr, BinaryRight_ShlAssign) {
-  doBinaryRightFoldExprTest("<<=", clang::BinaryOperatorKind::BO_ShlAssign);
-}
-TEST(GoldFoldExpr, BinaryRight_ShrAssign) {
-  doBinaryRightFoldExprTest(">>=", clang::BinaryOperatorKind::BO_ShrAssign);
 }
 TEST(GoldFoldExpr, BinaryRight_EQ) {
   doBinaryRightFoldExprTest("==", clang::BinaryOperatorKind::BO_EQ);
@@ -234,15 +204,6 @@ TEST(GoldFoldExpr, BinaryLeft_Div) {
 TEST(GoldFoldExpr, BinaryLeft_Rem) {
   doBinaryLeftFoldExprTest("%", clang::BinaryOperatorKind::BO_Rem);
 }
-TEST(GoldFoldExpr, BinaryLeft_Xor) {
-  doBinaryLeftFoldExprTest("^", clang::BinaryOperatorKind::BO_Xor);
-}
-TEST(GoldFoldExpr, BinaryLeft_And) {
-  doBinaryLeftFoldExprTest("&", clang::BinaryOperatorKind::BO_And);
-}
-TEST(GoldFoldExpr, BinaryLeft_Or) {
-  doBinaryLeftFoldExprTest("|", clang::BinaryOperatorKind::BO_Or);
-}
 
 TEST(GoldFoldExpr, BinaryLeft_Assign) {
   doBinaryLeftFoldExprTest("=", clang::BinaryOperatorKind::BO_Assign);
@@ -253,12 +214,6 @@ TEST(GoldFoldExpr, BinaryLeft_LT) {
 }
 TEST(GoldFoldExpr, BinaryLeft_GT) {
   doBinaryLeftFoldExprTest(">", clang::BinaryOperatorKind::BO_GT);
-}
-TEST(GoldFoldExpr, BinaryLeft_Shl) {
-  doBinaryLeftFoldExprTest("<<", clang::BinaryOperatorKind::BO_Shl);
-}
-TEST(GoldFoldExpr, BinaryLeft_Shr) {
-  doBinaryLeftFoldExprTest(">>", clang::BinaryOperatorKind::BO_Shr);
 }
 TEST(GoldFoldExpr, BinaryLeft_AddAssign) {
   doBinaryLeftFoldExprTest("+=", clang::BinaryOperatorKind::BO_AddAssign);
@@ -275,26 +230,11 @@ TEST(GoldFoldExpr, BinaryLeft_DivAssign) {
 TEST(GoldFoldExpr, BinaryLeft_RemAssign) {
   doBinaryLeftFoldExprTest("%=", clang::BinaryOperatorKind::BO_RemAssign);
 }
-TEST(GoldFoldExpr, BinaryLeft_XorAssign) {
-  doBinaryLeftFoldExprTest("^=", clang::BinaryOperatorKind::BO_XorAssign);
-}
-TEST(GoldFoldExpr, BinaryLeft_AndAssign) {
-  doBinaryLeftFoldExprTest("&=", clang::BinaryOperatorKind::BO_AndAssign);
-}
-TEST(GoldFoldExpr, BinaryLeft_OrAssign) {
-  doBinaryLeftFoldExprTest("|=", clang::BinaryOperatorKind::BO_OrAssign);
-}
 TEST(GoldFoldExpr, BinaryLeft_LE) {
   doBinaryLeftFoldExprTest("<=", clang::BinaryOperatorKind::BO_LE);
 }
 TEST(GoldFoldExpr, BinaryLeft_GE) {
   doBinaryLeftFoldExprTest(">=", clang::BinaryOperatorKind::BO_GE);
-}
-TEST(GoldFoldExpr, BinaryLeft_ShlAssign) {
-  doBinaryLeftFoldExprTest("<<=", clang::BinaryOperatorKind::BO_ShlAssign);
-}
-TEST(GoldFoldExpr, BinaryLeft_ShrAssign) {
-  doBinaryLeftFoldExprTest(">>=", clang::BinaryOperatorKind::BO_ShrAssign);
 }
 TEST(GoldFoldExpr, BinaryLeft_EQ) {
   doBinaryLeftFoldExprTest("==", clang::BinaryOperatorKind::BO_EQ);
@@ -372,16 +312,5 @@ f[T:type...](x:rref T...): void!
   z = (x * ... * (4 + 43))
 )";
   auto ToMatch = cxxFoldExpr(hasRHSExpr(parenExpr()));
-  ASSERT_TRUE(matches(Code.str(), ToMatch));
-}
-
-TEST(GoldFoldExpr, BinaryRightFoldExpr_WithComplexPackExpr_HigherPresedence) {
-  StringRef Code = R"(
-f[T:type...](x:rref T...): void!
-  z = (^x & ... & 4)
-)";
-  auto ToMatch = cxxFoldExpr(hasLHSExpr(
-    unaryOperator(hasOperatorName("*"))
-  ));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }

@@ -106,7 +106,7 @@
 
 // Adding additional operator information.
 def_unary_op(                           BWNot, "~",         Not,        false,  GoldAndCpp, Tilde)
-def_unary_and_binary_op(            Ampersand, "&",         AddrOf,And, false,  GoldAndCpp, Amp)
+def_unary_op(                       Ampersand, "&",         AddrOf,     false,  GoldAndCpp, Amp)
 def_unary_and_binary_op(             PlusSign,  "+",        Plus,  Add, false,  GoldAndCpp, Plus)
 def_unary_and_binary_op(            MinusSign, "-",         Minus, Sub, false,  GoldAndCpp, Minus)
 def_unary_and_binary_op_mismatch( Dereference, "^",   "*",  Deref, Xor, false,  CppOnly,    Star, Caret)
@@ -132,11 +132,6 @@ def_bin_op(                      SubAssign,  "-=",          SubAssign,  false,  
 def_bin_op(                      MulAssign,  "*=",          MulAssign,  false,  GoldAndCpp, StarEqual)
 def_bin_op(                      DivAssign,  "/=",          DivAssign,  false,  GoldAndCpp, SlashEqual)
 def_bin_op(                      RemAssign,  "%=",          RemAssign,  false,  GoldAndCpp, PercentEqual)
-def_bin_op(               BitWiseXOrAssign,  "^=",          XorAssign,  false,  GoldAndCpp, CaretEqual)
-def_bin_op(                BitWiseOrAssign,  "|=",          OrAssign,   false,  GoldAndCpp, PipeEqual)
-def_bin_op(               BitWiseAndAssign,  "&=",          AndAssign,  false,  GoldAndCpp, AmpEqual)
-def_bin_op(                LeftShiftAssign, "<<=",          ShlAssign,  false,  GoldAndCpp, LessLessEqual)
-def_bin_op(               RightShiftAssign, ">>=",          ShrAssign,  false,  GoldAndCpp, GreaterGreaterEqual)
 
 def_non_onverloadable_binary(     DotCaret,  ".^",            PtrMemD,   true,     CppOnly,    ArrowStar)
 

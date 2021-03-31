@@ -267,12 +267,9 @@ namespace gold
     Syntax *parseOrFold(Syntax *E1);
     Syntax *parseAnd();
     Syntax *parseAndFold(Syntax *E1);
-    Syntax *parseBitShift();
-    Syntax *parseBitShiftFold(Syntax *E1);
     Syntax *parseCmp();
     Syntax *parseCmpFold(Syntax *E1);
     Syntax *parseTo();
-    // Syntax *parseToFold(Syntax *E1);
     Syntax *parseAdd();
     Syntax *parseAddFold(Syntax *E1);
     Syntax *parseMul();

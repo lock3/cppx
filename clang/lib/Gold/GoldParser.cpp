@@ -316,10 +316,6 @@ static bool isInfix(Token Op, bool GTIO) {
   case tok::LeftParen:
   case tok::LeftBracket:
   case tok::Comma:
-  case tok::LessLess:
-  case tok::GreaterGreater:
-  case tok::LessLessEqual:
-  case tok::GreaterGreaterEqual:
   case tok::CatchKeyword:
     return true;
   case tok::Identifier: {
@@ -746,11 +742,6 @@ static bool isAssignmentOperator(TokenKind K) {
   case tok::StarEqual:
   case tok::SlashEqual:
   case tok::PercentEqual:
-  case tok::CaretEqual:
-  case tok::BarEqual:
-  case tok::AmpersandEqual:
-  case tok::LessLessEqual:
-  case tok::GreaterGreaterEqual:
     return true;
   }
 }
@@ -828,8 +819,7 @@ Syntax *Parser::parseDefFold(Syntax *E1) {
 }
 
 static bool isOrOperator(Parser& P) {
-  return P.nextTokenIs(tok::BarBar) || P.nextTokenIs("or")
-    || P.nextTokenIs(tok::Bar) || P.nextTokenIs(tok::Caret);
+  return P.nextTokenIs(tok::BarBar) || P.nextTokenIs("or");
 }
 
 
@@ -851,7 +841,6 @@ Syntax *Parser::parseExpansion() {
 //    or or-operator and
 //
 // or-operator:
-//    |
 //    ||
 //    "or"
 Syntax *Parser::parseOr() {
@@ -883,8 +872,7 @@ Syntax *Parser::parseOrFold(Syntax *E1) {
 }
 
 static auto isAndOperator(Parser &P) {
-  return P.nextTokenIs(tok::AmpersandAmpersand) || P.nextTokenIs("and")
-    || P.nextTokenIs(tok::Ampersand);
+  return P.nextTokenIs(tok::AmpersandAmpersand) || P.nextTokenIs("and");
 }
 
 // and:
@@ -897,14 +885,14 @@ static auto isAndOperator(Parser &P) {
 //    &&
 //    "and"
 Syntax *Parser::parseAnd() {
-  Syntax *E1 = parseBitShift();
+  Syntax *E1 = parseCmp();
   if (InsideKnownFoldExpr && !ParseFoldOp)
     E1 = parseAndFold(E1);
   else if (InsideKnownFoldExpr && ParseFoldOp)
     return E1;
 
   while (Token Op = matchTokens(isAndOperator, *this)) {
-    Syntax *E2 = parseBitShift();
+    Syntax *E2 = parseCmp();
     E1 = onBinary(Op, E1, E2);
   }
 
@@ -917,7 +905,7 @@ Syntax *Parser::parseAndFold(Syntax *E1) {
       Token Op = consumeToken();
       Token Ellipsis = consumeToken();
       Op = consumeToken();
-      return onBinaryFoldExpr(Op, Ellipsis, E1, parseBitShift());
+      return onBinaryFoldExpr(Op, Ellipsis, E1, parseCmp());
     }
   }
 
@@ -929,8 +917,7 @@ static bool isLogicalUnaryOperator(Parser& P) {
   return P.nextTokenIs(tok::Ampersand)
       || P.nextTokenIs(tok::DotDot)
       || P.nextTokenIs(tok::Bang)
-      || P.nextTokenIs("not")
-      || P.nextTokenIs(tok::Tilde);
+      || P.nextTokenIs("not");
 }
 
 static bool is_relational_operator(Parser& P) {
@@ -948,43 +935,6 @@ static bool is_relational_operator(Parser& P) {
   case tok::GreaterEqual:
     return P.GreaterThanIsOperator;
   }
-}
-
-static bool isBitShiftOperator(Parser &P) {
-  switch (P.getLookahead()) {
-  default:
-    return false;
-  case tok::LessLess:
-  case tok::GreaterGreater:
-    return true;
-  }
-}
-
-Syntax *Parser::parseBitShift() {
-  Syntax *E1 = parseCmp();
-  if (InsideKnownFoldExpr && !ParseFoldOp)
-    E1 = parseBitShiftFold(E1);
-  else if (InsideKnownFoldExpr && ParseFoldOp)
-    return E1;
-
-  while (Token Op = matchTokens(isBitShiftOperator, *this)) {
-    Syntax *E2 = parseCmp();
-    E1 = onBinary(Op, E1, E2);
-  }
-
-  return E1;
-}
-
-Syntax *Parser::parseBitShiftFold(Syntax *E1) {
-  if (nextOperatorIsFold(isBitShiftOperator)) {
-    if (nextTokensMatchBinaryFoldOp()) {
-      Token Op = consumeToken();
-      Token Ellipsis = consumeToken();
-      Op = consumeToken();
-      return onBinaryFoldExpr(Op, Ellipsis, E1, parseCmp());
-    }
-  }
-  return E1;
 }
 
 /// cmp:
@@ -1791,24 +1741,14 @@ bool isFoldableOperator(const Token &T) {
     case tok::Star:
     case tok::Slash:
     case tok::Percent:
-    case tok::Caret:
-    case tok::Ampersand:
-    case tok::Bar:
     case tok::Equal:
     case tok::Less:
     case tok::Greater:
-    case tok::LessLess:
-    case tok::GreaterGreater:
     case tok::PlusEqual:
     case tok::MinusEqual:
     case tok::StarEqual:
     case tok::SlashEqual:
     case tok::PercentEqual:
-    case tok::CaretEqual:
-    case tok::AmpersandEqual:
-    case tok::BarEqual:
-    case tok::LessLessEqual:
-    case tok::GreaterGreaterEqual:
     case tok::EqualEqual:
     case tok::LessGreater:
     case tok::LessEqual:
@@ -1956,8 +1896,6 @@ Syntax *Parser::parsePost()
       break;
 
     case tok::Question:
-    // case tok::Caret:
-    // case tok::At:
       llvm_unreachable("suffix operators not implemented");
       consumeToken();
       break;
@@ -2180,13 +2118,6 @@ Syntax *Parser::parseDocAttr() {
           DocAttrParts.emplace_back(parseStrInterpolationExprBraces());
           break;
 
-        // Comments are ignored in this context also?...
-        // case tok::Hash:
-        //   llvm_unreachable("Line comment inside of doc attribute not implemented yet.");
-        //   break;
-        // case tok::LessHash:
-        //   llvm_unreachable("Block comment inside of doc attributes not implemented yet");
-          // break;
         case tok::Ampersand:{
           DocAttrParts.emplace_back(parseStrInterpolationExprAmpersand());
         }
@@ -2327,8 +2258,11 @@ Syntax *Parser::parseMarkupElement() {
         }
         break;
       default:
-        llvm::outs() << "Un expected token! = " << getDisplayName(getLookahead()) << " " << peekToken().getSpelling() << "\n";
-        llvm_unreachable("Unreachable code some how reached.");
+        unsigned DiagID =
+          Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                "unterminated tag");
+        Diags.Report(Toks.front().getLocation(), DiagID);
+        return onError();
     }
   }
 
