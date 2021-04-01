@@ -33,7 +33,7 @@ DeclarationBuilder::DeclarationBuilder(Sema &S)
 Declaration *DeclarationBuilder::build(const Syntax *S) {
   gold::Scope *CurrentScope = SemaRef.getCurrentScope();
   gold::Declarator *Dcl = nullptr;
-  DeclaratorBuilder BuildDeclarator(Context, SemaRef);
+  DeclaratorBuilder BuildDeclarator(Context, SemaRef, *this);
 
   Dcl = BuildDeclarator(S);
   if (!Dcl)
@@ -41,11 +41,10 @@ Declaration *DeclarationBuilder::build(const Syntax *S) {
 
   Declaration *ParentDecl = SemaRef.getCurrentDecl();
   // FIXME: manage memory
-  InitExpr = BuildDeclarator.InitExpr;
   Declaration *TheDecl = new Declaration(ParentDecl, S, Dcl, InitExpr);
   TheDecl->Id = BuildDeclarator.Id;
   TheDecl->OpInfo = BuildDeclarator.OpInfo;
-  TheDecl->InitOpUsed = BuildDeclarator.InitOperatorUsed;
+  TheDecl->InitOpUsed = InitOperatorUsed;
 
   // Getting information that's necessary in order to correctly restore
   // a declaration's context during early elaboration.
@@ -1632,7 +1631,7 @@ Declarator *DeclarationBuilder::dispatchAndCreateDeclarator(const Syntax *S) {
     return nullptr;
 
   // return makeTopLevelDeclarator(Decl, nullptr);
-  DeclaratorBuilder BuildDeclarator(Context, SemaRef);
+  DeclaratorBuilder BuildDeclarator(Context, SemaRef, *this);
   return BuildDeclarator(Decl);
 }
 

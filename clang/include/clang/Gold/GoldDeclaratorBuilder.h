@@ -14,6 +14,7 @@
 #include <stack>
 
 namespace gold {
+class DeclarationBuilder;
 class Sema;
 class SyntaxContext;
 
@@ -23,6 +24,7 @@ class DeclaratorBuilder :
 
   SyntaxContext &Context;
   Sema &SemaRef;
+  DeclarationBuilder &Owner;
 
   // The declarator we build up, and the actual output of this function object.
   Declarator *Result = nullptr;
@@ -33,8 +35,9 @@ class DeclaratorBuilder :
   // The most recently created declarator chunk.
   Declarator *End = nullptr;
 public:
-  DeclaratorBuilder(SyntaxContext &Context, Sema &SemaRef)
-    : Context(Context), SemaRef(SemaRef) {}
+  DeclaratorBuilder(SyntaxContext &Context, Sema &SemaRef,
+                    DeclarationBuilder &Owner)
+    : Context(Context), SemaRef(SemaRef), Owner(Owner) {}
 
   Declarator *operator()(const Syntax *S);
 
@@ -218,27 +221,6 @@ private:
   llvm::StringRef OriginalName;
   clang::IdentifierInfo *Id = nullptr;
   const OpInfoBase *OpInfo = nullptr;
-  const Syntax *InitExpr = nullptr;
-  InitKind InitOperatorUsed = IK_None;
-  llvm::SmallSet<const Syntax*, 6> AdditionalNodesWithAttrs;
-
-  const Syntax *ConversionTypeSyntax = nullptr;
-
-  // Overridding setting, this is special because enums are so restrictive
-  // as to which declarations are actually allowed within them.
-  bool EnableFunctions = true;
-  bool EnableNamespaceDecl = true;
-  bool EnableTags = true;
-  bool EnableAliases = true; // template and namespace.
-  bool EnableTemplateParameters = false;
-  bool RequireTypeForVariable = false;
-  bool EnableNestedNameSpecifiers = false;
-  bool RequireAliasTypes = false;
-  bool RequireTypeForFunctions = false;
-  bool RequiresDeclOrError = false;
-  bool AllowShortCtorAndDtorSyntax = false;
-  bool IsInsideEnum = false;
-  bool ContextDeclaresNewName = false;
 };
 
 

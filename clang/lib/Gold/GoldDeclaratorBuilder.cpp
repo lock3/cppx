@@ -1,6 +1,7 @@
 #include "clang/AST/ExprCppx.h"
 
 #include "clang/Gold/GoldDeclaratorBuilder.h"
+#include "clang/Gold/GoldDeclarationBuilder.h"
 #include "clang/Gold/GoldElaborator.h"
 #include "clang/Gold/GoldExprElaborator.h"
 #include "clang/Gold/GoldSema.h"
@@ -13,17 +14,17 @@ using ParentMapTy = DeclaratorBuilder::ParentMapTy;
 Declarator *DeclaratorBuilder::operator()(const Syntax *S) {
   NodeLabeler LabelNodes(SemaRef, NodeLabels, NodeParents);
   LabelNodes(S);
-  for (auto Each : NodeLabels) {
-    const Syntax *P = nullptr;
-    auto It = NodeParents.find(Each.first);
-    if (It != NodeParents.end())
-      P = It->second;
+  // for (auto Each : NodeLabels) {
+  //   const Syntax *P = nullptr;
+  //   auto It = NodeParents.find(Each.first);
+  //   if (It != NodeParents.end())
+  //     P = It->second;
 
-    llvm::outs() << "NODE: " << Each.second << " - " << Each.first
-                 << ": PARENT: " << P << '\n';
-    Each.first->dump();
-    llvm::outs() << "===------------------===\n";
-  }
+  //   llvm::outs() << "NODE: " << Each.second << " - " << Each.first
+  //                << ": PARENT: " << P << '\n';
+  //   Each.first->dump();
+  //   llvm::outs() << "===------------------===\n";
+  // }
 
   gold::Scope *CurrentScope = SemaRef.getCurrentScope();
   gold::Declarator *Dcl = nullptr;
@@ -58,11 +59,12 @@ Declarator *DeclaratorBuilder::operator()(const Syntax *S) {
   }
 
   Declarator *D = Result;
-  while (D) {
-    llvm::outs() << D->getString() << " -> ";
-    D = D->Next;
-  }
-  llvm::outs() << "\nEND CHAIN\n";
+  // while (D) {
+  //   llvm::outs() << D->getString() << " -> ";
+  //   D = D->Next;
+  // }
+  // llvm::outs() << "\nEND CHAIN\n";
+  D->printSequence(llvm::errs());
 
   return Dcl;
 }
@@ -108,17 +110,27 @@ void DeclaratorBuilder::VisitGoldCallSyntax(const CallSyntax *S) {
   }
 
   if (Op == FOK_MemberAccess) {
-    AdditionalNodesWithAttrs.insert(S);
-    return buildName(S);
+    Owner.AdditionalNodesWithAttrs.insert(S);
+    if (isa<AtomSyntax>(S->getArgument(0))) {
+      buildNestedNameSpecifier(cast<AtomSyntax>(S->getArgument(0)));
+    } else {
+      unsigned DiagID =
+        SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                      "expected atomic name in nested name "
+                                      "specifier");
+      SemaRef.Diags.Report(S->getArgument(0)->getLoc(), DiagID);
+    }
+
+    return VisitSyntax(S->getArgument(1));
   }
 
   if (Op == FOK_Equals) {
-    InitExpr = S->getArgument(1);
-    InitOperatorUsed = IK_Equals;
+    Owner.InitExpr = S->getArgument(1);
+    Owner.InitOperatorUsed = IK_Equals;
     return VisitSyntax(S->getArgument(0));
   } else if (Op == FOK_Exclaim) {
-    InitExpr = S->getArgument(1);
-    InitOperatorUsed = IK_Exclaim;
+    Owner.InitExpr = S->getArgument(1);
+    Owner.InitOperatorUsed = IK_Exclaim;
     return VisitSyntax(S->getArgument(0));
   }
 
@@ -319,7 +331,7 @@ void DeclaratorBuilder::buildName(const Syntax *S) {
     switch(OpKind) {
       case FOK_MemberAccess:{
         if (const auto *IdName = dyn_cast<AtomSyntax>(Call->getArgument(1))){
-          AdditionalNodesWithAttrs.insert(Call);
+          Owner.AdditionalNodesWithAttrs.insert(Call);
           return;
           // return buildNestedTemplateSpecializationOrName(Call->getArgument(0),
           //                                       buildIdentifier(IdName));
@@ -340,7 +352,7 @@ void DeclaratorBuilder::buildName(const Syntax *S) {
   } else {
     ErrorIndicator = 1;
   }
-  if (RequiresDeclOrError)
+  if (Owner.RequiresDeclOrError)
     SemaRef.Diags.Report(S->getLoc(), clang::diag::err_invalid_declaration_kind)
                          << ErrorIndicator;
 }
@@ -401,127 +413,127 @@ void DeclaratorBuilder::buildPartialSpecialization(const ListSyntax *S) {
 }
 
 Declarator *DeclaratorBuilder::handleNamespaceScope(const Syntax *S) {
-  EnableFunctions = true;
-  EnableNamespaceDecl = true;
-  EnableTags = true;
-  EnableAliases = true;
-  EnableTemplateParameters = false;
-  RequireTypeForVariable = false;
-  EnableNestedNameSpecifiers = true;
-  RequireAliasTypes = false;
-  RequireTypeForFunctions = false;
-  RequiresDeclOrError = true;
-  ContextDeclaresNewName = true;
+  Owner.EnableFunctions = true;
+  Owner.EnableNamespaceDecl = true;
+  Owner.EnableTags = true;
+  Owner.EnableAliases = true;
+  Owner.EnableTemplateParameters = false;
+  Owner.RequireTypeForVariable = false;
+  Owner.EnableNestedNameSpecifiers = true;
+  Owner.RequireAliasTypes = false;
+  Owner.RequireTypeForFunctions = false;
+  Owner.RequiresDeclOrError = true;
+  Owner.ContextDeclaresNewName = true;
   return makeDeclarator(S);
 }
 
 Declarator *DeclaratorBuilder::handleParameterScope(const Syntax *S) {
-  EnableFunctions = false;
-  EnableNamespaceDecl = false;
-  EnableTags = false;
-  EnableAliases = false;  // TODO: This may need to be true in the future.
+  Owner.EnableFunctions = false;
+  Owner.EnableNamespaceDecl = false;
+  Owner.EnableTags = false;
+  Owner.EnableAliases = false;  // TODO: This may need to be true in the future.
                           // But I'm not sure how we could pass a namespace as
                           // a parameter yet.
-  EnableTemplateParameters = false;
-  RequireTypeForVariable = true;
-  EnableNestedNameSpecifiers = false;
-  RequireAliasTypes = false;
-  RequireTypeForFunctions = false;
-  RequiresDeclOrError = true;
-  ContextDeclaresNewName = true;
+  Owner.EnableTemplateParameters = false;
+  Owner.RequireTypeForVariable = true;
+  Owner.EnableNestedNameSpecifiers = false;
+  Owner.RequireAliasTypes = false;
+  Owner.RequireTypeForFunctions = false;
+  Owner.RequiresDeclOrError = true;
+  Owner.ContextDeclaresNewName = true;
   return makeDeclarator(S);
 }
 
 Declarator *DeclaratorBuilder::handleTemplateScope(const Syntax *S) {
   // This is for template parameters.
-  EnableFunctions = false;
-  EnableNamespaceDecl = false;
-  EnableTags = false;
-  EnableAliases = false;
+  Owner.EnableFunctions = false;
+  Owner.EnableNamespaceDecl = false;
+  Owner.EnableTags = false;
+  Owner.EnableAliases = false;
   // Template parameters cannot have template parameters unless they
   // are template template parameters, in which case they should be specified
   // differently.
-  EnableTemplateParameters = false;
-  RequireTypeForVariable = true;
-  EnableNestedNameSpecifiers = false;
-  RequireAliasTypes = false;
-  RequireTypeForFunctions = false;
-  RequiresDeclOrError = true;
+  Owner.EnableTemplateParameters = false;
+  Owner.RequireTypeForVariable = true;
+  Owner.EnableNestedNameSpecifiers = false;
+  Owner.RequireAliasTypes = false;
+  Owner.RequireTypeForFunctions = false;
+  Owner.RequiresDeclOrError = true;
   return makeDeclarator(S);
 }
 
 Declarator *DeclaratorBuilder::handleFunctionScope(const Syntax *S) {
-  EnableFunctions = true;
-  EnableNamespaceDecl = false;
-  EnableTags = true;
-  EnableAliases = true;
-  EnableTemplateParameters = false;
-  RequireTypeForVariable = false;
-  EnableNestedNameSpecifiers = false;
-  RequireAliasTypes = true;
-  RequireTypeForFunctions = true;
-  RequiresDeclOrError = false;
-  ContextDeclaresNewName = true;
+  Owner.EnableFunctions = true;
+  Owner.EnableNamespaceDecl = false;
+  Owner.EnableTags = true;
+  Owner.EnableAliases = true;
+  Owner.EnableTemplateParameters = false;
+  Owner.RequireTypeForVariable = false;
+  Owner.EnableNestedNameSpecifiers = false;
+  Owner.RequireAliasTypes = true;
+  Owner.RequireTypeForFunctions = true;
+  Owner.RequiresDeclOrError = false;
+  Owner.ContextDeclaresNewName = true;
   return makeDeclarator(S);
 }
 
 Declarator *DeclaratorBuilder::handleBlockScope(const Syntax *S) {
-  EnableFunctions = true;
-  EnableNamespaceDecl = false;
-  EnableTags = true;
-  EnableAliases = true;
-  EnableTemplateParameters = false;
-  RequireTypeForVariable = false;
-  EnableNestedNameSpecifiers = false;
-  RequireAliasTypes = true;
-  RequireTypeForFunctions = true;
-  RequiresDeclOrError = false;
+  Owner.EnableFunctions = true;
+  Owner.EnableNamespaceDecl = false;
+  Owner.EnableTags = true;
+  Owner.EnableAliases = true;
+  Owner.EnableTemplateParameters = false;
+  Owner.RequireTypeForVariable = false;
+  Owner.EnableNestedNameSpecifiers = false;
+  Owner.RequireAliasTypes = true;
+  Owner.RequireTypeForFunctions = true;
+  Owner.RequiresDeclOrError = false;
   return makeDeclarator(S);
 }
 
 Declarator *DeclaratorBuilder::handleClassScope(const Syntax *S) {
-  EnableFunctions = true;
-  EnableNamespaceDecl = false;
-  EnableTags = true;
-  EnableAliases = true;
-  EnableTemplateParameters = true;
-  RequireTypeForVariable = true;
-  EnableNestedNameSpecifiers = false;
-  RequireAliasTypes = false;
-  RequireTypeForFunctions = false;
-  RequiresDeclOrError = true;
-  AllowShortCtorAndDtorSyntax = true;
-  ContextDeclaresNewName = true;
+  Owner.EnableFunctions = true;
+  Owner.EnableNamespaceDecl = false;
+  Owner.EnableTags = true;
+  Owner.EnableAliases = true;
+  Owner.EnableTemplateParameters = true;
+  Owner.RequireTypeForVariable = true;
+  Owner.EnableNestedNameSpecifiers = false;
+  Owner.RequireAliasTypes = false;
+  Owner.RequireTypeForFunctions = false;
+  Owner.RequiresDeclOrError = true;
+  Owner.AllowShortCtorAndDtorSyntax = true;
+  Owner.ContextDeclaresNewName = true;
   return makeDeclarator(S);
 }
 
 Declarator *DeclaratorBuilder::handleControlScope(const Syntax *S) {
-  EnableFunctions = false;
-  EnableNamespaceDecl = false;
-  EnableTags = false;
-  EnableAliases = false;
-  RequireTypeForVariable = false;
-  EnableTemplateParameters = false;
-  EnableNestedNameSpecifiers = false;
-  RequireAliasTypes = false;
-  RequireTypeForFunctions = false;
-  RequiresDeclOrError = false;
+  Owner.EnableFunctions = false;
+  Owner.EnableNamespaceDecl = false;
+  Owner.EnableTags = false;
+  Owner.EnableAliases = false;
+  Owner.RequireTypeForVariable = false;
+  Owner.EnableTemplateParameters = false;
+  Owner.EnableNestedNameSpecifiers = false;
+  Owner.RequireAliasTypes = false;
+  Owner.RequireTypeForFunctions = false;
+  Owner.RequiresDeclOrError = false;
   return makeDeclarator(S);
 }
 
 Declarator *DeclaratorBuilder::handleEnumScope(const Syntax *S) {
-  EnableFunctions = false;
-  EnableNamespaceDecl = false;
-  EnableTags = false;
-  EnableAliases = false;
-  RequireTypeForVariable = false;
-  EnableTemplateParameters = false;
-  EnableNestedNameSpecifiers = false;
-  RequireAliasTypes = false;
-  RequireTypeForFunctions = false;
-  RequiresDeclOrError = true;
-  IsInsideEnum = true;
-  ContextDeclaresNewName = true;
+  Owner.EnableFunctions = false;
+  Owner.EnableNamespaceDecl = false;
+  Owner.EnableTags = false;
+  Owner.EnableAliases = false;
+  Owner.RequireTypeForVariable = false;
+  Owner.EnableTemplateParameters = false;
+  Owner.EnableNestedNameSpecifiers = false;
+  Owner.RequireAliasTypes = false;
+  Owner.RequireTypeForFunctions = false;
+  Owner.RequiresDeclOrError = true;
+  Owner.IsInsideEnum = true;
+  Owner.ContextDeclaresNewName = true;
   // Special case where enum values are allowed to just be names.
   if (const auto *Name = dyn_cast<AtomSyntax>(S)) {
     buildIdentifier(Name);
@@ -531,23 +543,23 @@ Declarator *DeclaratorBuilder::handleEnumScope(const Syntax *S) {
 }
 
 Declarator *DeclaratorBuilder::handleCatchScope(const Syntax *S) {
-  EnableFunctions = false;
-  EnableNamespaceDecl = false;
-  EnableTags = false;
-  EnableAliases = false;
-  RequireTypeForVariable = true;
-  EnableTemplateParameters = false;
-  EnableNestedNameSpecifiers = false;
-  RequireAliasTypes = false;
-  RequireTypeForFunctions = false;
-  RequiresDeclOrError = true;
+  Owner.EnableFunctions = false;
+  Owner.EnableNamespaceDecl = false;
+  Owner.EnableTags = false;
+  Owner.EnableAliases = false;
+  Owner.RequireTypeForVariable = true;
+  Owner.EnableTemplateParameters = false;
+  Owner.EnableNestedNameSpecifiers = false;
+  Owner.RequireAliasTypes = false;
+  Owner.RequireTypeForFunctions = false;
+  Owner.RequiresDeclOrError = true;
   return makeDeclarator(S);
 }
 
 Declarator *DeclaratorBuilder::makeDeclarator(const Syntax *S) {
   // Handle a special case of an invalid enum identifier `.[name]`
   // without an assignment operator.
-  if (IsInsideEnum) {
+  if (Owner.IsInsideEnum) {
     if (const auto *Name = dyn_cast<AtomSyntax>(S)) {
       buildIdentifier(Name);
       return Result;
@@ -562,7 +574,7 @@ Declarator *DeclaratorBuilder::makeDeclarator(const Syntax *S) {
 
   // const auto *Call = dyn_cast<CallSyntax>(S);
   // if (!Call) {
-  //   if (RequiresDeclOrError)
+  //   if (Owner.RequiresDeclOrError)
   //     SemaRef.Diags.Report(S->getLoc(),
   //                          clang::diag::err_invalid_declaration_kind)
   //                          << 2;
@@ -605,7 +617,7 @@ void DeclaratorBuilder::buildIdentifier(const AtomSyntax *S) {
       }
 
     } else if (OriginalName.startswith("conversion\"")) {
-      ConversionTypeSyntax = S->getFusionArg();
+      Owner.ConversionTypeSyntax = S->getFusionArg();
     }
   }
 

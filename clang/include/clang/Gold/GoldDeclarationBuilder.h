@@ -39,6 +39,7 @@ class SyntaxContext;
 class DeclarationBuilder final {
   SyntaxContext &Context;
   Sema &SemaRef;
+  friend class DeclaratorBuilder;
 
 public:
   DeclarationBuilder(SyntaxContext &Ctx, Sema &S)
