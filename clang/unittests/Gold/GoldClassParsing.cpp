@@ -1401,6 +1401,27 @@ T1[T:type, Alloc:type] : type = class{
 )Gold";
 
   auto ToMatch = cppxDependentMemberAccessExpr();
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
 
+TEST(ClassParsing, UsingNestedTypeWithAConstructor) {
+  StringRef Code = R"Gold(
+VectorBase: type = class{
+  VectorImpl : type = class {
+    constructor()! {
+      this.init();
+    }
+
+    init():void !{
+    }
+
+  }
+  impl:VectorImpl;
+}
+
+main():int !{
+  return 0;
+})Gold";
+  auto ToMatch = memberExpr(member(hasName("init")));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }

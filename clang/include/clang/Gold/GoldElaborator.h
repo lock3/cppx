@@ -181,8 +181,10 @@ public:
   /// This returns true if part of the declaration was delayed.
   bool delayElaborateDeclType(clang::CXXRecordDecl *RD, const Syntax *S);
 
+
   /// Functionality associated with late elaboration and are used to either
   /// elaborate the full class or elaborate everything if they are able to.
+  void delayElaborateFieldDecl(Declaration *D);
   void delayElaborateMemberInitializer(Declaration *D);
   void delayElaborateMethodDecl(Declaration *D);
   void delayElaborateMethodDef(Declaration *D);

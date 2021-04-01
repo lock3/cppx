@@ -46,3 +46,13 @@ TEST(GoldStringLiteral, EscapedTabCharacter) {
   ASSERT_TRUE(matches(Code.str(), IntCmp));
 }
 
+TEST(GoldStringLiteral, UnterminatedString) {
+  StringRef Code = R"(i:^ const char ="value)";
+  GoldFailureTest(Code);
+}
+
+TEST(GoldStringLiteral, StringWithNewlineInside) {
+  StringRef Code = R"(i:^ const char ="value
+")";
+  GoldFailureTest(Code);
+}

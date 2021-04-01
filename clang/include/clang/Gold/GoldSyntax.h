@@ -152,7 +152,8 @@ public:
   }
 
   static bool classof(const Syntax *S) {
-    return S->getKind() == SK_Atom || S->getKind() == SK_Literal;
+    return S->getKind() == SK_Atom || S->getKind() == SK_Literal
+          || S->getKind() == SK_Text;
   }
 
   clang::SourceLocation getTokenLoc() const {
@@ -392,6 +393,15 @@ struct ElemSyntax : Syntax
 /// A labeled block of code (e.g., a loop).
 struct MacroSyntax : Syntax
 {
+protected:
+  MacroSyntax(SyntaxKind SK, Syntax *Call, Syntax *Block, Syntax *Next)
+    : Syntax(SK)
+  {
+    Elems[0] = Call;
+    Elems[1] = Block;
+    Elems[2] = Next;
+  }
+public:
   MacroSyntax(Syntax *Call, Syntax *Block, Syntax *Next)
     : Syntax(SK_Macro)
   {
@@ -499,6 +509,164 @@ struct Attribute
 
 private:
   Syntax *Arg;
+};
+
+
+enum MarkupStyle {
+  MS_MarkdownStyle,
+  MS_HTMLStyle,
+  MS_ContentInTag,
+  MS_InName
+};
+struct MarkupSyntax : Syntax {
+  MarkupSyntax(MarkupStyle MS, Syntax *FusedName, Syntax *Block, Syntax *Attrs,
+               Syntax *EndingTagName)
+    : Syntax(SK_Markup), Style(MS)
+  {
+    Elems[0] = FusedName;
+    Elems[1] = Block;
+    Elems[2] = Attrs;
+    Elems[3] = EndingTagName;
+  }
+
+  const Syntax *getName() const {
+    return Elems[0];
+  }
+
+  Syntax *getName() {
+    return Elems[0];
+  }
+
+  const Syntax *getBlock() const {
+    return Elems[1];
+  }
+
+  Syntax *getBlock() {
+    return Elems[1];
+  }
+
+  void setBlock(Syntax *Block) {
+    Elems[1] = Block;
+  }
+
+  const Syntax *getOtherAttributes() const {
+    return Elems[2];
+  }
+
+  Syntax *getOtherAttributes() {
+    return Elems[2];
+  }
+
+  void setOtherAttributes(Syntax *OtherAttrs) {
+    Elems[2] = OtherAttrs;
+  }
+
+  const Syntax *getEndingTagName() const {
+    return Elems[3];
+  }
+
+  Syntax *getEndingTagName() {
+    return Elems[3];
+  }
+
+  void setEndingTagName(Syntax *endTagName) {
+    Elems[3] = endTagName;
+  }
+
+  child_range children() {
+    return child_range(Elems.data(), Elems.data() + 4);
+  }
+
+  const child_range children() const {
+    auto Children = const_cast<MarkupSyntax *>(this)->children();
+    return const_child_range(Children);
+  }
+
+  static bool classof(const Syntax *S) {
+    return S->getKind() == SK_Markup;
+  }
+
+  clang::SourceLocation getNameLoc() const {
+    return getName()->getLoc();
+  }
+
+  clang::SourceLocation getBlockLoc() const {
+    return getBlock()->getLoc();
+  }
+
+  MarkupStyle getStyle() const {
+    return Style;
+  }
+  void setStyle(MarkupStyle MS) {
+    Style = MS;
+  }
+  MarkupStyle Style;
+  std::array<Syntax *, 4> Elems;
+};
+
+struct DocAttrSyntax : Syntax, VectorNode<Syntax>
+{
+  DocAttrSyntax(Syntax **Ts, unsigned NumElems)
+    : Syntax(SK_DocAttr), VectorNode(Ts, NumElems)
+  {}
+
+  child_range children() {
+    return child_range(Elems, Elems + NumElems);
+  }
+
+  const child_range children() const {
+    return const_child_range(Elems, Elems + NumElems);
+  }
+
+  static bool classof(const Syntax *S) {
+    return S->getKind() == SK_DocAttr;
+  }
+};
+
+struct TextSyntax : AtomSyntax {
+  TextSyntax(Token Tok)
+    : AtomSyntax(SK_Text, Tok)
+  { }
+
+  static bool classof(const Syntax *S) {
+    return S->getKind() == SK_Text;
+  }
+};
+
+/// This is a special node whose job it is to indicate that the result of a
+/// string is to be stringified as part of markup, or a string expression.
+struct StrInterpolationExprSyntax : Syntax {
+  StrInterpolationExprSyntax(Syntax *Expr)
+    : Syntax(SK_StrInterpolationExpr), Expr(Expr)
+  { }
+
+  const Syntax *getExpr() const {
+    return Expr;
+  }
+
+  Syntax *getExpr() {
+    return Expr;
+  }
+
+
+  child_range children() {
+    return child_range(&Expr, &Expr + 1);
+  }
+
+  const child_range children() const {
+    auto Children = const_cast<StrInterpolationExprSyntax *>(this)->children();
+    return const_child_range(Children);
+  }
+
+  static bool classof(const Syntax *S) {
+    return S->getKind() == SK_StrInterpolationExpr;
+  }
+
+  clang::SourceLocation getExprLoc() const {
+    return getExpr()->getLoc();
+  }
+
+  Syntax *Expr;
 };
 
 } // namespace gold

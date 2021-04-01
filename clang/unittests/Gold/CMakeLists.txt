@@ -45,7 +45,6 @@ add_clang_unittest(GoldTests
   GoldBoolImplicitConversionInit.cpp
   GoldBreakElab.cpp
   GoldBuiltInArithmeticOpsElab.cpp
-  GoldBuiltinBitwiseOpsElab.cpp
   GoldBuiltinComparisonOpsElab.cpp
   GoldBuiltinFunctionsElab.cpp
   GoldBuiltinLogicalOpsElab.cpp
@@ -82,6 +81,7 @@ add_clang_unittest(GoldTests
   GoldDeductExec.cpp
   GoldDefaultFunctionArgumentsElab.cpp
   GoldDependentTypeNameMemberAccessElab.cpp
+  GoldDocAttrParsing.cpp
   GoldEnumElab.cpp
   GoldThrowOpElab.cpp
   GoldExceptionCatchElab.cpp
@@ -121,6 +121,7 @@ add_clang_unittest(GoldTests
   GoldOperatorOverloadUseElab.cpp
   GoldOutOfOrderElab.cpp
   GoldOverrideAttributeElab.cpp
+  GoldParseCommentTest.cpp
   GoldParsing.cpp
   GoldPointerDerefElab.cpp
   GoldQualifiedMemberAccessElab.cpp

@@ -224,7 +224,12 @@ std::string FunctionDeclarator::getString(bool IncludeKind) const {
 }
 
 const ListSyntax *FunctionDeclarator::getParams() const {
-  return cast<ListSyntax>(Params->getArguments());
+  if (Params) {
+    if (isa<ListSyntax>(Params->getArguments())) {
+      return cast<ListSyntax>(Params->getArguments());
+    }
+  }
+  return nullptr;
 }
 
 // ------------------ TypeDeclarator -------------------------------------------
