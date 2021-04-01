@@ -127,18 +127,22 @@ void DeclaratorBuilder::VisitGoldCallSyntax(const CallSyntax *S) {
     bool IsPartialSpecialization = false;
     if (!isLeftOfRoot(NodeLabels, S)) {
       SuppressDiagnosticsRAII Suppressor(SemaRef.getCxxSema());
-      for (const Syntax *Arg : S->getArguments()->children()) {
+      if (const Syntax *Arg = S->getArgument(0)) {
+        // if we have something like []type, this is an implicit sized array.
+        if (const ListSyntax *ArgList = dyn_cast<ListSyntax>(Arg))
+          if (!ArgList->getNumChildren())
+            goto END;
+
         ExprElaborator Elab(Context, SemaRef);
         clang::Expr *E = Elab.elaborateExpr(Arg);
         // We don't know what we got, so we're gonna assume it's a partial
         // specialization.
-        if (!E || (E && E->getType()->isTypeOfTypes())) {
+        if (!E || (E && E->getType()->isTypeOfTypes()))
           IsPartialSpecialization = true;
-          break;
-        }
       }
     }
 
+  END:
     if (IsPartialSpecialization) {
       buildPartialSpecialization(constructList(Context, S->getArgument(0)));
       return VisitSyntax(S->getArgument(1));
