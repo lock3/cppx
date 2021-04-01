@@ -1267,22 +1267,19 @@ clang::QualType Sema::getQualTypeFromTypeExpr(const clang::Expr *TyExpr) {
 clang::TypeSourceInfo *
 Sema::getTypeSourceInfoFromExpr(const clang::Expr *TyExpr,
                                 clang::SourceLocation Loc) {
-  if (!TyExpr) {
+  if (!TyExpr)
     return nullptr;
-  }
 
   if (!TyExpr->getType()->isTypeOfTypes()) {
     Diags.Report(Loc, clang::diag::err_not_a_type);
     return nullptr;
   }
 
-  if (const clang::CppxTypeLiteral *Ty
-                                   = dyn_cast<clang::CppxTypeLiteral>(TyExpr)) {
-
+  if (const auto *Ty = dyn_cast<clang::CppxTypeLiteral>(TyExpr))
     return Ty->getValue();
-  }
 
-  llvm_unreachable("Invaild type expression evaluates to type of types.");
+  return BuildAnyTypeLoc(Context.CxxAST, TyExpr->getType(),
+                         TyExpr->getExprLoc());
 }
 
 

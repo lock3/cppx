@@ -87,6 +87,15 @@ static inline bool isPostfixCaret(const CallSyntax *S) {
   return Callee->getSpelling() == "postfix'^'";
 }
 
+static ListSyntax *constructList(SyntaxContext &Ctx, const Syntax *Arg) {
+  if (isa<ListSyntax>(Arg))
+    return const_cast<ListSyntax *>(cast<ListSyntax>(Arg));
+  Syntax *NonConstArg = const_cast<Syntax *>(Arg);
+  Syntax **Args = new (Ctx) Syntax *[1];
+  Args[0] = NonConstArg;
+  return new (Ctx) ListSyntax(Args, 1);
+}
+
 void DeclaratorBuilder::VisitGoldCallSyntax(const CallSyntax *S) {
   const AtomSyntax *Callee = dyn_cast<AtomSyntax>(S->getCallee());
   FusedOpKind Op = getFusedOpKind(SemaRef, S);
@@ -114,8 +123,28 @@ void DeclaratorBuilder::VisitGoldCallSyntax(const CallSyntax *S) {
   }
 
   // This is an array prefix.
-  if (Op == FOK_Brackets)
-    push(new ArrayDeclarator(S->getArgument(0), nullptr));
+  if (Op == FOK_Brackets) {
+    bool IsPartialSpecialization = false;
+    if (!isLeftOfRoot(NodeLabels, S)) {
+      SuppressDiagnosticsRAII Suppressor(SemaRef.getCxxSema());
+      for (const Syntax *Arg : S->getArguments()->children()) {
+        ExprElaborator Elab(Context, SemaRef);
+        clang::Expr *E = Elab.elaborateExpr(Arg);
+        // We don't know what we got, so we're gonna assume it's a partial
+        // specialization.
+        if (!E || (E && E->getType()->isTypeOfTypes())) {
+          IsPartialSpecialization = true;
+          break;
+        }
+      }
+    }
+
+    if (IsPartialSpecialization) {
+      buildPartialSpecialization(constructList(Context, S->getArgument(0)));
+      return VisitSyntax(S->getArgument(1));
+    } else
+      push(new ArrayDeclarator(S->getArgument(0), nullptr));
+  }
 
   if (Op == FOK_Map) {
     if (!isa<ListSyntax>(S->getArgument(0))) {
@@ -144,7 +173,7 @@ void DeclaratorBuilder::VisitGoldCallSyntax(const CallSyntax *S) {
 void DeclaratorBuilder::VisitGoldElemSyntax(const ElemSyntax *S) {
   if (isLeftOfRoot(NodeLabels, S) && isa<ElemSyntax>(S->getObject())) {
     Visit(S->getObject());
-    return buildPartialSpecialization(S);
+    return buildPartialSpecialization(cast<ListSyntax>(S->getArguments()));
   }
 
   // Check if we are more than one element deep and on the left,
@@ -357,11 +386,12 @@ void DeclaratorBuilder::buildTemplateParams(const ElemSyntax *S) {
 
 void DeclaratorBuilder::buildSpecialization(const ElemSyntax *S) {
   push(new ImplicitEmptyTemplateParamsDeclarator(S, nullptr));
-  push(new SpecializationDeclarator(S, nullptr));
+  push(new SpecializationDeclarator(cast<ListSyntax>(S->getArguments()),
+                                    nullptr));
   Cur->recordAttributes(S);
 }
 
-void DeclaratorBuilder::buildPartialSpecialization(const ElemSyntax *S) {
+void DeclaratorBuilder::buildPartialSpecialization(const ListSyntax *S) {
   push(new SpecializationDeclarator(S, nullptr));
   Cur->recordAttributes(S);
 }

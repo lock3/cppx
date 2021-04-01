@@ -521,11 +521,11 @@ public:
 };
 
 class SpecializationDeclarator : public Declarator {
-  const ElemSyntax *Args;
+  const ListSyntax *Args;
   clang::TemplateArgumentListInfo ArgListInfo;
   bool CreatedAnError = false;
 public:
-  SpecializationDeclarator(const ElemSyntax *SpecializationArgs,
+  SpecializationDeclarator(const ListSyntax *SpecializationArgs,
                            Declarator *Next)
     :Declarator(DK_Specialization, Next),
     Args(SpecializationArgs)

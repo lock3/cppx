@@ -336,11 +336,11 @@ std::string SpecializationDeclarator::getString(bool IncludeKind) const {
 }
 
 bool SpecializationDeclarator::HasArguments() const {
-  return getArgs()->getNumChildren();
+  return getArgs() && getArgs()->getNumChildren();
 }
 
 const ListSyntax *SpecializationDeclarator::getArgs() const {
-  return cast<ListSyntax>(Args->getArguments());
+  return Args;
 }
 
 // ------------------ UsingDirectiveDeclarator ------------------------------ //

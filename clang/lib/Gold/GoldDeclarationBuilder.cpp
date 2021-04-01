@@ -1739,7 +1739,8 @@ DeclarationBuilder::handleImplicitTemplateParams(const ElemSyntax *Owner,
 SpecializationDeclarator *
 DeclarationBuilder::handleSpecialization(const ElemSyntax *Specialization,
                                          Declarator *Next) {
-  auto Ret = new SpecializationDeclarator(Specialization, Next);
+  auto Ret = new SpecializationDeclarator(
+    cast<ListSyntax>(Specialization->getArguments()), Next);
   Ret->recordAttributes(Specialization);
   return Ret;
 }
