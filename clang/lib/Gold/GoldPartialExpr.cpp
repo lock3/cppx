@@ -88,7 +88,7 @@ clang::Expr *PartialInPlaceNewExpr::completeExpr() {
                            clang::diag::err_construct_on_non_pointer_ty);
       return nullptr;
     }
-    // We need to make this happen instead of creathing the unresolved
+    // We need to make this happen instead of creating the unresolved
     // constructor expression. The unresolved constructor expression
     // is used to create a temporary object and not invoke the constructor.
     // ParenListExpr
@@ -103,6 +103,7 @@ clang::Expr *PartialInPlaceNewExpr::completeExpr() {
                                                      Loc);
     clang::TypeSourceInfo *TInfoAdjusted = BuildAnyTypeLoc(
                     SemaRef.getContext().CxxAST, InnerTy, TyExpr->getExprLoc());
+
     auto NewExpr = clang::CXXNewExpr::Create(
         SemaRef.getContext().CxxAST,
         /*IsGlobalNew*/false,
@@ -137,6 +138,7 @@ clang::Expr *PartialInPlaceNewExpr::completeExpr() {
              Loc, Temp, Loc, false);
   if (CtorExpr.isInvalid())
     return nullptr;
+
   auto NewExpr = clang::CXXNewExpr::Create(
       SemaRef.getContext().CxxAST,
       /*IsGlobalNew*/false,
