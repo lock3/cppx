@@ -1066,6 +1066,13 @@ bool ExprElaborator::elaborateTemplateArugments(const ListSyntax *Args,
 static clang::Expr *
 createIdentAccess(SyntaxContext &Context, Sema &SemaRef, const AtomSyntax *S,
                   clang::QualType Ty, clang::SourceLocation Loc) {
+  if (!S->getAttributes().empty() && !SemaRef.isElaboratingClass()) {
+    unsigned DiagID =
+      SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                     "attributes attached something that isn't a declaration.");
+    SemaRef.Diags.Report(S->getLoc(), DiagID);
+    return nullptr;
+  }
   clang::ASTContext &CxxAST = Context.CxxAST;
   clang::IdentifierInfo *Id = &CxxAST.Idents.get(S->getSpelling());
   clang::DeclarationNameInfo DNI({Id}, Loc);
@@ -1396,6 +1403,7 @@ static clang::Expr *handleExpressionResultCall(Sema &SemaRef,
   }
   if (isa<clang::CppxPartialEvalExpr>(CalleeExpr))
     return Elab.elaboratePartialCallExpr(CalleeExpr, S, Args);
+
   if (isACppxDependentExpr(CalleeExpr))
     return clang::CppxCallOrConstructorExpr::Create(SemaRef.getContext().CxxAST,
                                                     CalleeExpr, Args);
@@ -1425,15 +1433,40 @@ static clang::Expr *handleExpressionResultCall(Sema &SemaRef,
 
   // A call to a specialization without arguments has to be handled differently
   // than other call expressions, so figure out if this could be one.
-  // FIXME: What is this? It doesn't look like it actually does anything?!
   if (auto *ULE = dyn_cast<clang::UnresolvedLookupExpr>(CalleeExpr))
     if (!ULE->hasExplicitTemplateArgs())
-      for (auto D : ULE->decls())
-        if (auto *FD = dyn_cast<clang::FunctionDecl>(D))
-          if (FD->getTemplatedKind() ==
-              clang::FunctionDecl::TK_FunctionTemplateSpecialization) {
-            ;
-          }
+      for (auto D : ULE->decls()) {
+        if (auto *MD = dyn_cast<clang::CXXMethodDecl>(D)){
+          clang::CXXRecordDecl* RD = MD->getParent();
+          clang::QualType ThisTy(RD->getTypeForDecl(), 0);
+          clang::QualType ThisPtrTy = SemaRef.getContext().CxxAST.getPointerType(
+                                                                        ThisTy);
+          clang::Expr* This = SemaRef.getCxxSema().BuildCXXThisExpr(
+              CalleeExpr->getExprLoc(), ThisPtrTy, true);
+          // Finishing the rebuild.
+          clang::CXXScopeSpec SS;
+          bool IsArrow = false;
+          auto BaseExpr
+              = SemaRef.getCxxSema().PerformMemberExprBaseConversion(This,
+                                                                    true);
+          if (BaseExpr.isInvalid())
+            return nullptr;
+          auto &Context = SemaRef.getContext();
+          clang::TemplateArgumentListInfo TemplateArgs;
+          CalleeExpr = clang::UnresolvedMemberExpr::Create(Context.CxxAST,
+                                                           false, BaseExpr.get(),
+                                                           ThisPtrTy,
+                                                           /*IsArrow=*/true,
+                                                           ULE->getExprLoc(),
+                                         SS.getWithLocInContext(Context.CxxAST),
+                                                        clang::SourceLocation(),
+                                                           ULE->getNameInfo(),
+                                                           &TemplateArgs,
+                                                           ULE->decls_begin(),
+                                                           ULE->decls_end());
+          break;
+        }
+      }
 
   // TODO: create a test for this were we call a namespace just to see what kind
   // of error actually occurs.
@@ -2313,8 +2346,6 @@ clang::Expr *ExprElaborator::elaborateMemberAccessRHS(clang::Expr *ElaboratedLHS
 
   // A disambiguator of the form (a)b
   if (const CallSyntax *Disambig = dyn_cast<CallSyntax>(RHS)) {
-    // llvm::outs() << "Calling elaborateDisambuationSyntax\nElaborated LHS:\n";
-    // ElaboratedLHS->dump();
     return elaborateDisambuationSyntax(ElaboratedLHS, LHS, Op, Disambig);
   }
 

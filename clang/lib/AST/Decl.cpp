@@ -3137,11 +3137,13 @@ bool FunctionDecl::isMSVCRTEntryPoint() const {
 }
 
 bool FunctionDecl::isReservedGlobalPlacementOperator() const {
-  assert(getDeclName().getNameKind() == DeclarationName::CXXOperatorName);
+  assert(getDeclName().getNameKind() == DeclarationName::CXXOperatorName
+         || getASTContext().getLangOpts().Gold);
   assert(getDeclName().getCXXOverloadedOperator() == OO_New ||
          getDeclName().getCXXOverloadedOperator() == OO_Delete ||
          getDeclName().getCXXOverloadedOperator() == OO_Array_New ||
-         getDeclName().getCXXOverloadedOperator() == OO_Array_Delete);
+         getDeclName().getCXXOverloadedOperator() == OO_Array_Delete ||
+         getASTContext().getLangOpts().Gold);
 
   if (!getDeclContext()->getRedeclContext()->isTranslationUnit())
     return false;

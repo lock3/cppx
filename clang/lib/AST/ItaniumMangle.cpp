@@ -24,6 +24,7 @@
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExprConcepts.h"
+#include "clang/AST/ExprCppx.h"
 #include "clang/AST/ExprCXX.h"
 #include "clang/AST/ExprObjC.h"
 #include "clang/AST/TypeLoc.h"
@@ -611,6 +612,12 @@ private:
   AbiTagList makeFunctionReturnTypeTags(const FunctionDecl *FD);
   // Returns sorted unique list of ABI tags.
   AbiTagList makeVariableTypeTags(const VarDecl *VD);
+
+
+  void mangleCppxDependentMemberAccessExpr(const CppxDependentMemberAccessExpr *E);
+  void mangleCppxCallOrConstructorExpr(const CppxCallOrConstructorExpr *E);
+  void mangleCppxDerefOrPtrExpr(const CppxDerefOrPtrExpr *E);
+  void mangleCppxTemplateOrArrayExpr(const CppxTemplateOrArrayExpr *E);
 };
 
 }
@@ -3689,7 +3696,7 @@ void CXXNameMangler::mangleType(const CppxArgsType *T) {
 }
 
 void CXXNameMangler::mangleType(const CppxTypeExprType *T) {
-  llvm_unreachable("unexpected type");
+  mangleExpression(T->getTyExpr());
 }
 
 void CXXNameMangler::mangleType(const TemplateSpecializationType *T) {
@@ -4425,9 +4432,17 @@ recurse:
     break;
   }
   case Expr::CppxDerefOrPtrExprClass:
+    mangleCppxDerefOrPtrExpr(cast<CppxDerefOrPtrExpr>(E));
+    break;
   case Expr::CppxCallOrConstructorExprClass:
+    mangleCppxCallOrConstructorExpr(cast<CppxCallOrConstructorExpr>(E));
+    break;
   case Expr::CppxTemplateOrArrayExprClass:
+    mangleCppxTemplateOrArrayExpr(cast<CppxTemplateOrArrayExpr>(E));
+    break;
   case Expr::CppxDependentMemberAccessExprClass:
+    mangleCppxDependentMemberAccessExpr(cast<CppxDependentMemberAccessExpr>(E));
+    break;
   case Expr::CppxWildcardExprClass:
     llvm_unreachable("should never mangle this name");
 
@@ -6169,6 +6184,29 @@ bool CXXNameMangler::shouldHaveAbiTags(ItaniumMangleContextImpl &C,
   TrackAbiTags.mangle(VD);
   return TrackAbiTags.AbiTagsRoot.getUsedAbiTags().size();
 }
+
+void CXXNameMangler::mangleCppxDependentMemberAccessExpr(const CppxDependentMemberAccessExpr *E) {
+  const Expr *Base = E->getBase();
+  if (auto Lit = dyn_cast<CppxTypeLiteral>(Base)) {
+    mangleType(Lit->getValue()->getType());
+  } else {
+    mangleExpression(Base);
+  }
+  Out << E->getMember().getAsString();
+}
+
+void CXXNameMangler::mangleCppxCallOrConstructorExpr(const CppxCallOrConstructorExpr *E) {
+  llvm_unreachable("CXXNameMangler::mangleCppxCallOrConstructorExpr Not implemented yet.");
+}
+
+void CXXNameMangler::mangleCppxDerefOrPtrExpr(const CppxDerefOrPtrExpr *E){
+  llvm_unreachable("CXXNameMangler::mangleCppxDerefOrPtrExpr Not implemented yet.");
+}
+
+void CXXNameMangler::mangleCppxTemplateOrArrayExpr(const CppxTemplateOrArrayExpr *E){
+  llvm_unreachable("CXXNameMangler::mangleCppxTemplateOrArrayExpr Not implemented yet.");
+}
+
 
 //
 

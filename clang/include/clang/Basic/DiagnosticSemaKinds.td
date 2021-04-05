@@ -11683,10 +11683,10 @@ def err_qualified_name_no_a_type : Error<
   "qualifid name expression doesn't name a type">;
 
 def err_invalid_operand_type : Error <
-    "types, namespace, and templates cannot be operands to an operator">;
+    "types, namespaces, and templates cannot be operands to an operator">;
 
 def err_invalid_function_argument : Error <
-    "types, namespace, and templates cannot be arguments to a function">;
+    "types, namespaces, and templates cannot be arguments to a function">;
 
 def err_deref_or_ptr_for_invalid_type : Error <
     "cannot dereference or make a pointer to a namespace or an incomplete "
