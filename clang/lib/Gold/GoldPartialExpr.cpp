@@ -103,7 +103,6 @@ clang::Expr *PartialInPlaceNewExpr::completeExpr() {
                                                      Loc);
     clang::TypeSourceInfo *TInfoAdjusted = BuildAnyTypeLoc(
                     SemaRef.getContext().CxxAST, InnerTy, TyExpr->getExprLoc());
-
     auto NewExpr = clang::CXXNewExpr::Create(
         SemaRef.getContext().CxxAST,
         /*IsGlobalNew*/false,
@@ -138,7 +137,6 @@ clang::Expr *PartialInPlaceNewExpr::completeExpr() {
              Loc, Temp, Loc, false);
   if (CtorExpr.isInvalid())
     return nullptr;
-
   auto NewExpr = clang::CXXNewExpr::Create(
       SemaRef.getContext().CxxAST,
       /*IsGlobalNew*/false,
