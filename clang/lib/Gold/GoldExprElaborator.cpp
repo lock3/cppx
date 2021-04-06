@@ -3907,7 +3907,6 @@ clang::Expr *ExprElaborator::elaborateNewExpr(const MacroSyntax *Macro) {
   if (TyToNew->isTypeOfTypes()
       || TyToNew->isTemplateType()
       || TyToNew->isNamespaceType()) {
-    // llvm_unreachable("Cannot create an instance of this type.");
     SemaRef.Diags.Report(TypeNode->getLoc(),
                         clang::diag::err_cannot_allocate_type)
                         << TyToNew;

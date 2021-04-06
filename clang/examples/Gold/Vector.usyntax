@@ -1,6 +1,7 @@
 
 <# Defining implicit utility function, macros, and builtins.  #>;
-__throw_bad_alloc()<noreturn>:void
+std = namespace:
+  __throw_bad_alloc()<noreturn><extern>:void
 
 __STDCPP_DEFAULT_NEW_ALIGNMENT__<constexpr>:int = 8
 
@@ -21,7 +22,7 @@ forward[T:type](t:rref remove_reference[T].ty)<constexpr>:rref T !{
   return static_cast[rref remove_reference[T].ty](t);
 }
 
-move[T:type](t:rref T)<noexcept><constexpr>:rref remove_reference<T>.ty! {
+move[T:type](t:rref T)<noexcept><constexpr>:rref remove_reference[T].ty! {
   return static_cast[rref remove_reference[T].ty](t);
 }
 
@@ -29,7 +30,7 @@ move[T:type](t:rref T)<noexcept><constexpr>:rref remove_reference<T>.ty! {
 fill[FwdIt:type, T:type](s:FwdIt, e:FwdIt, val:ref const T):void! {
   while(s <> e) {
     ^s = val
-    ++s;
+    s += 1;
   }
 }
 
@@ -37,7 +38,7 @@ fill[FwdIt:type, T:type](s:FwdIt, e:FwdIt, val:ref const T):void! {
 fill_n[FwdIt:type, T:type](s:FwdIt, n:uint64, val:ref const T):FwdIt! {
   for(x in 0..n) {
     ^s = val
-    ++s;
+    s += 1;
   }
   return s;
 }
@@ -46,7 +47,7 @@ fill_n[FwdIt:type, T:type](s:FwdIt, n:uint64, val:ref const T):FwdIt! {
 uninitialized_fill[FwdIt:type, T:type](s:FwdIt, e:FwdIt, val:ref const T):FwdIt! {
   while(s <> e) {
     s.construct(val);
-    ++s;
+    s += 1;
   }
   return s;
 }
@@ -55,7 +56,7 @@ uninitialized_fill[FwdIt:type, T:type](s:FwdIt, e:FwdIt, val:ref const T):FwdIt!
 uninitialized_fill_n[FwdIt:type, T:type](s:FwdIt, n:uint64, val:ref const T):FwdIt! {
   for(x in 0..n) {
     s.construct(val);
-    ++s;
+    s += 1;
   }
   return s;
 }
@@ -63,7 +64,7 @@ uninitialized_fill_n[FwdIt:type, T:type](s:FwdIt, n:uint64, val:ref const T):Fwd
 uninitialized_default_n[InputIt:type](s:InputIt, n:uint64) :InputIt! {
   for(x in 0..n) {
     s.construct();
-    ++s;
+    s += 1;
   }
   return s;
 }
@@ -72,29 +73,32 @@ uninitialized_default_n[InputIt:type](s:InputIt, n:uint64) :InputIt! {
 destroy_range[FwdIt:type](s:FwdIt, e:FwdIt)<noexcept>: void! {
   while(s<>e) {
     s.destruct();
-    ++s;
+    s += 1;
   }
 }
 
 uninitialized_move[InputIt:type, FwdIt:type](s:InputIt, e:InputIt, out:FwdIt) : FwdIt! {
   while(s <> e) {
     out.construct(move(^s));
-    ++s;
-    ++out;
+    s += 1;
+    out += 1;
   }
+  return out;
 }
 
 move_backwards[BiDirIt1:type, BiDirIt2:type](first:BiDirIt1, last:BiDirIt1,
                                              out:BiDirIt2): BiDirIt2! {
   while(first <> last) {
-    ^(--out) = move(^(--last));
+    out -= 1;
+    last -= 1;
+    ^out = move(^last);
   }
   return out;
 }
 
 
 max[T:type] (x:ref const T, y:ref const T) : T! {
-  if (x>y):
+  if (x > y):
     return x;
   return y;
 }
@@ -102,7 +106,7 @@ max[T:type] (x:ref const T, y:ref const T) : T! {
 copy[InputIt:type, OutputIt:type](s:InputIt, e:InputIt, out:OutputIt):OutputIt! {
   while(s <> e) {
     ^out = ^s;
-    ++s;
+    s += 1;
   }
 }
 
@@ -190,7 +194,7 @@ new_allocator[T:type] : type = class{
   <# Alignment has been removed because we don't support it for implicit operator new functions. #>;
   allocate(n:size_type, ignored:^const void = null): pointer !{
     if (n > this.max_size()) {
-      __throw_bad_alloc();
+      std.__throw_bad_alloc();
     }
     return static_cast[^T](operator"new"(n*sizeof(T)));
   }
@@ -232,7 +236,7 @@ VectorBase[T:type, Alloc:type] : type = class{
     storage_end:pointer;
 
     constructor()! {
-      this.init()
+      this.init();
     }
 
     init():void !{
@@ -274,11 +278,11 @@ VectorBase[T:type, Alloc:type] : type = class{
   allocator_type : type = Alloc
 
   get_T_allocator()<noexcept>:ref T_alloc_type !{
-    return ^static_cast[^T_alloc_type](&this._impl);
+    return ^static_cast[^T_alloc_type](&this.impl);
   }
 
   get_T_allocator()<const><noexcept>:ref const T_alloc_type !{
-    return ^static_cast[^ const T_alloc_type](&this._impl);
+    return ^static_cast[^ const T_alloc_type](&this.impl);
   }
 
   impl:VectorImpl;
@@ -330,9 +334,9 @@ VectorBase[T:type, Alloc:type] : type = class{
 
   do_allocate(n:size_type):pointer!{
     if (n==0) {
-      return this.impl.allocate(n);
+      return null;
     }
-    return null;
+    return this.impl.allocate(n);
   }
 
   do_deallocate(p:pointer, n:size_type):void! {
@@ -371,7 +375,7 @@ vector[T:type, Alloc:type = new_allocator[T]]:type = class(VectorBase[T, Alloc]<
     it:auto = this.impl.start;
     for(x in 0..n) {
       it.construct();
-      ++it;
+      it += 1;
     }
   }
 
@@ -379,7 +383,7 @@ vector[T:type, Alloc:type = new_allocator[T]]:type = class(VectorBase[T, Alloc]<
     it:auto = this.impl.start;
     for(x in 0..n) {
       it.construct(val);
-      ++it;
+      it += 1;
     }
   }
 
@@ -403,14 +407,14 @@ vector[T:type, Alloc:type = new_allocator[T]]:type = class(VectorBase[T, Alloc]<
   copy_range_init[Iter:type](s:Iter, e:Iter)<private>:void! {
     while(s <> e) {
       this.emplace_back(^s);
-      ++s;
+      s += 1;
     }
   }
 
   default_append(n:size_type)<private>:void! {
     if (n <> 0) {
       if (size_type(this.impl.storage_end - this.impl.finish) >= n) {
-        this.impl.finish = this.uninitialized_default_n(this.impl.finish, n);
+        this.impl.finish = uninitialized_default_n(this.impl.finish, n);
       } else {
         for(x in 0..n) {
           this.emplace_back();
@@ -424,7 +428,7 @@ vector[T:type, Alloc:type = new_allocator[T]]:type = class(VectorBase[T, Alloc]<
       throw length_error(owner);
     }
     len:const size_type = this.size() + max(this.size(), n);
-    if (len < this.size() || len > this.max_size()) {
+    if ((len < this.size()) || len > this.max_size()) {
       return this.max_size()
     }
     return len;
@@ -470,8 +474,8 @@ vector[T:type, Alloc:type = new_allocator[T]]:type = class(VectorBase[T, Alloc]<
           this.do_deallocate(new_start, len);
           throw;
         }
-        destroy_range(this.impl.start, this.imple.finish);
-        this.do_deallocate(this.imp.start,
+        destroy_range(this.impl.start, this.impl.finish);
+        this.do_deallocate(this.impl.start,
                            this.impl.storage_end - this.impl.start);
         this.impl.start = new_start;
         this.impl.finish = new_finish;
@@ -517,8 +521,8 @@ vector[T:type, Alloc:type = new_allocator[T]]:type = class(VectorBase[T, Alloc]<
     it:auto = this.impl.start;
     for(x in 0..other.size()):
       it.construct(^otherIt);
-      ++it;
-      ++otherIt;
+      it += 1;
+      otherIt += 1;
   }
 
   constructor(other:rref vector[T, Alloc])! {
@@ -537,15 +541,15 @@ vector[T:type, Alloc:type = new_allocator[T]]:type = class(VectorBase[T, Alloc]<
     it:auto = this.impl.start;
     while(it <> this.impl.finish) {
       it.destruct();
-      ++it;
+      it +=1;
     }
   }
 
-  size():size_type! {
+  size()<const>:size_type! {
     return size_type(this.impl.finish - this.impl.start);
   }
 
-  max_size():size_type! {
+  max_size()<const>:size_type! {
     return size_type(this.impl.max_size());
   }
 
@@ -553,7 +557,7 @@ vector[T:type, Alloc:type = new_allocator[T]]:type = class(VectorBase[T, Alloc]<
     it:auto = this.impl.start;
     while(it <> this.impl.finish) {
       it.destruct();
-      ++it;
+      it += 1;
     }
     this.impl.finish = this.impl.start;
   }
@@ -563,7 +567,7 @@ vector[T:type, Alloc:type = new_allocator[T]]:type = class(VectorBase[T, Alloc]<
     otherIt = other.begin();
     for(x in 0..other.size()):
       this.emplace_back(^otherIt);
-      ++otherIt;
+      otherIt += 1;
   }
 
   operator"="(other:rref vector[T, Alloc]): ref vector[T, Alloc]! {
@@ -574,7 +578,7 @@ vector[T:type, Alloc:type = new_allocator[T]]:type = class(VectorBase[T, Alloc]<
       otherIt = other.begin();
       for(x in 0..other.size()):
         this.emplace_back(move(^otherIt));
-        ++otherIt;
+        otherIt += 1;
     }
   }
 
@@ -589,7 +593,7 @@ vector[T:type, Alloc:type = new_allocator[T]]:type = class(VectorBase[T, Alloc]<
     this.clear();
     while(s <> e) {
       this.emplace_back(^s);
-      ++s;
+      s += 1;
     }
   }
 
@@ -708,21 +712,22 @@ vector[T:type, Alloc:type = new_allocator[T]]:type = class(VectorBase[T, Alloc]<
     return this.impl.start;
   }
 
-  realloc_insert[Args:type...](position:iterator, args:rref Args...) <protected>:void !{
-    len:const size_type = this.check_len(size_type(1),
-                                         "vector::realloc_insert");
-    elems_before:const size_type = position - begin();
+  realloc_insert[Args:type...](position:iterator, arguments:rref Args...) <protected>:void !{
+    one = size_type(1)
+    len:const size_type = this.check_len(one, "vector::realloc_insert");
+    elems_before:const size_type = position - this.begin();
     new_start:pointer = this.do_allocate(len);
     new_finish:pointer = new_start;
     _{
-      (^(new_start + elems_before)).construct(forward[Args](args)...);
+      temp = ((new_start + elems_before))
+      temp.construct(forward[Args](arguments)...);
       new_finish = pointer();
       new_finish = uninitialized_move(this.impl.start, position, new_start)
-      ++new_finish;
+      new_finish += 1;
       new_finish = uninitialized_move(position, this.impl.finish, new_finish);
     } catch() {
       if (!new_finish) {
-        (^(new_start + elems_before)).destruct();
+        ((new_start + elems_before)).destruct();
       } else {
         destroy_range(new_start, new_finish);
       }
@@ -738,7 +743,7 @@ vector[T:type, Alloc:type = new_allocator[T]]:type = class(VectorBase[T, Alloc]<
   push_back(x:ref const value_type):void! {
     if (this.impl.finish <> this.impl.storage_end) {
       this.impl.finish.construct(x);
-      ++this.impl.finish;
+      this.impl.finish += 1;
     } else {
       this.realloc_insert(end(), x);
     }
@@ -748,31 +753,31 @@ vector[T:type, Alloc:type = new_allocator[T]]:type = class(VectorBase[T, Alloc]<
     this.emplace_back(move(x));
   }
 
-  emplace_back[Args:type...](args:rref Args...):reference ! {
+  emplace_back[Args:type...](arguments:rref Args...):reference ! {
     if (this.impl.finish <> this.impl.storage_end) {
-      this.impl.finish.construct(forward[Args](args)...);
-      ++this.impl.finish;
+      this.impl.finish.construct(forward[Args](arguments)...);
+      this.impl.finish += 1;
     } else {
-      this.realloc_insert(end(), forward[Args](args)...);
+      this.realloc_insert(end(), forward[Args](arguments)...);
     }
     return this.back();
   }
 
   pop_back():void! {
     this.impl.finish.destruct();
-    --this.impl.finish;
+    this.impl.finish -= 1;
   }
 
   insert_aux[Arg:type](position:iterator, arg:rref Arg)<const>:void! {
     this.impl.finish.construct(move(^(this.impl.finish - 1)));
-    ++this.impl.finish;
+    this.impl.finish += 1;
     move_backwards(position, this.impl.finish - 2, this.impl.finish - 1);
     ^position = forward[Arg](arg);
   }
 
   emplace_aux[Arg:type](position:iterator, arg:rref Arg)<protected>:iterator! {
     this.impl.finish.construct(move(^(this.impl.finish - 1)));
-    ++this.impl.finish;
+    this.impl.finish += 1;
     move_backwards(position, this.impl.finish - 2, this.impl.finish - 1);
     ^position = forward[Arg](arg);
   }
@@ -782,7 +787,7 @@ vector[T:type, Alloc:type = new_allocator[T]]:type = class(VectorBase[T, Alloc]<
     if (this.impl.finish <> this.impl.storage_end) {
       if (position == cend()) {
         this.impl.finish.construct(forward[Args](args)...);
-        ++this.impl.finish;
+        this.impl.finish += 1;
       } else {
         this.insert_aux(begin() + n, move(T(forward[Args](args)...)));
       }
@@ -801,7 +806,7 @@ vector[T:type, Alloc:type = new_allocator[T]]:type = class(VectorBase[T, Alloc]<
     if (this.impl.finish <> this.impl.storage_end) {
       if (position == this.end()) {
         this.impl.finish.construct(x);
-        ++this.impl.finish;
+        this.impl.finish += 1;
       } else {
         new_position:auto = this.begin() + (position - this.cbegin());
         this.insert_aux(new_position, x)
@@ -817,7 +822,7 @@ vector[T:type, Alloc:type = new_allocator[T]]:type = class(VectorBase[T, Alloc]<
     if (this.impl.finish <> this.impl.storage_end) {
       if (position == this.end()) {
         this.impl.finish.construct(move(x));
-        ++this.impl.finish;
+        this.impl.finish += 1;
       } else {
         new_position:auto = this.begin() + (position - this.cbegin());
         this.insert_aux(new_position, move(x))
@@ -843,7 +848,7 @@ vector[T:type, Alloc:type = new_allocator[T]]:type = class(VectorBase[T, Alloc]<
     insPos:iterator = position - cbegin();
     while(first <> last) {
       insPos = insert(insPos, ^first);
-      ++insPos;
+      insPos += 1;
     }
     return begin() + offset;
   }
@@ -852,7 +857,7 @@ vector[T:type, Alloc:type = new_allocator[T]]:type = class(VectorBase[T, Alloc]<
     if (position +1 <> this.end()) {
       copy(position + 1, this.end(), position);
     }
-    --this.impl.finish;
+    this.impl.finish -= 1;
     return position;
   }
   erase(first:iterator, last:iterator):void! {
@@ -866,9 +871,108 @@ vector[T:type, Alloc:type = new_allocator[T]]:type = class(VectorBase[T, Alloc]<
   swap(other:ref vector[T, Alloc])<noexcept>:void! {
     this.impl.member_swap(other.impl);
   }
+
+  dumpContents() : void!
+    print("  Size = %ull\n", this.size());
+    print("  Start %p\n", this.impl.start);
+    print("  finish %p\n", this.impl.finish);
+    print("  storage end %p\n", this.impl.storage_end);
+    print("  Capacity: %ull\n", this.capacity());
+    print("  max size: %ull\n", this.max_size())
 }
 
+cchar_ptr:type = ^const cchar;
+
+print(msg:^ const char, varargs : args) :int! {
+  vlist : __builtin_va_list;
+  c_msg_ptr:cchar_ptr = reinterpret_cast[cchar_ptr](msg);
+  __builtin_va_start(vlist, c_msg_ptr);
+  done:int = 0;
+  done = __builtin___vprintf_chk(0, c_msg_ptr, vlist);
+  __builtin_va_end(vlist);
+  return done;
+}
+
+test_failure = class(exception) {
+
+  constructor() = default;
+  constructor(m: ^ const char)! { this.init(m); }
+  constructor(other: ref const test_failure) = default;
+  constructor(other: rref test_failure) = default;
+  operator"="(other: ref const test_failure) : ref test_failure = default;
+  operator"="(other: rref test_failure) : ref test_failure = default;
+
+  init(m : ^ const char):void! {
+    this.msg = m;
+  }
+
+  what()<override><const><noexcept> : ^ const char! {
+    return this.msg;
+  }
+  msg<private>: ^ const char = null;
+}
+
+test_name:^ const char = null;
+
+passed_test_count: int = 0;
+failed_test_count: int = 0;
+
+print_cur_test_name():void! {
+  if (test_name) {
+    print(test_name);
+    print("\n");
+  }
+}
+test_true(codeStr:^const char, result:bool):void! {
+  if (!result) {
+    failed_test_count += 1;
+    print_cur_test_name();
+    print("Test failure for code: ");
+    print(codeStr);
+    print("\n");
+  } else {
+    passed_test_count += 1;
+  }
+}
+
+
 main():int !{
-  subject:vector[int];
+  test_name = "Default ConstructorTest";
+  {
+    subject:vector[int];
+    test_true("subject.size() == 0", subject.size() == 0);
+    test_true("subject.capacity() == 0", subject.capacity() == 0);
+  }
+
+  test_name = "Push back";
+  {
+    subject:vector[int];
+    subject.push_back(4);
+    test_true("subject.size() == 1", subject.size() == 1);
+    test_true("subject.capacity() <> 0", subject.capacity() <> 0);
+    test_true("subject[0] == 4", subject[0] == 4);
+    subject.dumpContents();
+  }
+
+
+  test_name = "clear";
+  {
+    subject:vector[int];
+    subject.push_back(4);
+    test_true("subject.size() == 1", subject.size() == 1);
+    test_true("subject.capacity() <> 0", subject.capacity() <> 0);
+    test_true("subject[0] == 4", subject[0] == 4);
+    subject.clear();
+    test_true("subject.size() == 0", subject.size() == 0);
+    test_true("subject.capacity() <> 0", subject.capacity() <> 0);
+  }
+
+  total_tests_count = failed_test_count + passed_test_count;
+  print("Tests completed: %d\n", (total_tests_count));
+  print("Tests Passed: %d\n", (passed_test_count));
+  print("Tests Failed: %d\n", (failed_test_count));
+  if (failed_test_count <> 0) {
+    return 1;
+  }
   return 0;
 }
