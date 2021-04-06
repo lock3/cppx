@@ -3164,7 +3164,6 @@ clang::Expr *ExprElaborator::elaborateUnaryOp(const CallSyntax *S,
   SemaRef.lookupUnqualifiedName(R);
   R.clear();
 
-
   clang::ExprResult UnaryOpRes = SemaRef.getCxxSema().BuildUnaryOp(
     /*scope*/nullptr, S->getCalleeLoc(), Op, OperandResult);
 

@@ -3162,7 +3162,10 @@ clang::Decl *Elaborator::elaborateVariableDecl(clang::Scope *InitialScope,
                                      D->Op->getLoc());
   } else {
     ExprElaborator TypeElab(Context, SemaRef);
-    TypeExpr = TypeElab.elaborateTypeExpr(D->Decl->Next);
+    if (D->Decl->Next->isArray() || D->Decl->Next->isPointer())
+      TypeExpr = TypeElab.elaborateTypeExpr(D->Decl->Next);
+    else
+      TypeExpr = TypeElab.elaborateTypeExpr(D->TypeDcl);
   }
 
   if (!TypeExpr) {
@@ -4053,7 +4056,20 @@ clang::Decl *Elaborator::elaborateParameterDecl(Declaration *D) {
     return nullptr;
   }
   ExprElaborator TypeElab(Context, SemaRef);
-  clang::Expr *TypeExpr = TypeElab.elaborateTypeExpr(D->TypeDcl);
+  // clang::Expr *TypeExpr = TypeElab.elaborateTypeExpr(D->TypeDcl);
+  clang::Expr *TypeExpr = nullptr;
+  if (!needsTypeElab(D)) {
+    // This needs to be handled right away.
+    TypeExpr = SemaRef.buildTypeExpr(Context.CxxAST.getAutoDeductType(),
+                                     D->Op->getLoc());
+  } else {
+    ExprElaborator TypeElab(Context, SemaRef);
+    if (D->Decl->Next->isArray() || D->Decl->Next->isPointer())
+      TypeExpr = TypeElab.elaborateTypeExpr(D->Decl->Next);
+    else
+      TypeExpr = TypeElab.elaborateTypeExpr(D->TypeDcl);
+  }
+
   if (!TypeExpr) {
     SemaRef.Diags.Report(D->Op->getLoc(),
                          clang::diag::err_failed_to_translate_type);

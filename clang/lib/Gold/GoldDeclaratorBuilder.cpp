@@ -58,14 +58,13 @@ Declarator *DeclaratorBuilder::operator()(const Syntax *S) {
     break;
   }
 
-  Declarator *D = Result;
+  // Declarator *D = Result;
   // while (D) {
   //   llvm::outs() << D->getString() << " -> ";
   //   D = D->Next;
   // }
   // llvm::outs() << "\nEND CHAIN\n";
-  D->printSequence(llvm::errs());
-
+  // Dcl->printSequence(llvm::errs());
   return Dcl;
 }
 
@@ -98,33 +97,63 @@ static ListSyntax *constructList(SyntaxContext &Ctx, const Syntax *Arg) {
   return new (Ctx) ListSyntax(Args, 1);
 }
 
+static inline bool isTypeOperator(const FusedOpKind K) {
+  switch (K) {
+  case FOK_Const:
+  case FOK_RRef:
+  case FOK_Ref:
+    return true;
+  default:
+    return false;
+  }
+}
+
 void DeclaratorBuilder::VisitGoldCallSyntax(const CallSyntax *S) {
   const AtomSyntax *Callee = dyn_cast<AtomSyntax>(S->getCallee());
   FusedOpKind Op = getFusedOpKind(SemaRef, S);
 
   // A normal function declaration.
   if (Op == FOK_Unknown && !isPostfixCaret(S)) {
-    // TODO: what does a function template look like?
+    if (Callee && Callee->getSpelling() == "...")
+      return buildType(S);
+
     VisitSyntax(S->getCallee());
     return buildFunction(S);
   }
 
   if (Op == FOK_MemberAccess) {
     Owner.AdditionalNodesWithAttrs.insert(S);
+
+    if (S->getNumArguments() == 1) {
+      buildGlobalNameSpecifier(S);
+      return VisitSyntax(S->getArgument(0));
+    }
+
     if (isa<AtomSyntax>(S->getArgument(0))) {
       buildNestedNameSpecifier(cast<AtomSyntax>(S->getArgument(0)));
-    } else {
-      unsigned DiagID =
-        SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
-                                      "expected atomic name in nested name "
-                                      "specifier");
-      SemaRef.Diags.Report(S->getArgument(0)->getLoc(), DiagID);
+    } else if (Owner.RequiresDeclOrError) {
+      SemaRef.Diags.Report(S->getLoc(),
+                           clang::diag::err_invalid_declaration);
+      return;
     }
 
     return VisitSyntax(S->getArgument(1));
   }
 
   if (Op == FOK_Equals) {
+    // This checks if a declaration already exists in a parent scope.
+    // For example, we are in a member function and are accessing a member.
+    if (const AtomSyntax *LHS = dyn_cast<AtomSyntax>(S->getArgument(0))) {
+      clang::DeclarationNameInfo DNI({
+          &Context.CxxAST.Idents.get(LHS->getSpelling())
+        }, S->getLoc());
+      if (!Owner.ContextDeclaresNewName &&
+          !SemaRef.checkUnqualifiedNameIsDecl(DNI)) {
+        // this may need an error message depending on context.
+        return;
+      }
+    }
+
     Owner.InitExpr = S->getArgument(1);
     Owner.InitOperatorUsed = IK_Equals;
     return VisitSyntax(S->getArgument(0));
@@ -132,7 +161,12 @@ void DeclaratorBuilder::VisitGoldCallSyntax(const CallSyntax *S) {
     Owner.InitExpr = S->getArgument(1);
     Owner.InitOperatorUsed = IK_Exclaim;
     return VisitSyntax(S->getArgument(0));
+  } else if (Op == FOK_In) {
+    return VisitSyntax(S->getArgument(0));
   }
+
+  if (isTypeOperator(Op))
+    return buildType(S);
 
   // This is an array prefix.
   if (Op == FOK_Brackets) {
@@ -142,7 +176,7 @@ void DeclaratorBuilder::VisitGoldCallSyntax(const CallSyntax *S) {
       if (const Syntax *Arg = S->getArgument(0)) {
         // if we have something like []type, this is an implicit sized array.
         if (const ListSyntax *ArgList = dyn_cast<ListSyntax>(Arg))
-          if (!ArgList->getNumChildren())
+          // if (!ArgList->getNumChildren())
             goto END;
 
         ExprElaborator Elab(Context, SemaRef);
@@ -158,8 +192,9 @@ void DeclaratorBuilder::VisitGoldCallSyntax(const CallSyntax *S) {
     if (IsPartialSpecialization) {
       buildPartialSpecialization(constructList(Context, S->getArgument(0)));
       return VisitSyntax(S->getArgument(1));
-    } else
-      push(new ArrayDeclarator(S->getArgument(0), nullptr));
+    } else {
+      buildArray(S->getArgument(0));
+    }
   }
 
   if (Op == FOK_Map) {
@@ -177,13 +212,13 @@ void DeclaratorBuilder::VisitGoldCallSyntax(const CallSyntax *S) {
 
   bool LeftOfRoot = isLeftOfRoot(NodeLabels, S);
   if (!LeftOfRoot && (isPostfixCaret(S) || Op == FOK_Caret))
-    push(new PointerDeclarator(S->getArgument(0), nullptr));
+    buildPointer(S->getArgument(0));
 
   for (const Syntax *Arg : S->getArguments()->children())
     VisitSyntax(Arg);
 
   if (LeftOfRoot && (isPostfixCaret(S) || Op == FOK_Caret))
-    push(new PointerDeclarator(S->getArgument(0), nullptr));
+    buildPointer(S->getArgument(0));
 }
 
 void DeclaratorBuilder::VisitGoldElemSyntax(const ElemSyntax *S) {
@@ -202,7 +237,8 @@ void DeclaratorBuilder::VisitGoldElemSyntax(const ElemSyntax *S) {
   }
 
   // Check if this is a specialization as a type.
-  if (!isLeftOfRoot(NodeLabels, S)) {
+  if (getParent(S) && !isLeftOfRoot(NodeLabels, S)) {
+    SuppressDiagnosticsRAII Suppressor(SemaRef.getCxxSema());
     clang::Expr *E = ExprElaborator(Context, SemaRef).elaborateExpr(S->getObject());
     // We know this is a specialization if the base of the element is a type.
     // A specialization is just a type.
@@ -212,12 +248,12 @@ void DeclaratorBuilder::VisitGoldElemSyntax(const ElemSyntax *S) {
   }
 
   VisitSyntax(S->getObject());
-  if (isLeftOfRoot(NodeLabels, S)) {
+  if (isLeftOfRoot(NodeLabels, S) || !getParent(S)) {
     const ListSyntax *Args = dyn_cast<ListSyntax>(S->getArguments());
-    if (!Args || !Args->getNumChildren()) {
-      push(new ArrayDeclarator(nullptr, nullptr));
+    if (!Args)
       return;
-    }
+    if (!Args->getNumChildren())
+      return buildArray(Args);
 
     SuppressDiagnosticsRAII Suppressor(SemaRef.getCxxSema());
 
@@ -235,8 +271,14 @@ void DeclaratorBuilder::VisitGoldElemSyntax(const ElemSyntax *S) {
       clang::Expr *E = Elab.elaborateExpr(AA);
       // Either this is ill-formed, so just build something and call it
       // a day, or it's a template specialization.
-      if (!E || E->getType()->isTypeOfTypes())
+      if (!E || E->getType()->isTypeOfTypes()) {
+        if (isa<ElemSyntax>(S->getObject())) {
+          ExprElaborator::BooleanRAII T(ExplicitTemplateSpecialization, true);
+          return buildTemplate(S);
+        }
+
         return buildTemplate(S);
+      }
     }
 
     ExprElaborator BaseElab(Context, SemaRef);
@@ -285,9 +327,13 @@ void DeclaratorBuilder::VisitGoldListSyntax(const ListSyntax *S) {
 
 
 void DeclaratorBuilder::VisitGoldAtomSyntax(const AtomSyntax *S) {
-  if (isLeftOfRoot(NodeLabels, S))
+  if (isLeftOfRoot(NodeLabels, S) || !getParent(S))
     return buildIdentifier(S);
   buildType(S);
+}
+
+void DeclaratorBuilder::VisitGoldErrorSyntax(const ErrorSyntax *S) {
+  buildError(S);
 }
 
 static bool isParameterSyntax(Sema& SemaRef, const Syntax *S) {
@@ -377,6 +423,10 @@ void DeclaratorBuilder::buildArray(const Syntax *S) {
   push(new ArrayDeclarator(S, nullptr));
 }
 
+void DeclaratorBuilder::buildPointer(const Syntax *S) {
+  push(new PointerDeclarator(S, nullptr));
+}
+
 void DeclaratorBuilder::buildType(const Syntax *S) {
   push(new TypeDeclarator(S, nullptr));
 }
@@ -401,7 +451,8 @@ void DeclaratorBuilder::buildTemplateParams(const ElemSyntax *S) {
 }
 
 void DeclaratorBuilder::buildSpecialization(const ElemSyntax *S) {
-  push(new ImplicitEmptyTemplateParamsDeclarator(S, nullptr));
+  if (!ExplicitTemplateSpecialization)
+    push(new ImplicitEmptyTemplateParamsDeclarator(S, nullptr));
   push(new SpecializationDeclarator(cast<ListSyntax>(S->getArguments()),
                                     nullptr));
   Cur->recordAttributes(S);

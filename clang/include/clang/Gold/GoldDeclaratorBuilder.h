@@ -47,6 +47,7 @@ public:
   void VisitGoldElemSyntax(const ElemSyntax *S);
   void VisitGoldListSyntax(const ListSyntax *S);
   void VisitGoldAtomSyntax(const AtomSyntax *S);
+  void VisitGoldErrorSyntax(const ErrorSyntax *S);
 
 private:
   void push(Declarator *D) {
@@ -157,6 +158,7 @@ private:
   void buildFunction(const ListSyntax *S);
   void buildType(const Syntax *S);
   void buildArray(const Syntax *S);
+  void buildPointer(const Syntax *S);
   void buildTemplateParams(const ElemSyntax *S);
   void buildTemplateParams(const ListSyntax *S);
   ImplicitEmptyTemplateParamsDeclarator *
@@ -221,6 +223,10 @@ private:
   llvm::StringRef OriginalName;
   clang::IdentifierInfo *Id = nullptr;
   const OpInfoBase *OpInfo = nullptr;
+
+  // True when we can be sure we are creating a template specialization
+  // with explicit parameters, as in `id[params][specialization_parameters]`
+  bool ExplicitTemplateSpecialization = false;
 };
 
 
