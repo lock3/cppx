@@ -252,8 +252,6 @@ void DeclaratorBuilder::VisitGoldElemSyntax(const ElemSyntax *S) {
     const ListSyntax *Args = dyn_cast<ListSyntax>(S->getArguments());
     if (!Args)
       return;
-    if (!Args->getNumChildren())
-      return buildArray(Args);
 
     SuppressDiagnosticsRAII Suppressor(SemaRef.getCxxSema());
 
@@ -283,8 +281,12 @@ void DeclaratorBuilder::VisitGoldElemSyntax(const ElemSyntax *S) {
 
     ExprElaborator BaseElab(Context, SemaRef);
     clang::Expr *Base = BaseElab.elaborateExpr(S->getObject());
+
+    if (!Args->getNumChildren() && !Base)
+      return buildArray(Args);
+
     if (Base)
-      return;
+      return buildSpecialization(S);
   }
 
   buildArray(S->getArguments());
@@ -448,6 +450,7 @@ void DeclaratorBuilder::buildTemplateParams(const ListSyntax *S) {
 
 void DeclaratorBuilder::buildTemplateParams(const ElemSyntax *S) {
   buildTemplateParams(cast<ListSyntax>(S->getArguments()));
+  Cur->recordAttributes(S);
 }
 
 void DeclaratorBuilder::buildSpecialization(const ElemSyntax *S) {
