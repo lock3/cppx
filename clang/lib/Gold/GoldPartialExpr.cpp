@@ -130,7 +130,6 @@ clang::Expr *PartialInPlaceNewExpr::completeExpr() {
   clang::TypeSourceInfo *TInfoAdjusted = BuildAnyTypeLoc(
                     SemaRef.getContext().CxxAST, InnerTy, TyExpr->getExprLoc());
   llvm::SmallVector<clang::Expr *, 16> Temp(CTorArgs.begin(), CTorArgs.end());
-
   auto CtorExpr = SemaRef.getCxxSema().ActOnCXXTypeConstructExpr(
              SemaRef.getCxxSema().CreateParsedType(TInfoAdjusted->getType(),
                                                    TInfoAdjusted),
@@ -151,8 +150,8 @@ clang::Expr *PartialInPlaceNewExpr::completeExpr() {
       /*ArraySize*/llvm::Optional<clang::Expr *>(),
       /*InitializationStyle*/clang::CXXNewExpr::CallInit,
       /*Initializer*/CtorExpr.get(),
-      /*Ty*/TInfoAdjusted->getType(),
-      /*AllocatedTypeInfo*/TInfoAdjusted,
+      /*Ty*/TInfo->getType(),
+      /*AllocatedTypeInfo*/TInfo,
       /*Range*/clang::SourceRange(Loc, Loc),
       /*DirectInitRange*/clang::SourceRange(Loc, Loc)
     );
