@@ -48,6 +48,7 @@ public:
   void VisitGoldMacroSyntax(const MacroSyntax *S);
   void VisitGoldListSyntax(const ListSyntax *S);
   void VisitGoldAtomSyntax(const AtomSyntax *S);
+  void VisitGoldLiteralSyntax(const LiteralSyntax *S);
   void VisitGoldErrorSyntax(const ErrorSyntax *S);
 
 private:

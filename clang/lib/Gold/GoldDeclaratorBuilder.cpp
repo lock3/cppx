@@ -144,12 +144,6 @@ void DeclaratorBuilder::VisitGoldCallSyntax(const CallSyntax *S) {
       return VisitSyntax(S->getArgument(1));
     }
 
-    // if (Owner.RequiresDeclOrError) {
-    //   SemaRef.Diags.Report(S->getLoc(),
-    //                        clang::diag::err_invalid_declaration);
-    //   return;
-    // }
-
     return VisitSyntax(S->getArgument(1));
   }
 
@@ -355,6 +349,12 @@ void DeclaratorBuilder::VisitGoldAtomSyntax(const AtomSyntax *S) {
   }
 
   buildType(S);
+}
+
+void DeclaratorBuilder::VisitGoldLiteralSyntax(const LiteralSyntax *S) {
+  tok::TokenKind K = S->getToken().getKind();
+  if (K >= tok::VoidKeyword && K < tok::AnonymousKeyword)
+    buildType(S);
 }
 
 void DeclaratorBuilder::VisitGoldErrorSyntax(const ErrorSyntax *S) {

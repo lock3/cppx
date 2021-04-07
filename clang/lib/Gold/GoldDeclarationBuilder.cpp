@@ -52,12 +52,12 @@ Declaration *DeclarationBuilder::build(const Syntax *S) {
   TheDecl->DeclaringContext = SemaRef.getCurClangDeclContext();
   TheDecl->ScopeForDecl = SemaRef.getCurrentScope();
   if (checkDeclaration(S, TheDecl)) {
-    if (Dcl)
-      // llvm::outs() << "INVALID SEQUENCE: ";
-      // Dcl->printSequence(llvm::errs());
+    // if (Dcl)
+    //   llvm::outs() << "INVALID SEQUENCE: ";
+    //   Dcl->printSequence(llvm::errs());
     return nullptr;
   }
-  // Dcl->printSequence(llvm::errs());
+  // Dcl->printSequence(llvm::errs()); 
 
   assert(!(OpInfo && !TheDecl->declaresFunction()) && "unimplemented operator");
   Scope *CurScope = SemaRef.getCurrentScope();
