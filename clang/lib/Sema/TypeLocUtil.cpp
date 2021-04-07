@@ -817,8 +817,12 @@ TypeSourceInfo *BuildAnyTypeLoc(clang::ASTContext &Context,
   bool IsQualified = T.hasQualifiers();
   QualType Base = IsQualified ? T.getUnqualifiedType() : T;
   TypeSourceInfo *TInfo = nullptr;
+  clang::Type::TypeClass TC = T->getTypeClass();
 
-  switch (T->getTypeClass()) {
+  if (TC != Base->getTypeClass())
+    TC = Base->getTypeClass();
+
+  switch (TC) {
 #define ABSTRACT_TYPE(CLASS, PARENT)
 #define TYPE(CLASS, PARENT)                                                    \
   case clang::Type::CLASS:{                                                    \
