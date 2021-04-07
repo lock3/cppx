@@ -124,7 +124,7 @@ void DeclaratorBuilder::VisitGoldCallSyntax(const CallSyntax *S) {
   if (Op == FOK_MemberAccess) {
     Owner.AdditionalNodesWithAttrs.insert(S);
 
-    if (!isLeftOfRoot(NodeLabels, S))
+    if (getParent(S) && !isLeftOfRoot(NodeLabels, S))
       return buildType(S);
 
     if (S->getNumArguments() == 1) {
@@ -393,8 +393,12 @@ void DeclaratorBuilder::buildName(const Syntax *S) {
   if (const ErrorSyntax *E = dyn_cast<ErrorSyntax>(S))
     return buildError(E);
 
-  if (const AtomSyntax *Name = dyn_cast<AtomSyntax>(S))
+  if (const AtomSyntax *Name = dyn_cast<AtomSyntax>(S)) {
+    if (NestedTemplateName)
+      return VisitGoldAtomSyntax(Name);
+
     return buildIdentifier(Name);
+  }
 
     unsigned ErrorIndicator = 0;
   if (const auto *Call = dyn_cast<CallSyntax>(S)) {
