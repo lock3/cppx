@@ -45,6 +45,7 @@ public:
   void VisitSyntax(const Syntax *S);
   void VisitGoldCallSyntax(const CallSyntax *S);
   void VisitGoldElemSyntax(const ElemSyntax *S);
+  void VisitGoldMacroSyntax(const MacroSyntax *S);
   void VisitGoldListSyntax(const ListSyntax *S);
   void VisitGoldAtomSyntax(const AtomSyntax *S);
   void VisitGoldErrorSyntax(const ErrorSyntax *S);
@@ -127,7 +128,6 @@ private:
   Declarator *handleSingleCaret(const CallSyntax *S, Declarator *Next);
   Declarator *buildTemplateFunctionOrNameDeclarator(const Syntax *S,
                                                     Declarator *Next);
-  Declarator *buildUsingDirectiveDeclarator(const MacroSyntax *S);
 
   Declarator *buildNestedNameSpec(const CallSyntax *S, Declarator *Next);
   Declarator *buildNestedTemplate(const ElemSyntax *S, Declarator *Next);
@@ -166,6 +166,8 @@ private:
 
   void buildSpecialization(const ElemSyntax *SpecializationOwner);
   void buildPartialSpecialization(const ListSyntax *SpecializationOwner);
+
+  void buildUsingDirectiveDeclarator(const MacroSyntax *S);
 
 public:
   // A map maintaining an integer weight for each node. Allows us to discern
@@ -227,6 +229,10 @@ private:
   // True when we can be sure we are creating a template specialization
   // with explicit parameters, as in `id[params][specialization_parameters]`
   bool ExplicitTemplateSpecialization = false;
+
+  // True when we are treating a template specialization as a
+  // nested name specifier.
+  bool NestedTemplateName = false;
 };
 
 

@@ -124,6 +124,9 @@ void DeclaratorBuilder::VisitGoldCallSyntax(const CallSyntax *S) {
   if (Op == FOK_MemberAccess) {
     Owner.AdditionalNodesWithAttrs.insert(S);
 
+    if (!isLeftOfRoot(NodeLabels, S))
+      return buildType(S);
+
     if (S->getNumArguments() == 1) {
       buildGlobalNameSpecifier(S);
       return VisitSyntax(S->getArgument(0));
@@ -131,11 +134,21 @@ void DeclaratorBuilder::VisitGoldCallSyntax(const CallSyntax *S) {
 
     if (isa<AtomSyntax>(S->getArgument(0))) {
       buildNestedNameSpecifier(cast<AtomSyntax>(S->getArgument(0)));
-    } else if (Owner.RequiresDeclOrError) {
-      SemaRef.Diags.Report(S->getLoc(),
-                           clang::diag::err_invalid_declaration);
-      return;
+    } else {
+      Owner.AdditionalNodesWithAttrs.insert(S);
+      {
+        ExprElaborator::BooleanRAII B(NestedTemplateName, true);
+        VisitSyntax(S->getArgument(0));
+      }
+      Cur->recordAttributes(S);
+      return VisitSyntax(S->getArgument(1));
     }
+
+    // if (Owner.RequiresDeclOrError) {
+    //   SemaRef.Diags.Report(S->getLoc(),
+    //                        clang::diag::err_invalid_declaration);
+    //   return;
+    // }
 
     return VisitSyntax(S->getArgument(1));
   }
@@ -293,6 +306,12 @@ void DeclaratorBuilder::VisitGoldElemSyntax(const ElemSyntax *S) {
   // buildTemplateParams(cast<ListSyntax>(S->getArguments()));
 }
 
+void DeclaratorBuilder::VisitGoldMacroSyntax(const MacroSyntax *S) {
+  if (const AtomSyntax *Call = dyn_cast<AtomSyntax>(S->getCall()))
+    if (Call->getToken().hasKind(tok::UsingKeyword))
+      return buildUsingDirectiveDeclarator(S);
+}
+
 // True when Child is a node on the left hand side of Parent.
 static inline bool isLeftOf(LabelMapTy const &Labels,
                             const Syntax *Child,
@@ -329,8 +348,12 @@ void DeclaratorBuilder::VisitGoldListSyntax(const ListSyntax *S) {
 
 
 void DeclaratorBuilder::VisitGoldAtomSyntax(const AtomSyntax *S) {
-  if (isLeftOfRoot(NodeLabels, S) || !getParent(S))
+  if (isLeftOfRoot(NodeLabels, S) || !getParent(S)) {
+    if (NestedTemplateName)
+      return buildNestedNameSpecifier(S);
     return buildIdentifier(S);
+  }
+
   buildType(S);
 }
 
@@ -464,6 +487,11 @@ void DeclaratorBuilder::buildSpecialization(const ElemSyntax *S) {
 void DeclaratorBuilder::buildPartialSpecialization(const ListSyntax *S) {
   push(new SpecializationDeclarator(S, nullptr));
   Cur->recordAttributes(S);
+}
+
+void DeclaratorBuilder::buildUsingDirectiveDeclarator(const MacroSyntax *S) {
+  Owner.InitExpr = S;
+  push (new UsingDirectiveDeclarator(S->getCall()->getLoc(), S));
 }
 
 Declarator *DeclaratorBuilder::handleNamespaceScope(const Syntax *S) {
