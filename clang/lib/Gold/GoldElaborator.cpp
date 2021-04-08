@@ -4510,7 +4510,10 @@ void Elaborator::elaborateVariableInit(Declaration *D, bool IsEarly) {
     }
 
     // Update the initializer.
-    SemaRef.getCxxSema().AddInitializerToDecl(VD, InitExpr, /*DirectInit=*/true);
+    bool UseDirectInit = true;
+    if (isa<clang::ParmVarDecl>(VD))
+      UseDirectInit = false;
+    SemaRef.getCxxSema().AddInitializerToDecl(VD, InitExpr, UseDirectInit);
   }
 }
 

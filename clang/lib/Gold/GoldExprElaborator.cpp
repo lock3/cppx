@@ -1417,8 +1417,10 @@ static clang::Expr *handleExpressionResultCall(Sema &SemaRef,
       // If this isn't a CppxTypeLiteral then we can't get the type yet and it
       // might be a meta function.kind
       return nullptr;
+    clang::ParsedType ParsedTy = SemaRef.getCxxSema().CreateParsedType(
+        TInfo->getType(), TInfo);
     clang::ExprResult ConstructorExpr =
-        SemaRef.getCxxSema().BuildCXXTypeConstructExpr(TInfo, S->getLoc(),
+        SemaRef.getCxxSema().ActOnCXXTypeConstructExpr(ParsedTy, S->getLoc(),
                                                       Args, S->getLoc(),
                                                    /*ListInitialization*/false);
 

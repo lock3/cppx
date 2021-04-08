@@ -46,7 +46,6 @@ main() : int!
   q = c()
   return q.x
 )";
-  // TODO: Figure out what's supposed to be happening here.
   StatementMatcher HasConstructorCallSearch(
     compoundStmt(
       hasDescendant(
