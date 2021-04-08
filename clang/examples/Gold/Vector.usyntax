@@ -36,7 +36,7 @@ fill[FwdIt:type, T:type](s:FwdIt, e:FwdIt, val:ref const T):void! {
 
 <# This needs overload/enable_if for memcpy overload. #>;
 fill_n[FwdIt:type, T:type](s:FwdIt, n:uint64, val:ref const T):FwdIt! {
-  for(x in 0..n) {
+  for(x in 0..(n-1)) {
     ^s = val
     s += 1;
   }
@@ -54,7 +54,7 @@ uninitialized_fill[FwdIt:type, T:type](s:FwdIt, e:FwdIt, val:ref const T):FwdIt!
 
 <# This needs overload/enable_if for memcpy overload. #>;
 uninitialized_fill_n[FwdIt:type, T:type](s:FwdIt, n:uint64, val:ref const T):FwdIt! {
-  for(x in 0..n) {
+  for(x in 0..(n-1)) {
     s.construct(val);
     s += 1;
   }
@@ -62,7 +62,7 @@ uninitialized_fill_n[FwdIt:type, T:type](s:FwdIt, n:uint64, val:ref const T):Fwd
 }
 
 uninitialized_default_n[InputIt:type](s:InputIt, n:uint64) :InputIt! {
-  for(x in 0..n) {
+  for(x in 0..(n-1)) {
     s.construct();
     s += 1;
   }
@@ -71,7 +71,7 @@ uninitialized_default_n[InputIt:type](s:InputIt, n:uint64) :InputIt! {
 
 <# This needs overload/enable_if for trivially distructable types #>;
 destroy_range[FwdIt:type](s:FwdIt, e:FwdIt)<noexcept>: void! {
-  while(s<>e) {
+  while(s <> e) {
     s.destruct();
     s += 1;
   }
@@ -104,10 +104,12 @@ max[T:type] (x:ref const T, y:ref const T) : T! {
 }
 
 copy[InputIt:type, OutputIt:type](s:InputIt, e:InputIt, out:OutputIt):OutputIt! {
-  while(s <> e) {
+  while (s <> e) {
     ^out = ^s;
+    out += 1;
     s += 1;
   }
+  return out;
 }
 
 exception = class {
@@ -371,25 +373,27 @@ vector[T:type, Alloc:type = new_allocator[T]]:type = class(VectorBase[T, Alloc]<
 
   using { base.do_allocate, base.do_deallocate, base.impl, base.get_T_allocator };
 
-  default_initailize(n:size_type)<private> : void! {
+  default_initialize(n:size_type)<private> : void! {
     it:auto = this.impl.start;
-    for(x in 0..n) {
+    for(x in 0..(n-1)) {
       it.construct();
       it += 1;
     }
+    this.impl.finish = it;
   }
 
-  fill_initailize(n:size_type, val:ref const value_type)<private>:void! {
+  fill_initialize(n:size_type, val:ref const value_type)<private>:void! {
     it:auto = this.impl.start;
-    for(x in 0..n) {
+    for(x in 0..(n-1)) {
       it.construct(val);
       it += 1;
     }
+    this.impl.finish = it;
   }
 
   fill_assign(n:size_type, val:ref const value_type)<private>:void! {
     if (n > this.capacity()) {
-      temp:vector[T, Alloc](n, val, this.get_T_allocator());
+      temp:vector[T, Alloc] = vector[T, Alloc](n, val, this.get_T_allocator());
       temp.impl.member_swap(this.impl);
     } else if (n > this.size()) {
       fill(begin(), end(), val);
@@ -416,7 +420,7 @@ vector[T:type, Alloc:type = new_allocator[T]]:type = class(VectorBase[T, Alloc]<
       if (size_type(this.impl.storage_end - this.impl.finish) >= n) {
         this.impl.finish = uninitialized_default_n(this.impl.finish, n);
       } else {
-        for(x in 0..n) {
+        for(x in 0..(n-1)) {
           this.emplace_back();
         }
       }
@@ -506,17 +510,16 @@ vector[T:type, Alloc:type = new_allocator[T]]:type = class(VectorBase[T, Alloc]<
 
   constructor(n:size_type, a:ref const allocator_type = allocator_type())! {
     this.(base)init(n, a);
-    default_initailize(n);
+    default_initialize(n);
   }
 
   constructor(n:size_type, v:ref const value_type,
               a:ref const allocator_type = allocator_type())! {
     this.(base)init(n, a);
-    fill_initailize(n, v);
+    fill_initialize(n, v);
   }
 
   constructor(other:ref const vector[T, Alloc]):void! {
-    print("Making call to copy constructor?\n")
     this.(base)init(other.size(), other.get_allocator());
     otherIt = other.begin();
     it:auto = this.impl.start;
@@ -579,7 +582,7 @@ vector[T:type, Alloc:type = new_allocator[T]]:type = class(VectorBase[T, Alloc]<
       this.impl.member_swap(other.impl);
     } else {
       otherIt = other.begin();
-      for(x in 0..other.size()):
+      for(x in 0..(other.size() - 1)):
         this.emplace_back(move(^otherIt));
         otherIt += 1;
     }
@@ -587,8 +590,6 @@ vector[T:type, Alloc:type = new_allocator[T]]:type = class(VectorBase[T, Alloc]<
   }
 
   <# Missing initializer list assignment because we don't support that yet. #>;
-
-
   assign(n:size_type, val:ref const value_type): void! {
     fill_assign(n, val);
   }
@@ -611,27 +612,23 @@ vector[T:type, Alloc:type = new_allocator[T]]:type = class(VectorBase[T, Alloc]<
   <# Reverse iterators not implemented yet. #>;
 
 
-  cbegin()<const><noexcept>:iterator! { return const_iterator(this.impl.start); }
-  cend()<const><noexcept>:iterator! { return const_iterator(this.impl.finish); }
+  cbegin()<const><noexcept>:const_iterator! { return const_iterator(this.impl.start); }
+  cend()<const><noexcept>:const_iterator! { return const_iterator(this.impl.finish); }
 
 
   resize(n:size_type):void! {
     if (n > this.size()) {
-      if (n > this.size()) {
-        this.default_append(n - this.size());
-      } else if (n < this.size()) {
-        this.erase_at_end(this.impl.start + n)
-      }
+      this.default_append(n - this.size());
+    } else if (n < this.size()) {
+      this.erase_at_end(this.impl.start + n)
     }
   }
 
   resize(n:size_type, val:ref const value_type):void! {
     if (n > this.size()) {
-      if (n > this.size()) {
-        this.fill_insert(end(), n-size(), val);
-      } else if (n < this.size()) {
-        this.erase_at_end(this.impl.start + n)
-      }
+      this.fill_insert(end(), n-size(), val);
+    } else if (n < this.size()) {
+      this.erase_at_end(this.impl.start + n)
     }
   }
 
@@ -639,9 +636,10 @@ vector[T:type, Alloc:type = new_allocator[T]]:type = class(VectorBase[T, Alloc]<
     if (this.capacity() <> this.size()) {
       new_start:pointer = this.do_allocate(this.size());
       new_finish = uninitialized_move(begin(), end(), new_start);
-      this.do_deallocate(this.impl.start);
+      this.do_deallocate(this.impl.start, size());
       this.impl.start = new_start;
       this.impl.finish = new_finish;
+      this.impl.storage_end = this.impl.finish;
     }
   }
 
@@ -659,7 +657,7 @@ vector[T:type, Alloc:type = new_allocator[T]]:type = class(VectorBase[T, Alloc]<
     }
     if (this.capacity() < n) {
       old_size:const size_type = this.size();
-      temp_ptr:pointer = this.allocate_and_move(n, this.impl.start, this.impl.end);
+      temp_ptr:pointer = this.allocate_and_move(n, this.impl.start, this.impl.finish);
       destroy_range(this.impl.start, this.impl.finish);
       this.do_deallocate(this.impl.start, this.impl.storage_end - this.impl.start);
       this.impl.start = temp_ptr;
@@ -772,7 +770,7 @@ vector[T:type, Alloc:type = new_allocator[T]]:type = class(VectorBase[T, Alloc]<
     this.impl.finish -= 1;
   }
 
-  insert_aux[Arg:type](position:iterator, arg:rref Arg)<const>:void! {
+  insert_aux[Arg:type](position:iterator, arg:rref Arg):void! {
     this.impl.finish.construct(move(^(this.impl.finish - 1)));
     this.impl.finish += 1;
     move_backwards(position, this.impl.finish - 2, this.impl.finish - 1);
@@ -786,23 +784,23 @@ vector[T:type, Alloc:type = new_allocator[T]]:type = class(VectorBase[T, Alloc]<
     ^position = forward[Arg](arg);
   }
 
-  emplace_aux[Args:type...](position:const_iterator, args:rref Args...)<protected>:iterator ! {
+  emplace_aux[Args:type...](position:const_iterator, arguments:rref Args...)<protected>:iterator ! {
     n:auto = position - cbegin();
     if (this.impl.finish <> this.impl.storage_end) {
       if (position == cend()) {
-        this.impl.finish.construct(forward[Args](args)...);
+        this.impl.finish.construct(forward[Args](arguments)...);
         this.impl.finish += 1;
       } else {
-        this.insert_aux(begin() + n, move(T(forward[Args](args)...)));
+        this.insert_aux(begin() + n, move(T(forward[Args](arguments)...)));
       }
     } else {
-      this.realloc_insert(begin() + n, forward[Args](args)...);
+      this.realloc_insert(begin() + n, forward[Args](arguments)...);
     }
     return begin() + n;
   }
 
-  emplace[Args:type...](position:const_iterator, args:rref Args...) : iterator! {
-    return this.emplace_aux(position, forward[Args](args)...);
+  emplace[Args:type...](position:const_iterator, arguments:rref Args...) : iterator! {
+    return this.emplace_aux(position, forward[Args](arguments)...);
   }
 
   insert(position:const_iterator, x:ref const value_type):iterator !{
@@ -848,27 +846,26 @@ vector[T:type, Alloc:type = new_allocator[T]]:type = class(VectorBase[T, Alloc]<
   }
 
   insert[InputIt:type](position:const_iterator, first:InputIt, last:InputIt):iterator! {
-    offset:auto = position - cbegin();
-    insPos:iterator = position - cbegin();
+    offset:auto = position - begin();
+    insPos:iterator = begin() + offset;
     while(first <> last) {
       insPos = insert(insPos, ^first);
       insPos += 1;
+      first += 1;
     }
     return begin() + offset;
   }
 
   erase(position:iterator):void! {
-    if (position +1 <> this.end()) {
-      copy(position + 1, this.end(), position);
+    if (position <> this.end()) {
+      this.impl.finish = copy(position + 1, this.end(), position);
     }
-    this.impl.finish -= 1;
-    return position;
   }
+
   erase(first:iterator, last:iterator):void! {
     if (first <> last){
       this.erase_at_end(copy(last, this.end(), first));
     }
-    return first;
   }
 
 
@@ -975,14 +972,14 @@ main():int !{
     subject:vector[int];
     subject.push_back(4);
     subject2:vector[int];
-    for (x in 0..10):
+    for (x in 0..9):
       subject2.push_back(x)
 
-    test_true("subject2.size() == 10", subject2.size() == 11);
+    test_true("subject2.size() == 10", subject2.size() == 10);
     test_true("subject.size() == 1", subject.size() == 1);
     subject = subject2;
-    test_true("subject.size() == 10", subject.size() == 11);
-    test_true("subject2.size() == 10", subject2.size() == 11);
+    test_true("subject.size() == 10", subject.size() == 10);
+    test_true("subject2.size() == 10", subject2.size() == 10);
     test_true("subject[0] == 0", subject[0] == 0);
     test_true("subject[1] == 1", subject[1] == 1);
     test_true("subject[2] == 2", subject[2] == 2);
@@ -993,7 +990,6 @@ main():int !{
     test_true("subject[7] == 7", subject[7] == 7);
     test_true("subject[8] == 8", subject[8] == 8);
     test_true("subject[9] == 9", subject[9] == 9);
-    test_true("subject[10] == 10", subject[10] == 10);
     # Making sure the original is still the same.
     test_true("subject2[0] == 0", subject2[0] == 0);
     test_true("subject2[1] == 1", subject2[1] == 1);
@@ -1005,7 +1001,6 @@ main():int !{
     test_true("subject2[7] == 7", subject2[7] == 7);
     test_true("subject2[8] == 8", subject2[8] == 8);
     test_true("subject2[9] == 9", subject2[9] == 9);
-    test_true("subject2[9] == 9", subject2[10] == 10);
 
   }
 
@@ -1014,13 +1009,13 @@ main():int !{
     subject:vector[int];
     subject.push_back(4);
     subject2:vector[int];
-    for (x in 0..10):
+    for (x in 0..9):
       subject2.push_back(x)
 
-    test_true("subject2.size() == 10", subject2.size() == 11);
+    test_true("subject2.size() == 10", subject2.size() == 10);
     test_true("subject.size() == 1", subject.size() == 1);
     subject = move(subject2);
-    test_true("subject.size() == 10", subject.size() == 11);
+    test_true("subject.size() == 10", subject.size() == 10);
     test_true("subject2.size() == 10", subject2.size() == 0);
     test_true("subject[0] == 0", subject[0] == 0);
     test_true("subject[1] == 1", subject[1] == 1);
@@ -1034,17 +1029,29 @@ main():int !{
     test_true("subject[9] == 9", subject[9] == 9);
   }
 
+  test_name = "move assignment (empty)";
+  {
+    subject:vector[int];
+    subject.push_back(4);
+    subject2:vector[int];
+
+    test_true("subject.size() == 1", subject.size() == 1);
+    test_true("subject2.size() == 0", subject2.size() == 0);
+    subject = move(subject2);
+    test_true("subject.size() == 0", subject.size() == 0);
+    test_true("subject2.size() == 0", subject2.size() == 0);
+  }
+
 
   test_name = "copy constructor";
   {
     subject2:vector[int];
-    for (x in 0..10):
+    for (x in 0..9):
       subject2.push_back(x)
 
     subject:vector[int] = subject2;
-    print("Subject size = %d\n", subject.size());
-    test_true("subject.size() == 11", subject.size() == 11);
-    test_true("subject2.size() == 11", subject2.size() == 11);
+    test_true("subject.size() == 10", subject.size() == 10);
+    test_true("subject2.size() == 10", subject2.size() == 10);
     test_true("subject[0] == 0", subject[0] == 0);
     test_true("subject[1] == 1", subject[1] == 1);
     test_true("subject[2] == 2", subject[2] == 2);
@@ -1073,12 +1080,12 @@ main():int !{
   test_name = "move constructor";
   {
     subject2:vector[int];
-    for (x in 0..10):
+    for (x in 0..9):
       subject2.push_back(x)
 
     subject:vector[int] = move(subject2);
-    test_true("subject2.size() == 10", subject2.size() == 0);
-    test_true("subject.size() == 1", subject.size() == 11);
+    test_true("subject2.size() == 0", subject2.size() == 0);
+    test_true("subject.size() == 10", subject.size() == 10);
     test_true("subject[0] == 0", subject[0] == 0);
     test_true("subject[1] == 1", subject[1] == 1);
     test_true("subject[2] == 2", subject[2] == 2);
@@ -1090,6 +1097,643 @@ main():int !{
     test_true("subject[8] == 8", subject[8] == 8);
     test_true("subject[9] == 9", subject[9] == 9);
   }
+
+  test_name = "max size ";
+  {
+    subject:vector[int];
+    test_true("subject.max_size() == (vector[int].size_type(-1)/sizeof(int))",
+              subject.max_size() == (vector[int].size_type(-1)/sizeof(int)));
+  }
+
+  test_name = "default size constructor";
+  {
+    subject = vector[int](4);
+    test_true("subject.size() == 4", subject.size() == 4);
+  }
+
+  test_name = "default size constructor 2";
+  {
+    subject:vector[int] = vector[int](4);
+    test_true("subject.size() == 4", subject.size() == 4);
+  }
+
+  test_name = "default size with value";
+  {
+    subject = vector[int](uint64(4), 1);
+    test_true("subject.size() == 4", subject.size() == 4);
+    test_true("subject[0] == 1", subject[0] == 1);
+    test_true("subject[1] == 1", subject[1] == 1);
+    test_true("subject[2] == 1", subject[2] == 1);
+    test_true("subject[3] == 1", subject[3] == 1);
+  }
+
+  test_name = "default size with value 2";
+  {
+    subject:vector[int] = vector[int](uint64(4), 1);
+    test_true("subject.size() == 4", subject.size() == 4);
+    test_true("subject[0] == 1", subject[0] == 1);
+    test_true("subject[1] == 1", subject[1] == 1);
+    test_true("subject[2] == 1", subject[2] == 1);
+    test_true("subject[3] == 1", subject[3] == 1);
+  }
+
+  test_name = "range constructor";
+  {
+    subject2:vector[int];
+    for (x in 0..9):
+      subject2.push_back(x)
+
+    subject:vector[int] = vector[int](subject2.begin(), subject2.end());
+    test_true("subject.size() == 10", subject.size() == 10);
+    test_true("subject2.size() == 10", subject2.size() == 10);
+    test_true("subject[0] == 0", subject[0] == 0);
+    test_true("subject[1] == 1", subject[1] == 1);
+    test_true("subject[2] == 2", subject[2] == 2);
+    test_true("subject[3] == 3", subject[3] == 3);
+    test_true("subject[4] == 4", subject[4] == 4);
+    test_true("subject[5] == 5", subject[5] == 5);
+    test_true("subject[6] == 6", subject[6] == 6);
+    test_true("subject[7] == 7", subject[7] == 7);
+    test_true("subject[8] == 8", subject[8] == 8);
+    test_true("subject[9] == 9", subject[9] == 9);
+    # Making sure the original is still the same.
+    test_true("subject2[0] == 0", subject2[0] == 0);
+    test_true("subject2[1] == 1", subject2[1] == 1);
+    test_true("subject2[2] == 2", subject2[2] == 2);
+    test_true("subject2[3] == 3", subject2[3] == 3);
+    test_true("subject2[4] == 4", subject2[4] == 4);
+    test_true("subject2[5] == 5", subject2[5] == 5);
+    test_true("subject2[6] == 6", subject2[6] == 6);
+    test_true("subject2[7] == 7", subject2[7] == 7);
+    test_true("subject2[8] == 8", subject2[8] == 8);
+    test_true("subject2[9] == 9", subject2[9] == 9);
+
+  }
+
+  test_name = "assign size and value";
+  {
+    subject = vector[int]();
+    subject.assign(uint64(4), 1);
+    test_true("subject.size() == 4", subject.size() == 4);
+    test_true("subject[0] == 1", subject[0] == 1);
+    test_true("subject[1] == 1", subject[1] == 1);
+    test_true("subject[2] == 1", subject[2] == 1);
+    test_true("subject[3] == 1", subject[3] == 1);
+  }
+
+  test_name = "assign range";
+  {
+    subject2:vector[int];
+    for (x in 0..9):
+      subject2.push_back(x)
+    subject:vector[int];
+    subject.assign(subject2.begin(), subject2.end());
+    test_true("subject.size() == 10", subject.size() == 10);
+    test_true("subject[0] == 0", subject[0] == 0);
+    test_true("subject[1] == 1", subject[1] == 1);
+    test_true("subject[2] == 2", subject[2] == 2);
+    test_true("subject[3] == 3", subject[3] == 3);
+    test_true("subject[4] == 4", subject[4] == 4);
+    test_true("subject[5] == 5", subject[5] == 5);
+    test_true("subject[6] == 6", subject[6] == 6);
+    test_true("subject[7] == 7", subject[7] == 7);
+    test_true("subject[8] == 8", subject[8] == 8);
+    test_true("subject[9] == 9", subject[9] == 9);
+  }
+
+  test_name = "resize to smaller then current";
+  {
+    subject:vector[int];
+    for (x in 0..9):
+      subject.push_back(x)
+
+    subject.resize(3);
+    test_true("subject.size() == 3", subject.size() == 3);
+    test_true("subject[0] == 0", subject[0] == 0);
+    test_true("subject[1] == 1", subject[1] == 1);
+    test_true("subject[2] == 2", subject[2] == 2);
+  }
+
+  test_name = "resize to larger then current";
+  {
+    subject:vector[int];
+    for (x in 0..9):
+      subject.push_back(x)
+
+    subject.resize(20);
+    test_true("subject.size() == 20", subject.size() == 20);
+    test_true("subject[0] == 0", subject[0] == 0);
+    test_true("subject[1] == 1", subject[1] == 1);
+    test_true("subject[2] == 2", subject[2] == 2);
+    test_true("subject[3] == 3", subject[3] == 3);
+    test_true("subject[4] == 4", subject[4] == 4);
+    test_true("subject[5] == 5", subject[5] == 5);
+    test_true("subject[6] == 6", subject[6] == 6);
+    test_true("subject[7] == 7", subject[7] == 7);
+    test_true("subject[8] == 8", subject[8] == 8);
+    test_true("subject[9] == 9", subject[9] == 9);
+  }
+
+  test_name = "resize to smaller then current with value";
+  {
+    subject:vector[int];
+    for (x in 0..9):
+      subject.push_back(x)
+
+    subject.resize(3, 20);
+    test_true("subject.size() == 3", subject.size() == 3);
+    test_true("subject[0] == 0", subject[0] == 0);
+    test_true("subject[1] == 1", subject[1] == 1);
+    test_true("subject[2] == 2", subject[2] == 2);
+  }
+
+  test_name = "resize to larger then current with value";
+  {
+    subject:vector[int];
+    for (x in 0..9):
+      subject.push_back(x)
+
+    subject.resize(12, 20);
+    test_true("subject.size() == 12", subject.size() == 12);
+    test_true("subject[0] == 0", subject[0] == 0);
+    test_true("subject[1] == 1", subject[1] == 1);
+    test_true("subject[2] == 2", subject[2] == 2);
+    test_true("subject[3] == 3", subject[3] == 3);
+    test_true("subject[4] == 4", subject[4] == 4);
+    test_true("subject[5] == 5", subject[5] == 5);
+    test_true("subject[6] == 6", subject[6] == 6);
+    test_true("subject[7] == 7", subject[7] == 7);
+    test_true("subject[8] == 8", subject[8] == 8);
+    test_true("subject[9] == 9", subject[9] == 9);
+    test_true("subject[10] == 20", subject[10] == 20);
+    test_true("subject[11] == 20", subject[11] == 20);
+
+  }
+
+  test_name = "resize to larger then current with value";
+  {
+    subject:vector[int];
+    for (x in 0..9):
+      subject.push_back(x)
+
+    test_true("subject.capacity() == 16", subject.capacity() == 16);
+    subject.shrink_to_fit();
+    test_true("subject.capacity() == 10", subject.capacity() == 10);
+    test_true("subject.size() == 10", subject.size() == 10);
+
+  }
+
+  test_name = "empty";
+  {
+    subject:vector[int];
+    test_true("subject.empty()", subject.empty());
+    subject.push_back(3)
+
+    test_true("!subject.empty()", !subject.empty());
+  }
+
+  test_name = "reserve";
+  {
+    subject:vector[int];
+    test_true("subject.capacity() == 0", subject.capacity() == 0);
+    subject.reserve(20);
+    test_true("subject.capacity() == 20", subject.capacity() == 20);
+  }
+
+  test_name = "operator []";
+  {
+    subject:vector[int];
+    subject.push_back(1);
+    test_true("subject[0] == 1", subject[0] == 1);
+    subject[0] = 42
+    test_true("subject[0] == 42", subject[0] == 42);
+  }
+
+  test_name = "at";
+  {
+    subject:vector[int];
+    subject.push_back(1);
+    test_true("subject.at(0) == 1", subject.at(0) == 1);
+    subject.at(0) = 42
+    test_true("subject.at(0) == 42", subject.at(0) == 42);
+  }
+
+  test_name = "at throws an exception";
+  {
+    subject:vector[int];
+    subject.push_back(1);
+    didThrow:bool = false;
+    test_true("subject.at(0) == 1", subject.at(0) == 1);
+    _{
+
+      subject.at(2) = 42
+    }catch() {
+      didThrow = true;
+    }
+    test_true("didThrow", didThrow);
+  }
+
+  test_name = "front";
+  {
+    subject:vector[int];
+    subject.push_back(1);
+    test_true("subject.front() == 1", subject.front() == 1);
+    subject.front() = 42
+    test_true("subject.front() == 42", subject.front() == 42);
+  }
+
+  test_name = "back";
+  {
+    subject:vector[int];
+    subject.push_back(1);
+    test_true("subject.back() == 1", subject.back() == 1);
+    subject.back() = 42
+    test_true("subject.back() == 42", subject.back() == 42);
+  }
+
+  test_name = "back";
+  {
+    subject:vector[int];
+    subject.push_back(1);
+    test_true("subject.back() == 1", subject.back() == 1);
+    subject.pop_back()
+    test_true("subject.size() == 0", subject.size() == 0);
+  }
+
+  test_name = "emplace at beginning - only position";
+  {
+    subject:vector[int];
+    subject.push_back(1)
+    subject.push_back(2)
+    iter = subject.begin();
+    subject.emplace(iter);
+    test_true("subject.size() == 3", subject.size() == 3);
+    test_true("subject[0] == 0", subject[0] == 0);
+    test_true("subject[1] == 1", subject[1] == 1);
+    test_true("subject[2] == 2", subject[2] == 2);
+  }
+
+  test_name = "emplace at beginning of empty vector";
+  {
+    subject:vector[int];
+    iter = subject.begin();
+    subject.emplace(iter);
+    test_true("subject.size() == 1", subject.size() == 1);
+    test_true("subject[0] == 0", subject[0] == 0);
+  }
+
+  test_name = "emplace at end of empty vector";
+  {
+    subject:vector[int];
+    iter = subject.end();
+    subject.emplace(iter);
+    test_true("subject.size() == 1", subject.size() == 1);
+    test_true("subject[0] == 0", subject[0] == 0);
+  }
+
+  test_name = "emplace at end of empty vector with value";
+  {
+    subject:vector[int];
+    iter = subject.end();
+    subject.emplace(iter, 23);
+    test_true("subject.size() == 1", subject.size() == 1);
+    test_true("subject[0] == 23", subject[0] == 23);
+  }
+
+  test_name = "emplace in the middle of elements with args";
+  {
+    subject:vector[int];
+    subject.push_back(1)
+    subject.push_back(2)
+    iter = subject.begin() + 1;
+    subject.emplace(iter, 23);
+    test_true("subject.size() == 3", subject.size() == 3);
+    test_true("subject[0] == 0", subject[0] == 1);
+    test_true("subject[1] == 23", subject[1] == 23);
+    test_true("subject[2] == 2", subject[2] == 2);
+  }
+
+
+
+
+
+
+  test_name = "insert at beginning";
+  {
+    subject:vector[int];
+    subject.push_back(1)
+    subject.push_back(2)
+    iter = subject.begin();
+    subject.insert(iter, 0);
+    test_true("subject.size() == 3", subject.size() == 3);
+    test_true("subject[0] == 0", subject[0] == 0);
+    test_true("subject[1] == 1", subject[1] == 1);
+    test_true("subject[2] == 2", subject[2] == 2);
+  }
+
+  test_name = "insert at beginning of empty vector";
+  {
+    subject:vector[int];
+    iter = subject.begin();
+    subject.insert(iter, 2);
+    test_true("subject.size() == 1", subject.size() == 1);
+    test_true("subject[0] == 2", subject[0] == 2);
+  }
+
+  test_name = "insert at end of empty vector";
+  {
+    subject:vector[int];
+    iter = subject.end();
+    subject.insert(iter, 2);
+    test_true("subject.size() == 1", subject.size() == 1);
+    test_true("subject[0] == 2", subject[0] == 2);
+  }
+
+  test_name = "insert between elements";
+  {
+    subject:vector[int];
+    subject.push_back(1)
+    subject.push_back(2)
+    iter = subject.begin() + 1;
+    subject.insert(iter, 23);
+    test_true("subject.size() == 3", subject.size() == 3);
+    test_true("subject[0] == 0", subject[0] == 1);
+    test_true("subject[1] == 23", subject[1] == 23);
+    test_true("subject[2] == 2", subject[2] == 2);
+  }
+
+  test_name = "insert with move at beginning";
+  {
+    subject:vector[int];
+    subject.push_back(1)
+    subject.push_back(2)
+    iter = subject.begin();
+    subject.insert(iter, move(0));
+    test_true("subject.size() == 3", subject.size() == 3);
+    test_true("subject[0] == 0", subject[0] == 0);
+    test_true("subject[1] == 1", subject[1] == 1);
+    test_true("subject[2] == 2", subject[2] == 2);
+  }
+
+  test_name = "insert with move at beginning of empty vector";
+  {
+    subject:vector[int];
+    iter = subject.begin();
+    subject.insert(iter, move(2));
+    test_true("subject.size() == 1", subject.size() == 1);
+    test_true("subject[0] == 2", subject[0] == 2);
+  }
+
+  test_name = "insert with move at end of empty vector";
+  {
+    subject:vector[int];
+    iter = subject.end();
+    subject.insert(iter, move(2));
+    test_true("subject.size() == 1", subject.size() == 1);
+    test_true("subject[0] == 2", subject[0] == 2);
+  }
+
+  test_name = "insert with move between elements";
+  {
+    subject:vector[int];
+    subject.push_back(1)
+    subject.push_back(2)
+    iter = subject.begin() + 1;
+    subject.insert(iter, move(23));
+    test_true("subject.size() == 3", subject.size() == 3);
+    test_true("subject[0] == 0", subject[0] == 1);
+    test_true("subject[1] == 23", subject[1] == 23);
+    test_true("subject[2] == 2", subject[2] == 2);
+  }
+
+
+
+
+  test_name = "insert number n times at beginning";
+  {
+    subject:vector[int];
+    subject.push_back(1)
+    subject.push_back(2)
+    iter = subject.begin();
+    subject.insert(iter, uint64(4), 0);
+    test_true("subject.size() == 6", subject.size() == 6);
+    test_true("subject[0] == 0", subject[0] == 0);
+    test_true("subject[1] == 0", subject[1] == 0);
+    test_true("subject[2] == 0", subject[2] == 0);
+    test_true("subject[3] == 0", subject[3] == 0);
+    test_true("subject[4] == 1", subject[4] == 1);
+    test_true("subject[5] == 2", subject[5] == 2);
+  }
+
+  test_name = "insert number n times at beginning of empty vector";
+  {
+    subject:vector[int];
+    iter = subject.begin();
+    subject.insert(iter, uint64(1), 0);
+    test_true("subject.size() == 1", subject.size() == 1);
+    test_true("subject[0] == 0", subject[0] == 0);
+  }
+
+  test_name = "insert number n times at end of empty vector";
+  {
+    subject:vector[int];
+    iter = subject.end();
+    subject.insert(iter, uint64(2), 2);
+    test_true("subject.size() == 2", subject.size() == 2);
+    test_true("subject[0] == 2", subject[0] == 2);
+    test_true("subject[1] == 2", subject[1] == 2);
+  }
+
+  test_name = "insert number n times between elements";
+  {
+    subject:vector[int];
+    subject.push_back(1)
+    subject.push_back(2)
+    iter = subject.begin() + 1;
+    subject.insert(iter, uint64(2), 13);
+    test_true("subject.size() == 4", subject.size() == 4);
+    test_true("subject[0] == 0", subject[0] == 1);
+    test_true("subject[1] == 13", subject[1] == 13);
+    test_true("subject[2] == 13", subject[2] == 13);
+    test_true("subject[3] == 2", subject[3] == 2);
+  }
+
+
+  test_name = "insert range at beginning";
+  {
+
+    input:vector[int];
+    for (x in 0..9):
+      input.push_back(x)
+
+    subject:vector[int];
+    subject.push_back(1)
+    subject.push_back(2)
+    iter = subject.begin();
+    subject.insert(iter, input.begin(), input.end());
+    test_true("subject.size() == 12", subject.size() == 12);
+    test_true("subject[0] == 0", subject[0] == 0);
+    test_true("subject[1] == 1", subject[1] == 1);
+    test_true("subject[2] == 2", subject[2] == 2);
+    test_true("subject[3] == 3", subject[3] == 3);
+    test_true("subject[4] == 4", subject[4] == 4);
+    test_true("subject[5] == 5", subject[5] == 5);
+    test_true("subject[6] == 6", subject[6] == 6);
+    test_true("subject[7] == 7", subject[7] == 7);
+    test_true("subject[8] == 8", subject[8] == 8);
+    test_true("subject[9] == 9", subject[9] == 9);
+    test_true("subject[10] == 1", subject[10] == 1);
+    test_true("subject[11] == 2", subject[11] == 2);
+  }
+
+  test_name = "insert range at beginning of empty vector";
+  {
+    input:vector[int];
+    for (x in 0..9):
+      input.push_back(x)
+    subject:vector[int];
+    iter = subject.begin();
+    subject.insert(iter, input.begin(), input.end());
+    test_true("subject.size() == 10", subject.size() == 10);
+    test_true("subject[0] == 0", subject[0] == 0);
+    test_true("subject[1] == 1", subject[1] == 1);
+    test_true("subject[2] == 2", subject[2] == 2);
+    test_true("subject[3] == 3", subject[3] == 3);
+    test_true("subject[4] == 4", subject[4] == 4);
+    test_true("subject[5] == 5", subject[5] == 5);
+    test_true("subject[6] == 6", subject[6] == 6);
+    test_true("subject[7] == 7", subject[7] == 7);
+    test_true("subject[8] == 8", subject[8] == 8);
+    test_true("subject[9] == 9", subject[9] == 9);
+  }
+
+  test_name = "insert range at end of empty vector";
+  {
+    input:vector[int];
+    for (x in 0..9):
+      input.push_back(x)
+    subject:vector[int];
+    iter = subject.end();
+    subject.insert(iter, input.begin(), input.end());
+    test_true("subject.size() == 10", subject.size() == 10);
+    test_true("subject[0] == 0", subject[0] == 0);
+    test_true("subject[1] == 1", subject[1] == 1);
+    test_true("subject[2] == 2", subject[2] == 2);
+    test_true("subject[3] == 3", subject[3] == 3);
+    test_true("subject[4] == 4", subject[4] == 4);
+    test_true("subject[5] == 5", subject[5] == 5);
+    test_true("subject[6] == 6", subject[6] == 6);
+    test_true("subject[7] == 7", subject[7] == 7);
+    test_true("subject[8] == 8", subject[8] == 8);
+    test_true("subject[9] == 9", subject[9] == 9);
+  }
+
+  test_name = "insert range between elements";
+  {
+    input:vector[int];
+    for (x in 0..9):
+      input.push_back(x)
+    subject:vector[int];
+    subject.push_back(1)
+    subject.push_back(2)
+    iter = subject.begin() + 1;
+    subject.insert(iter, input.begin(), input.end());
+    test_true("subject.size() == 12", subject.size() == 12);
+
+    test_true("subject[0] == 1", subject[0] == 1);
+    test_true("subject[1] == 0", subject[1] == 0);
+    test_true("subject[2] == 1", subject[2] == 1);
+    test_true("subject[3] == 2", subject[3] == 2);
+    test_true("subject[4] == 3", subject[4] == 3);
+    test_true("subject[5] == 4", subject[5] == 4);
+    test_true("subject[6] == 5", subject[6] == 5);
+    test_true("subject[7] == 6", subject[7] == 6);
+    test_true("subject[8] == 7", subject[8] == 7);
+    test_true("subject[9] == 8", subject[9] == 8);
+    test_true("subject[10] == 9", subject[10] == 9);
+    test_true("subject[11] == 2", subject[11] == 2);
+  }
+
+  test_name = "erase first element";
+  {
+    subject:vector[int];
+    for (x in 0..9):
+      subject.push_back(x)
+    subject.erase(subject.begin())
+    test_true("subject.size() == 9", subject.size() == 9);
+    test_true("subject[0] == 1", subject[0] == 1);
+    test_true("subject[1] == 2", subject[1] == 2);
+    test_true("subject[2] == 3", subject[2] == 3);
+    test_true("subject[3] == 4", subject[3] == 4);
+    test_true("subject[4] == 5", subject[4] == 5);
+    test_true("subject[5] == 6", subject[5] == 6);
+    test_true("subject[6] == 7", subject[6] == 7);
+    test_true("subject[7] == 8", subject[7] == 8);
+    test_true("subject[8] == 9", subject[8] == 9);
+  }
+
+  test_name = "erase 2 nd element";
+  {
+    subject:vector[int];
+    for (x in 0..9):
+      subject.push_back(x)
+    subject.erase(subject.begin() + 1)
+    test_true("subject.size() == 9", subject.size() == 9);
+    test_true("subject[0] == 0", subject[0] == 0);
+    test_true("subject[1] == 2", subject[1] == 2);
+    test_true("subject[2] == 3", subject[2] == 3);
+    test_true("subject[3] == 4", subject[3] == 4);
+    test_true("subject[4] == 5", subject[4] == 5);
+    test_true("subject[5] == 6", subject[5] == 6);
+    test_true("subject[6] == 7", subject[6] == 7);
+    test_true("subject[7] == 8", subject[7] == 8);
+    test_true("subject[8] == 9", subject[8] == 9);
+  }
+
+  test_name = "erase only element";
+  {
+    subject:vector[int];
+    subject.push_back(1)
+    subject.erase(subject.begin())
+    test_true("subject.size() == 0", subject.size() == 0);
+  }
+
+  test_name = "erase end";
+  {
+    subject:vector[int];
+    subject.push_back(1)
+    subject.erase(subject.end())
+    test_true("subject.size() == 1", subject.size() == 1);
+  }
+
+
+
+  test_name = "erase entire range";
+  {
+    subject:vector[int];
+    for (x in 0..9):
+      subject.push_back(x)
+    subject.erase(subject.begin(), subject.end())
+    test_true("subject.size() == 0", subject.size() == 0);
+  }
+
+  test_name = "erase middle elements";
+  {
+    subject:vector[int];
+    for (x in 0..9):
+      subject.push_back(x)
+    subject.erase(subject.begin() + 1, subject.end() - 1)
+    test_true("subject.size() == 2", subject.size() == 2);
+    test_true("subject[0] == 0", subject[0] == 0);
+    test_true("subject[1] == 9", subject[1] == 9);
+  }
+
+  <#
+  erase(first:iterator, last:iterator):void!
+  swap(other:ref vector[T, Alloc])<noexcept>:void
+
+  constructor(a:ref const allocator_type)<explicit><noexcept>!
+  #>
 
   total_tests_count = failed_test_count + passed_test_count;
   print("Tests completed: %d\n", (total_tests_count));
