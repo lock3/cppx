@@ -477,6 +477,8 @@ Syntax *Parser::parseDeclarator() {
 
   // Consume and build the correct name specifier, this only applies for
   // namespace name declarations.
+  // This declaration cannot have nested name qualififiers in the form of
+  // x.(y)z
   while(nextTokenIs(tok::Dot)) {
     Token DotTok = matchToken(tok::Dot);
     Syntax *RHS = parseIdExpression();
@@ -1404,8 +1406,23 @@ Syntax *Parser::parsePostfixExpression() {
       E0 = new CallSyntax(E0, Args);
     }
     else if (Token Dot = matchToken(tok::Dot)) {
-      Syntax *Member = parseIdExpression();
-      E0 = new InfixSyntax(Dot, E0, Member);
+      if (nextTokenIs(tok::LeftParen)) {
+        Token LParen = matchToken(tok::LeftParen);
+        Syntax *QualIdE = parsePrefixExpression();
+        if (Token RParen = matchToken(tok::RightParen)) {
+          Syntax *Member = parseIdExpression();
+          E0 = new QualifiedMemberAccessSyntax(Dot, LParen, RParen, E0, QualIdE, Member);
+        } else {
+          // we are missing the ending R Paren
+          Diags.Report(getInputLocation(), clang::diag::err_expected) <<
+                       getSpelling(tok::RightParen);
+          // Don't change the current expression
+        }
+      } else {
+
+        Syntax *Member = parseIdExpression();
+        E0 = new InfixSyntax(Dot, E0, Member);
+      }
     }
     else if (Token Op = matchToken(tok::Caret)) {
       E0 = new PostfixSyntax(Op, E0);

@@ -1495,6 +1495,8 @@ Sema::getLookupScopeName(Sema::NNSLookupDecl const &D, Sema::NNSKind K) const {
   // FIXME: supply enough information in the NNSLookupDecl to create this.
   case NNSK_Record:
     return {false, nullptr};
+  default:
+    llvm_unreachable("Invalid nested name lookup!");
   } // switch (K);
 }
 

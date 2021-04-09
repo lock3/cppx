@@ -76,6 +76,7 @@ def_non_leaf_end(Binary, Control)
 def_abstract(Ternary, Syntax)
 def_non_leaf_start(Ternary, Triple)
   def_syntax(Triple, Ternary)
+  def_syntax(QualifiedMemberAccess, Triple)
 def_non_leaf_end(Ternary, Triple)
 
 // KarySyntax<4>

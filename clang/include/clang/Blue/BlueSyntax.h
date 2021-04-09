@@ -543,6 +543,35 @@ struct TripleSyntax : TernarySyntax
   }
 };
 
+struct QualifiedMemberAccessSyntax : TernarySyntax {
+private:
+  Token DotTok;
+  Token LParenTok;
+  Token RParenTok;
+public:
+  static constexpr KindType Kind = QualifiedMemberAccess;
+
+  QualifiedMemberAccessSyntax(Token DotToken, Token LParenToken, Token RParenToken,
+               Syntax *S0, Syntax *S1, Syntax *S2)
+    : TernarySyntax(Kind, S0, S1, S2),
+    DotTok(DotToken), LParenTok(LParenToken), RParenTok(RParenToken)
+  { }
+
+  Token getDot() const {
+    return DotTok;
+  }
+  Token getLParen() const {
+    return LParenTok;
+  }
+  Token getRParen() const {
+    return RParenTok;
+  }
+
+  static bool classof(const Syntax *S) {
+    return S->getKind() == Kind;
+  }
+};
+
 /// A quadruple of terms.
 struct QuadrupleSyntax : QuaternarySyntax
 {
