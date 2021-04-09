@@ -21,12 +21,12 @@ using namespace blue;
 
 TEST(BlueLambda, TrailingReturn) {
   StringRef Code = R"BLUE(
-func main : () int = {
-   var fn := lambda(x : int) -> int => {
+main : () int = {
+  fn := lambda(x : int) -> int => {
      return x;
-   };
+  };
 
-   var test := fn(42);
+  test := fn(42);
 }
 )BLUE";
 
@@ -38,12 +38,12 @@ func main : () int = {
 
 TEST(BlueLambda, ImplicitReturn) {
   StringRef Code = R"BLUE(
-func main : () int = {
-   var fn := lambda(x : int) => {
+main : () -> int = {
+  fn := lambda(x : int) => {
      return x;
-   };
+  };
 
-   var test := fn(42);
+  test := fn(42);
 }
 )BLUE";
 

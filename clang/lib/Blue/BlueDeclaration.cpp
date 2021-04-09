@@ -167,15 +167,6 @@ const DeclarationSyntax *Declaration::asDef() const {
   return cast<DeclarationSyntax>(Def);
 }
 
-DeclarationSyntax::IntroducerKind
-Declaration::getIntroducerKind() const {
-  if (auto DS = dyn_cast<DeclarationSyntax>(Def)) {
-    return DS->IntroKind;
-  } else {
-    return DeclarationSyntax::IntroducerKind::Unknown;
-  }
-}
-
 clang::SourceLocation Declaration::getErrorLocation() const {
   if (auto DS = dyn_cast_or_null<DeclarationSyntax>(Def)) {
     return DS->getErrorLocation();
@@ -188,6 +179,11 @@ clang::SourceLocation Declaration::getErrorLocation() const {
 
 Phase phaseOf(Declaration *D) {
   return D->CurrentPhase;
+}
+
+bool deduceDeclKindFromSyntax(Declaration *D) {
+  assert(D && "Invalid declaration syntax");
+  return true;
 }
 
 } // end namespace blue

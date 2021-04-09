@@ -86,10 +86,12 @@ bool decomposeNNS(Sema &SemaRef, llvm::SmallVectorImpl<const Syntax *> &NNSChain
 Declaration *Elaborator::createDeclaration(const Syntax *Def,
                                            Declarator *Dcl,
                                            const Syntax *Init) {
-  if (const DeclarationSyntax *DS = dyn_cast<DeclarationSyntax>(Def)) {
-    if (DS->IntroKind == DeclarationSyntax::Namespace)
-      return createNamespaceDecl(DS, Dcl, Init);
-  } else if (const PrefixSyntax *PS = dyn_cast<PrefixSyntax>(Def)) {
+  // if (const DeclarationSyntax *DS = dyn_cast<DeclarationSyntax>(Def)) {
+  //   if (DS->IntroKind == Declaration::Namespace)
+  //     return createNamespaceDecl(DS, Dcl, Init);
+  
+  // } else
+   if (const PrefixSyntax *PS = dyn_cast<PrefixSyntax>(Def)) {
     if (PS->getOperation().hasKind(tok::UsingKeyword))
       return createUsingDecl(PS, Dcl, Init);
     return nullptr;
@@ -127,8 +129,7 @@ static DeclarationSyntax *buildDummyNNSSyntax(Iterator Start,
   if ((Start + 1) == End) {
     // This means we are at the end.
     return new DeclarationSyntax(
-      const_cast<Syntax*>(*Start), TyExpr, nullptr, FinalInit,
-                                 DeclarationSyntax::Namespace);
+      const_cast<Syntax*>(*Start), TyExpr, nullptr, FinalInit);
   }
   auto NestedNS = buildDummyNNSSyntax(Start + 1, End, TyExpr, FinalInit);
   Syntax **ListAlloc = new Syntax *[1];
@@ -137,7 +138,7 @@ static DeclarationSyntax *buildDummyNNSSyntax(Iterator Start,
   Syntax *Enc = new EnclosureSyntax(FinalInit->getOpen(), FinalInit->getClose(),
                                     List);
   return new DeclarationSyntax(const_cast<Syntax*>(*Start), TyExpr, nullptr,
-                               Enc, DeclarationSyntax::Namespace);
+                               Enc);
 }
 
 Declaration *Elaborator::createNamespaceDecl(const DeclarationSyntax *Def,
@@ -546,24 +547,28 @@ void Elaborator::buildTemplateParams(const ListSyntax *Params,
 clang::Decl *Elaborator::doElaborateDeclarationTyping(Declaration *D) {
   if (!D)
     return nullptr;
-  switch(D->getIntroducerKind()) {
-  case DeclarationSyntax::Variable:
+  if (deduceDeclKindFromSyntax(D)) {
+    Error(D->getErrorLocation(), "Elaboration for this kind of declaration not implemented yet.");
+    return nullptr;
+  }
+  switch(D->getDeclSyntaxKind()) {
+  case Declaration::Variable:
     return makeValueDecl(D);
-  case DeclarationSyntax::Function:
+  case Declaration::Function:
     return makeFunctionDecl(D);
-  case DeclarationSyntax::Type:
+  case Declaration::Type:
     if (D->declaratorContainsClass())
       return makeClass(D);
     else
       if (D->Decl->declaresTemplate())
         return elaborateTypeAliasOrVariableTemplate(D);
     return makeValueDecl(D);
-  case DeclarationSyntax::Super:
+  case Declaration::Super:
     Error(D->asDef()->getErrorLocation(), "invalid base class declaration");
     return nullptr;
-  case DeclarationSyntax::Namespace:
+  case Declaration::Namespace:
     return makeNamespace(D);
-  case DeclarationSyntax::Unknown:
+  case Declaration::Unknown:
   default:
     // TODO: This may need to be specially refactored so that we can
     // identify when something is a parameter.
@@ -2095,54 +2100,54 @@ bool Elaborator::makeBases(unsigned &DeclIndex,
 
   llvm::SmallVector<clang::CXXBaseSpecifier *, 4> GivenBaseClasses;
   bool didError = false;
-  while(!DeclBodyList.empty() && DeclIndex < DeclBodyList.size() &&
-        (
-          DeclBodyList[DeclIndex]->getIntroducerKind()
-            == DeclarationSyntax::Super))
-  {
-    Declaration *CurrentBase = DeclBodyList[DeclIndex];
-    clang::SourceLocation Loc = CurrentBase->getErrorLocation();
-    clang::Expr *BaseExpr = elaborateExpression(CurrentBase->asDef()->getType());
-    if (!BaseExpr) {
-      didError = true;
-      getCxxSema().Diags.Report(CurrentBase->getErrorLocation(),
-                           clang::diag::err_failed_to_translate_expr);
-      ++DeclIndex;
-      continue;
-    }
+  // while(!DeclBodyList.empty() && DeclIndex < DeclBodyList.size() &&
+  //       (
+  //         DeclBodyList[DeclIndex]->getIntroducerKind()
+  //           == DeclarationSyntax::Super))
+  // {
+  //   Declaration *CurrentBase = DeclBodyList[DeclIndex];
+  //   clang::SourceLocation Loc = CurrentBase->getErrorLocation();
+  //   clang::Expr *BaseExpr = elaborateExpression(CurrentBase->asDef()->getType());
+  //   if (!BaseExpr) {
+  //     didError = true;
+  //     getCxxSema().Diags.Report(CurrentBase->getErrorLocation(),
+  //                          clang::diag::err_failed_to_translate_expr);
+  //     ++DeclIndex;
+  //     continue;
+  //   }
 
-    // TODO: Need to create processing for the base specifier virtual?
-    // I'm not sure that blue has virtual base classes yet.
-    if ((BaseExpr->isTypeDependent() || BaseExpr->isValueDependent()
-        || BaseExpr->getType()->isDependentType())
-        && !isa<clang::CppxTypeLiteral>(BaseExpr)) {
-      // Updating a dependent expression that may or may not have a result type.
-      BaseExpr = SemaRef.buildTypeExprTypeFromExpr(BaseExpr, Loc);
-    }
-    clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(BaseExpr,
-                                                                     Loc);
-    if (!TInfo) {
-      ++DeclIndex;
-      didError = true;
-      continue;
-    }
-    clang::AccessSpecifier AS = clang::AS_public;
-    bool IsVirtualBase = false;
-    clang::ParsedType PT = getCxxSema().CreateParsedType(TInfo->getType(),TInfo);
-    clang::ParsedAttributes Attributes(SemaRef.AttrFactory);
-    auto BaseResult = getCxxSema()
-      .ActOnBaseSpecifier(R, clang::SourceRange(Loc, Loc),
-                          Attributes, IsVirtualBase, AS, PT,
-                          Loc, clang::SourceLocation());
+  //   // TODO: Need to create processing for the base specifier virtual?
+  //   // I'm not sure that blue has virtual base classes yet.
+  //   if ((BaseExpr->isTypeDependent() || BaseExpr->isValueDependent()
+  //       || BaseExpr->getType()->isDependentType())
+  //       && !isa<clang::CppxTypeLiteral>(BaseExpr)) {
+  //     // Updating a dependent expression that may or may not have a result type.
+  //     BaseExpr = SemaRef.buildTypeExprTypeFromExpr(BaseExpr, Loc);
+  //   }
+  //   clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(BaseExpr,
+  //                                                                    Loc);
+  //   if (!TInfo) {
+  //     ++DeclIndex;
+  //     didError = true;
+  //     continue;
+  //   }
+  //   clang::AccessSpecifier AS = clang::AS_public;
+  //   bool IsVirtualBase = false;
+  //   clang::ParsedType PT = getCxxSema().CreateParsedType(TInfo->getType(),TInfo);
+  //   clang::ParsedAttributes Attributes(SemaRef.AttrFactory);
+  //   auto BaseResult = getCxxSema()
+  //     .ActOnBaseSpecifier(R, clang::SourceRange(Loc, Loc),
+  //                         Attributes, IsVirtualBase, AS, PT,
+  //                         Loc, clang::SourceLocation());
 
-    if (BaseResult.isInvalid()) {
-      ++DeclIndex;
-      didError = true;
-      continue;
-    }
-    GivenBaseClasses.emplace_back(BaseResult.get());
-    ++DeclIndex;
-  }
+  //   if (BaseResult.isInvalid()) {
+  //     ++DeclIndex;
+  //     didError = true;
+  //     continue;
+  //   }
+  //   GivenBaseClasses.emplace_back(BaseResult.get());
+  //   ++DeclIndex;
+  // }
   if (!DeclBodyList.empty())
     SemaRef.getCxxSema().ActOnBaseSpecifiers(R, GivenBaseClasses);
   return didError;

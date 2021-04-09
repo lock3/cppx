@@ -21,7 +21,7 @@ using namespace blue;
 
 TEST(BlueTypeAlias, ExplicitTypeAlias) {
   StringRef Code = R"BLUE(
-type x : type = int;
+x : type = int;
 )BLUE";
   auto ToMatch = typeAliasDecl(
     hasName("x"),
@@ -32,7 +32,7 @@ type x : type = int;
 
 TEST(BlueTypeAlias, ImplicitTypeAlias) {
   StringRef Code = R"BLUE(
-type x : = int;
+x : = int;
 )BLUE";
   auto ToMatch = typeAliasDecl(
     hasName("x"),
@@ -43,15 +43,15 @@ type x : = int;
 
 TEST(BlueTypeAlias, TypeAliasMissingInitializer) {
   StringRef Code = R"BLUE(
-type x : type;
+x : type;
 )BLUE";
   BlueFailureTest(Code);
 }
 
 TEST(BlueTypeAlias, TypeAliasOfAClass) {
   StringRef Code = R"BLUE(
-type Y : class = { }
-type x : = Y;
+Y : type = { }
+x : = Y;
 )BLUE";
   auto ToMatch = typeAliasDecl(
     hasName("x"),

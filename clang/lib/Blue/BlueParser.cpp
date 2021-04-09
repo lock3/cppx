@@ -265,8 +265,8 @@ static inline bool isDeclIntroducer(tok::TokenKind K) {
 ///     definition
 Syntax *Parser::parseDeclaration() {
   Token Intro;
-  if (isDeclIntroducer(getLookahead()))
-    Intro = consumeToken();
+  // if (isDeclIntroducer(getLookahead()))
+  //   Intro = consumeToken();
 
 
   Syntax *Pars = nullptr;
@@ -281,26 +281,26 @@ Syntax *Parser::parseDeclaration() {
     return nullptr;
 
   DeclarationSyntax *Decl = cast<DeclarationSyntax>(Pars);
-  switch (Intro.getKind()) {
-  case tok::VarKeyword:
-    Decl->IntroKind = DeclarationSyntax::Variable;
-    break;
-  case tok::FuncKeyword:
-    Decl->IntroKind = DeclarationSyntax::Function;
-    break;
-  case tok::TypeKeyword:
-    Decl->IntroKind = DeclarationSyntax::Type;
-    break;
-  case tok::SuperKeyword:
-    Decl->IntroKind = DeclarationSyntax::Super;
-    break;
-  case tok::NamespaceKeyword:
-    Decl->IntroKind = DeclarationSyntax::Namespace;
-    break;
-  default:
-    Decl->IntroKind = DeclarationSyntax::Unknown;
-    break;
-  }
+  // switch (Intro.getKind()) {
+  // case tok::VarKeyword:
+  //   Decl->IntroKind = DeclarationSyntax::Variable;
+  //   break;
+  // case tok::FuncKeyword:
+  //   Decl->IntroKind = DeclarationSyntax::Function;
+  //   break;
+  // case tok::TypeKeyword:
+  //   Decl->IntroKind = DeclarationSyntax::Type;
+  //   break;
+  // case tok::SuperKeyword:
+  //   Decl->IntroKind = DeclarationSyntax::Super;
+  //   break;
+  // case tok::NamespaceKeyword:
+  //   Decl->IntroKind = DeclarationSyntax::Namespace;
+  //   break;
+  // default:
+  //   Decl->IntroKind = DeclarationSyntax::Unknown;
+  //   break;
+  // }
 
   return Decl;
 }

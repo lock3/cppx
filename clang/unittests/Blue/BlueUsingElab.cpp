@@ -20,8 +20,8 @@ using namespace blue;
 
 TEST(BlueUsingDirective, Wildcard) {
   StringRef Code = R"(
-namespace ns:namespace = {
-  var x:int = 7;
+ns:namespace = {
+  x:int = 7;
 }
 
 using ns._;
@@ -33,8 +33,8 @@ using ns._;
 
 TEST(BlueUsingDirective, Specific) {
   StringRef Code = R"(
-namespace ns:namespace = {
-  var x:int = 7;
+ns:namespace = {
+  x:int = 7;
 }
 
 using ns._;

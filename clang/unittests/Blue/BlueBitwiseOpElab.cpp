@@ -20,9 +20,9 @@ using namespace blue;
 
 TEST(BlueBitwiseOp, BWAnd) {
   StringRef Code = R"BLUE(
-func foo:() void = {
-  var x:int;
-  var y := bit_and(4, 5);
+foo:() -> void = {
+  x:int;
+  y := bit_and(4, 5);
 })BLUE";
   auto ToMatch = binaryOperator(hasOperatorName("&"));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
@@ -30,9 +30,9 @@ func foo:() void = {
 
 TEST(BlueBitwiseOp, BWOr) {
   StringRef Code = R"BLUE(
-func foo:() void = {
-  var x:int;
-  var y := bit_or(x, 5);
+foo:() -> void = {
+  x:int;
+  y := bit_or(x, 5);
 }
   )BLUE";
   auto ToMatch = binaryOperator(hasOperatorName("|"));
@@ -41,9 +41,9 @@ func foo:() void = {
 
 TEST(BlueBitwiseOp, BWXOr) {
   StringRef Code = R"BLUE(
-func foo:() void = {
-  var x:int;
-  var y:=bit_xor(x, 5);
+foo:() -> void = {
+  x:int;
+  y:=bit_xor(x, 5);
 }
   )BLUE";
   auto ToMatch = binaryOperator(hasOperatorName("^"));
@@ -52,9 +52,9 @@ func foo:() void = {
 
 TEST(BlueBitwiseOp, BWLeftShift) {
   StringRef Code = R"BLUE(
-func foo:() void = {
-  var x:int;
-  var y:= bit_shl(x, 5);
+foo:() -> void = {
+  x:int;
+  y:= bit_shl(x, 5);
 }
   )BLUE";
   auto ToMatch = binaryOperator(hasOperatorName("<<"));
@@ -63,9 +63,9 @@ func foo:() void = {
 
 TEST(BlueBitwiseOp, BWRightShift) {
   StringRef Code = R"BLUE(
-func foo:() void = {
-  var x:int;
-  var y:=bit_shr(x, 5);
+foo:() -> void = {
+  x:int;
+  y:=bit_shr(x, 5);
 }
   )BLUE";
   auto ToMatch = binaryOperator(hasOperatorName(">>"));
@@ -74,8 +74,8 @@ func foo:() void = {
 
 TEST(BlueBitwiseOp, BWComposite) {
   StringRef Code = R"BLUE(
-func foo:() void = {
-  var x:int;
+foo:() -> void = {
+  x:int;
   x = bit_not(x);
 }
   )BLUE";

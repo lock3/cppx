@@ -20,8 +20,8 @@ using namespace blue;
 
 TEST(BlueDestructor, Decl) {
   StringRef Code = R"BLUE(
-type C : class = {
-  func operator= : (move this) = { }
+C : type = {
+  operator= : (move this) = { }
 }
 )BLUE";
   auto ToMatch = translationUnitDecl(hasDescendant(cxxRecordDecl(

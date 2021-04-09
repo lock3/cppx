@@ -20,7 +20,7 @@ using namespace blue;
 
 TEST(BlueConstType, ConstantVariableDeclaration) {
   StringRef Code = R"BLUE(
-var i:const int = 4;
+i:const int = 4;
 )BLUE";
   auto ToMatch = varDecl(hasName("i"), hasType(asString("const int")));
   ASSERT_TRUE(matches(Code.str(), ToMatch));

@@ -20,7 +20,7 @@ using namespace blue;
 
 TEST(BluePointer, NullptrInit) {
   StringRef Code = R"BLUE(
-var X :^int = null;
+X :^int = null;
 )BLUE";
 
   auto ToMatch = varDecl(
@@ -33,7 +33,7 @@ var X :^int = null;
 
 TEST(BluePointer, NoInitializer) {
   StringRef Code = R"BLUE(
-var X :^int;
+X :^int;
 )BLUE";
 
   auto ToMatch = varDecl(
@@ -45,8 +45,8 @@ var X :^int;
 
 TEST(BluePointer, DereferenceExpression) {
   StringRef Code = R"BLUE(
-var X :^int = null;
-var Y := X^;
+X :^int = null;
+Y := X^;
 )BLUE";
   auto ToMatch = varDecl(
     hasName("Y"),
@@ -59,7 +59,7 @@ var Y := X^;
 
 TEST(BluePointer, PointerTypeAlias) {
   StringRef Code = R"BLUE(
-var X :type = ^int;
+X :type = ^int;
 )BLUE";
   auto ToMatch = typeAliasDecl(
     hasName("X"),
@@ -70,9 +70,9 @@ var X :type = ^int;
 
 TEST(BluePointer, AddressOf) {
   StringRef Code = R"BLUE(
-func f:() = {
-  var Y:int;
-  var X :^int = ^Y;
+f:() = {
+  Y:int;
+  X :^int = ^Y;
 }
 )BLUE";
   auto ToMatch = unaryOperator(hasOperatorName("&"));
@@ -82,22 +82,22 @@ func f:() = {
 
 TEST(BluePointer, InvalidPtrDecl) {
   StringRef Code = R"BLUE(
-var x : ^3;
+x : ^3;
 )BLUE";
   BlueFailureTest(Code);
 }
 
 TEST(BluePointer, InvalidTypeAliasPtrDecl) {
   StringRef Code = R"BLUE(
-var x := '3'^;
+x := '3'^;
 )BLUE";
   BlueFailureTest(Code);
 }
 
 TEST(BluePointer, InvalidDereference) {
   StringRef Code = R"BLUE(
-var X :int = 3;
-var Y := X^;
+X :int = 3;
+Y := X^;
 )BLUE";
   BlueFailureTest(Code);
 }

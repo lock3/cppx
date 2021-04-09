@@ -20,7 +20,7 @@ using namespace blue;
 
 TEST(BlueClass, SimpleClassDecl) {
   StringRef Code = R"BLUE(
-type C : class = { }
+C : type = { }
 )BLUE";
   auto ToMatch = cxxRecordDecl(hasName("C"));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
@@ -28,8 +28,8 @@ type C : class = { }
 
 TEST(BlueClass, ClassWithMemberDecl) {
   StringRef Code = R"BLUE(
-type C : class = {
-  var x:int;
+C : type = {
+  x:int;
 }
 )BLUE";
   auto ToMatch = cxxRecordDecl(hasName("C"),
@@ -41,9 +41,9 @@ type C : class = {
 
 TEST(BlueClass, ClassDeclUse_DefaultInit) {
   StringRef Code = R"BLUE(
-type C : class = {
+C : type = {
 }
-var x:C;
+x:C;
 
 )BLUE";
   auto ToMatch = translationUnitDecl(has(cxxRecordDecl(
@@ -61,11 +61,11 @@ var x:C;
 
 TEST(BlueClass, InclassMemberInitializers)  {
   StringRef Code = R"BLUE(
-type C : class = {
-  var y : bool = 1;
-  var x : int = 4;
+C : type = {
+  y : bool = 1;
+  x : int = 4;
 }
-var x:C;
+x:C;
   )BLUE";
   auto ToMatch = translationUnitDecl(has(
       cxxRecordDecl(
@@ -92,10 +92,10 @@ var x:C;
 
 TEST(BlueClass, ReferenceToSelfAsPtr)  {
   StringRef Code = R"BLUE(
-type C : class = {
-  var x : ^C = null;
+C : type = {
+  x : ^C = null;
 }
-var x:C;
+x:C;
   )BLUE";
   auto ToMatch = translationUnitDecl(has(
       cxxRecordDecl(
@@ -118,12 +118,12 @@ var x:C;
 
 TEST(BlueClass, MemberUse)  {
   StringRef Code = R"BLUE(
-type C : class = {
-  var x : int = 4;
-  var y : bool = 1;
+C : type = {
+  x : int = 4;
+  y : bool = 1;
 }
-var x:C;
-var z:=x.x;
+x:C;
+z:=x.x;
   )BLUE";
   auto ToMatch = translationUnitDecl(has(
       cxxRecordDecl(
@@ -167,12 +167,12 @@ var z:=x.x;
 
 TEST(BlueClass, MemberUse_ThroughPtr)  {
   StringRef Code = R"BLUE(
-type C : class = {
-  var x : int = 4;
-  var y : bool = 1;
+C : type = {
+  x : int = 4;
+  y : bool = 1;
 }
-var x:^C;
-var z:=x.x;
+x:^C;
+z:=x.x;
   )BLUE";
   auto ToMatch = translationUnitDecl(has(
       cxxRecordDecl(
@@ -206,13 +206,13 @@ var z:=x.x;
 
 TEST(BlueClass, NestedTypeDefinition) {
   StringRef Code = R"BLUE(
-type outer : class = {
-  type nested : class = {
-    var a : int;
-    var b : float32;
+outer : type = {
+  nested : type = {
+    a : int;
+    b : float32;
   }
 }
-var u : outer.nested;
+u : outer.nested;
 )BLUE";
 
   auto ToMatch = translationUnitDecl(
@@ -235,16 +235,16 @@ var u : outer.nested;
 
 TEST(BlueClass, MultipleNestedTypeDefinition) {
   StringRef Code = R"(
-type c : class = {
-  type nested : class = {
-    type nested2 : class = {
-      var a : int;
-      var b : float32;
+c : type = {
+  nested : type = {
+    nested2 : type = {
+      a : int;
+      b : float32;
     }
   }
 }
 
-var u : c.nested.nested2;
+u : c.nested.nested2;
 
 )";
 
@@ -270,8 +270,8 @@ var u : c.nested.nested2;
 
 TEST(BlueClass, TypeAliasDecl) {
   StringRef Code = R"BLUE(
-type outer : class = {
-  var x : type = int;
+outer : type = {
+  x : = int;
 }
 )BLUE";
 
@@ -285,9 +285,9 @@ type outer : class = {
 
 TEST(BlueClass, TypeAliasDecl_OutOfOrderUse) {
   StringRef Code = R"BLUE(
-type outer : class = {
-  var y : x;
-  var x : type = int;
+outer : type = {
+  y : x;
+  x : = int;
 }
 )BLUE";
 
@@ -302,9 +302,9 @@ type outer : class = {
 
 TEST(BlueClass, MemberFunctionDecl) {
   StringRef Code = R"BLUE(
-type C : class = {
-  var x:int;
-  func foo:(inout this) void ={ }
+C : type = {
+  x:int;
+  foo:(inout this) -> void ={ }
 }
 )BLUE";
   auto ToMatch = translationUnitDecl(hasDescendant(cxxRecordDecl(
@@ -316,9 +316,9 @@ type C : class = {
 
 TEST(BlueClass, MemberFunctionTemplateDecl) {
   StringRef Code = R"BLUE(
-type C : class = {
-  var x:int;
-  func foo:[T:type](inout this) void = { }
+C : type = {
+  x:int;
+  foo:[T:type] -> (inout this) -> void = { }
 }
 )BLUE";
   auto ToMatch = translationUnitDecl(hasDescendant(cxxRecordDecl(
@@ -331,11 +331,11 @@ type C : class = {
 
 TEST(BlueClass, MemberFunctionDecl_Use) {
   StringRef Code = R"BLUE(
-type C : class = {
-  var x:int;
-  func foo:(inout this) void ={ }
+C : type = {
+  x:int;
+  foo:(inout this) -> void ={ }
 }
-func bar:(x:^C) void = {
+bar:(x:^C) void = {
   x.foo()
 }
 )BLUE";
@@ -348,11 +348,11 @@ func bar:(x:^C) void = {
 
 TEST(BlueClass, MemberFunctionTemplateDecl_Use) {
   StringRef Code = R"BLUE(
-type C : class = {
-  var x:int;
-  func foo:[T:type](inout this) void = { }
+C : type = {
+  x:int;
+  foo:[T:type] -> (inout this) -> void = { }
 }
-func bar:(x:^C) void = {
+bar:(x:^C) void = {
   x.foo[int]()
 }
 )BLUE";
@@ -365,9 +365,9 @@ func bar:(x:^C) void = {
 
 TEST(BlueClass, BaseClasses) {
   StringRef Code = R"BLUE(
-type B : class = { }
-type C : class = {
-  super :B;
+B : type = { }
+C : type = {
+  :B;
 }
 )BLUE";
   auto ToMatch = cxxRecordDecl(
