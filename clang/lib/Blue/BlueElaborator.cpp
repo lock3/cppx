@@ -266,6 +266,8 @@ Declaration *Elaborator::buildDeclaration(const PrefixSyntax *S) {
 }
 
 Declaration *Elaborator::identifyDeclaration(const Syntax *S) {
+  if(!S)
+    return nullptr;
   switch (S->getKind()) {
   case Syntax::Declaration:
     return buildDeclaration(cast<DeclarationSyntax>(S));
@@ -1153,12 +1155,11 @@ Declarator *Elaborator::getTemplateDeclarator(const TemplateSyntax *TS) {
 
 Declarator *Elaborator::getLeafDeclarator(const Syntax *S) {
   switch (S->getKind()) {
-  case Syntax::Literal: {
-    auto Lit = dyn_cast<LiteralSyntax>(S);
-    if (Lit->getToken().hasKind(tok::ClassKeyword)) {
-      return new Declarator(Declarator::Class, S);
-    }
-  }
+  case Syntax::Literal:
+    // auto Lit = dyn_cast<LiteralSyntax>(S);
+    // if (Lit->getToken().hasKind(tok::TypeKeyword)) {
+    //   return new Declarator(Declarator::Class, S);
+    // }
 
   LLVM_FALLTHROUGH;
   case Syntax::Identifier:
@@ -2452,7 +2453,10 @@ clang::Decl *Elaborator::identifyDeclsInClassBody(Declaration *D,
   for (const Syntax *SS : L->children()) {
     identifyDeclaration(SS);
     Declaration *Member = S->findDecl(SS);
-    if (!Member){
+    if (!Member) {
+      if (!SS) {
+        continue;
+      }
       Error(SS->getLocation(), "invalid member declaration");
       continue;
     }
@@ -2513,6 +2517,7 @@ clang::Expr *Elaborator::doElaborateExpression(const Syntax *S) {
   case Syntax::Triple:
     return elaborateTripleExpression(cast<TripleSyntax>(S));
   case Syntax::Enclosure:
+    S->dump();
     llvm_unreachable("Enclosure syntax is unavailable.");
   case Syntax::List:
     return elaborateListExpression(cast<ListSyntax>(S));

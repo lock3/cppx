@@ -47,7 +47,7 @@ bool Declaration::declaratorContains(Declarator::Kind DeclKind) const {
 }
 
 bool Declaration::declaratorContainsClass() const {
-  return declaratorContains(Declarator::Class);
+  return declaratorContains(Declarator::Type) && Init && isa<EnclosureSyntax>(Init);
 }
 
 bool Declaration::declaratorContainsFunction() const {
@@ -59,7 +59,7 @@ bool Declaration::declaratorContainsTemplate() const {
 }
 
 bool Declaration::declaratorContainsTag() const {
-  return declaratorContains(Declarator::Class);
+  return declaratorContains(Declarator::Type) && Init && isa<EnclosureSyntax>(Init);
 }
 
 bool Declaration::declaratorContainsClassTemplate() const {
@@ -183,7 +183,19 @@ Phase phaseOf(Declaration *D) {
 
 bool deduceDeclKindFromSyntax(Declaration *D) {
   assert(D && "Invalid declaration syntax");
-  return true;
+  // We can't identify a declaration without a declarator?
+  if (!D->Decl)
+    return true;
+  if (D->declaratorContainsClass()) {
+    D->setDeclSyntaxKind(Declaration::Type);
+    return false;
+  }
+  if (D->declaratorContainsFunction()) {
+    D->setDeclSyntaxKind(Declaration::Function);
+    return false;
+  }
+  D->setDeclSyntaxKind(Declaration::Variable);
+  return false;
 }
 
 } // end namespace blue

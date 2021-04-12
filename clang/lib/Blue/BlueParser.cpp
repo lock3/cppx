@@ -276,7 +276,7 @@ Syntax *Parser::parseDeclaration() {
     return Pars;
   }
 
-  Pars =  parseDefinition();
+  Pars = parseDefinition();
   if (!Pars)
     return nullptr;
 
@@ -330,8 +330,9 @@ Syntax *Parser::parseDeclaration() {
 Syntax *Parser::parseDefinition() {
   // Parse the declarator-list.
   Syntax *Decl = nullptr;
-  if (nextTokenIsNot(tok::Colon))
+  if (nextTokenIsNot(tok::Colon)) {
     Decl = parseDeclaratorList();
+  }
 
   DescriptorClause DC = parseDescriptorClause(*this);
   InitializerClause IC;
@@ -387,6 +388,8 @@ Syntax *Parser::parseStatementSeq() {
   return new ListSyntax(AllocateSeq(SS), SS.size());
 }
 
+
+
 /// Parse a statement.
 ///
 ///   statement:
@@ -398,8 +401,11 @@ Syntax *Parser::parseStatement()
   if (nextTokenIs(tok::LeftBrace))
     return parseBlockStatement();
 
-  if (isDeclIntroducer(getLookahead()))
-    return parseDeclarationStatement();
+  // This will need to be fixed to do look-a-head and correct scanning for
+  // declarations of the form x, y, z or x.y.z
+  if (nextTokenIs(tok::Identifier))
+    if(nthTokenIs(1, tok::Colon))
+      return parseDeclarationStatement();
 
   return parseExpressionStatement();
 }
@@ -788,6 +794,7 @@ Syntax *Parser::parseTraditionalForExpression() {
   Syntax *Condition = nullptr;
   if (!nextTokenIs(tok::Semicolon))
     Condition = parseEqualityExpression();
+
   expectToken(tok::Semicolon);
 
   Syntax *Increment = nullptr;
@@ -1251,7 +1258,7 @@ static bool isPrefixOperator(Parser &P, tok::TokenKind Open,
   case tok::Plus:
   case tok::Minus:
   case tok::NotKeyword:
-  case tok::ClassKeyword:
+  case tok::MinusGreater:
       return true;
   default:
       break;
@@ -1306,8 +1313,8 @@ EnclosureCharacterization characterizePrefixOp(Parser &p)
 ///   prefix-expression:
 ///     postfix-expression
 ///     [ expression-list? ] prefix-expression
-///     [ parameter-group ] prefix-expression
-///     ( parameter-group? ) prefix-expression
+///     [ parameter-group ] -> prefix-expression
+///     ( parameter-group? ) -> prefix-expression
 ///     const prefix-expression
 ///     ^ prefix-expression
 ///     - prefix-expression
@@ -1320,6 +1327,7 @@ Syntax *Parser::parsePrefixExpression() {
     auto info = characterizePrefixOp(*this);
     if (!info.isOperator)
       break;
+
     if (!info.isEmpty && info.hasParameters)
       return parseTemplateConstructor();
     else
@@ -1328,8 +1336,9 @@ Syntax *Parser::parsePrefixExpression() {
 
   case tok::LeftParen: {
     auto info = characterizePrefixOp(*this);
-    if (!info.isOperator)
+    if (!info.isOperator) {
       break;
+    }
     return parseFunctionConstructor();
   }
   case tok::PlusPlus:
@@ -1359,7 +1368,11 @@ Syntax *Parser::parsePrefixExpression() {
 Syntax* Parser::parseTemplateConstructor()
 {
   Syntax *Op = parseBracketEnclosed(&Parser::parseParameterGroup);
-  Syntax *Type = parsePrefixExpression();
+  Syntax *Type = nullptr;
+  if (nextTokenIs(tok::MinusGreater)) {
+    consumeToken();
+    Type = parsePrefixExpression();
+  }
   return new TemplateSyntax(Op, Type);
 }
 
@@ -1377,11 +1390,15 @@ Syntax* Parser::parseArrayConstructor()
 /// Parse a function type constructor.
 ///
 ///   prefix-expression:
-///     ( parameter-group? ) prefix-expression
+///     ( parameter-group? ) -> prefix-expression
 Syntax* Parser::parseFunctionConstructor()
 {
   Syntax *Op = parseParenEnclosed(&Parser::parseParameterGroup);
-  Syntax *Type = parsePrefixExpression();
+  Syntax *Type = nullptr;
+  if (nextTokenIs(tok::MinusGreater)) {
+    consumeToken();
+    Type = parsePrefixExpression();
+  }
   return new FunctionSyntax(Op, Type);
 }
 
@@ -1487,8 +1504,6 @@ Syntax *Parser::parsePrimaryExpression() {
   case tok::IntKeyword:
   case tok::BoolKeyword:
   case tok::TypeKeyword:
-    // Class keyword
-  case tok::ClassKeyword:
   case tok::NamespaceKeyword:
     // Built in type functions
   case tok::IntegerKeyword:

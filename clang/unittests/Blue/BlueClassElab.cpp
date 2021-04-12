@@ -335,7 +335,7 @@ C : type = {
   x:int;
   foo:(inout this) -> void ={ }
 }
-bar:(x:^C) void = {
+bar:(x:^C) -> void = {
   x.foo()
 }
 )BLUE";
@@ -352,7 +352,7 @@ C : type = {
   x:int;
   foo:[T:type] -> (inout this) -> void = { }
 }
-bar:(x:^C) void = {
+bar:(x:^C) -> void = {
   x.foo[int]()
 }
 )BLUE";

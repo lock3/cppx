@@ -104,7 +104,7 @@ f : () -> int = {
 }
 
 main : () -> int = {
-  var x := f();
+  x := f();
 }
 )BLUE";
 
