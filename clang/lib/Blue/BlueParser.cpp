@@ -443,10 +443,8 @@ Syntax *Parser::parseStatement()
 
   // This will need to be fixed to do look-a-head and correct scanning for
   // declarations of the form x, y, z or x.y.z
-  if (startsDefinition(*this)) {
-    llvm::outs() << "Parsing parseDeclarationStatement\n";
+  if (startsDefinition(*this))
     return parseDeclarationStatement();
-  }
 
   return parseExpressionStatement();
 }

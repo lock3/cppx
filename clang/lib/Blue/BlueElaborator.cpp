@@ -15,7 +15,6 @@
 #include "clang/Blue/BlueSyntax.h"
 #include "clang/Blue/BlueDeclarator.h"
 #include "clang/Basic/Diagnostic.h"
-
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExprCppx.h"
 #include "clang/AST/ExprCXX.h"
@@ -2104,54 +2103,52 @@ bool Elaborator::makeBases(unsigned &DeclIndex,
 
   llvm::SmallVector<clang::CXXBaseSpecifier *, 4> GivenBaseClasses;
   bool didError = false;
-  // while(!DeclBodyList.empty() && DeclIndex < DeclBodyList.size() &&
-  //       (
-  //         DeclBodyList[DeclIndex]->getIntroducerKind()
-  //           == DeclarationSyntax::Super))
-  // {
-  //   Declaration *CurrentBase = DeclBodyList[DeclIndex];
-  //   clang::SourceLocation Loc = CurrentBase->getErrorLocation();
-  //   clang::Expr *BaseExpr = elaborateExpression(CurrentBase->asDef()->getType());
-  //   if (!BaseExpr) {
-  //     didError = true;
-  //     getCxxSema().Diags.Report(CurrentBase->getErrorLocation(),
-  //                          clang::diag::err_failed_to_translate_expr);
-  //     ++DeclIndex;
-  //     continue;
-  //   }
+  while(!DeclBodyList.empty() && DeclIndex < DeclBodyList.size() &&
+        (DeclBodyList[DeclIndex]->Id == nullptr))
+  {
+    Declaration *CurrentBase = DeclBodyList[DeclIndex];
+    clang::SourceLocation Loc = CurrentBase->getErrorLocation();
+    clang::Expr *BaseExpr = elaborateExpression(CurrentBase->asDef()->getType());
+    if (!BaseExpr) {
+      didError = true;
+      getCxxSema().Diags.Report(CurrentBase->getErrorLocation(),
+                           clang::diag::err_failed_to_translate_expr);
+      ++DeclIndex;
+      continue;
+    }
 
-  //   // TODO: Need to create processing for the base specifier virtual?
-  //   // I'm not sure that blue has virtual base classes yet.
-  //   if ((BaseExpr->isTypeDependent() || BaseExpr->isValueDependent()
-  //       || BaseExpr->getType()->isDependentType())
-  //       && !isa<clang::CppxTypeLiteral>(BaseExpr)) {
-  //     // Updating a dependent expression that may or may not have a result type.
-  //     BaseExpr = SemaRef.buildTypeExprTypeFromExpr(BaseExpr, Loc);
-  //   }
-  //   clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(BaseExpr,
-  //                                                                    Loc);
-  //   if (!TInfo) {
-  //     ++DeclIndex;
-  //     didError = true;
-  //     continue;
-  //   }
-  //   clang::AccessSpecifier AS = clang::AS_public;
-  //   bool IsVirtualBase = false;
-  //   clang::ParsedType PT = getCxxSema().CreateParsedType(TInfo->getType(),TInfo);
-  //   clang::ParsedAttributes Attributes(SemaRef.AttrFactory);
-  //   auto BaseResult = getCxxSema()
-  //     .ActOnBaseSpecifier(R, clang::SourceRange(Loc, Loc),
-  //                         Attributes, IsVirtualBase, AS, PT,
-  //                         Loc, clang::SourceLocation());
+    // TODO: Need to create processing for the base specifier virtual?
+    // I'm not sure that blue has virtual base classes yet.
+    if ((BaseExpr->isTypeDependent() || BaseExpr->isValueDependent()
+        || BaseExpr->getType()->isDependentType())
+        && !isa<clang::CppxTypeLiteral>(BaseExpr)) {
+      // Updating a dependent expression that may or may not have a result type.
+      BaseExpr = SemaRef.buildTypeExprTypeFromExpr(BaseExpr, Loc);
+    }
+    clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(BaseExpr,
+                                                                     Loc);
+    if (!TInfo) {
+      ++DeclIndex;
+      didError = true;
+      continue;
+    }
+    clang::AccessSpecifier AS = clang::AS_public;
+    bool IsVirtualBase = false;
+    clang::ParsedType PT = getCxxSema().CreateParsedType(TInfo->getType(),TInfo);
+    clang::ParsedAttributes Attributes(SemaRef.AttrFactory);
+    auto BaseResult = getCxxSema()
+      .ActOnBaseSpecifier(R, clang::SourceRange(Loc, Loc),
+                          Attributes, IsVirtualBase, AS, PT,
+                          Loc, clang::SourceLocation());
 
-  //   if (BaseResult.isInvalid()) {
-  //     ++DeclIndex;
-  //     didError = true;
-  //     continue;
-  //   }
-  //   GivenBaseClasses.emplace_back(BaseResult.get());
-  //   ++DeclIndex;
-  // }
+    if (BaseResult.isInvalid()) {
+      ++DeclIndex;
+      didError = true;
+      continue;
+    }
+    GivenBaseClasses.emplace_back(BaseResult.get());
+    ++DeclIndex;
+  }
   if (!DeclBodyList.empty())
     SemaRef.getCxxSema().ActOnBaseSpecifiers(R, GivenBaseClasses);
   return didError;
