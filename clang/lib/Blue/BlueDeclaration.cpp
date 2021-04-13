@@ -47,7 +47,21 @@ bool Declaration::declaratorContains(Declarator::Kind DeclKind) const {
 }
 
 bool Declaration::declaratorContainsClass() const {
-  return declaratorContains(Declarator::Type) && Init && isa<EnclosureSyntax>(Init);
+  if (declaratorContainsFunction())
+    return false;
+  Declarator *D = getFirstDeclarator(Declarator::Type);
+  if (!D)
+    return false;
+  auto *S = D->getInfo();
+  if (!S)
+    return false;
+
+  if (auto Lit = dyn_cast<LiteralSyntax>(S)) {
+    return Lit->getToken().hasKind(tok::TypeKeyword)
+           && Init && isa<EnclosureSyntax>(Init);
+  } else {
+    return false;
+  }
 }
 
 bool Declaration::declaratorContainsFunction() const {
@@ -167,6 +181,40 @@ const DeclarationSyntax *Declaration::asDef() const {
   return cast<DeclarationSyntax>(Def);
 }
 
+void Declaration::dump() {
+  llvm::outs() << "Dumping declaration\n";
+  llvm::outs() << "Current tree = ";
+  if (Def) {
+    llvm::outs() << "\n";
+    Def->dump();
+  } else {
+    llvm::outs() << "nullptr\n";
+  }
+  llvm::outs() << "  Cxx = ";
+  if (Cxx) {
+    llvm::outs() << "\n";
+    Cxx->dump();
+  } else {
+    llvm::outs() << "nullptr\n";
+  }
+
+  llvm::outs() << "  Id = ";
+  if (Id) {
+    llvm::outs() << Id->getName() << "\n";
+  } else {
+    llvm::outs() << "nullptr\n";
+  }
+
+  llvm::outs() << "Declarators = ";
+  if (Decl) {
+    Decl->printSequence(llvm::outs());
+    llvm::outs() << "\n";
+  } else {
+    llvm::outs() << "nullptr\n";
+  }
+
+}
+
 clang::SourceLocation Declaration::getErrorLocation() const {
   if (auto DS = dyn_cast_or_null<DeclarationSyntax>(Def)) {
     return DS->getErrorLocation();
@@ -186,13 +234,26 @@ bool deduceDeclKindFromSyntax(Declaration *D) {
   // We can't identify a declaration without a declarator?
   if (!D->Decl)
     return true;
-  if (D->declaratorContainsClass()) {
-    D->setDeclSyntaxKind(Declaration::Type);
-    return false;
-  }
+
   if (D->declaratorContainsFunction()) {
     D->setDeclSyntaxKind(Declaration::Function);
     return false;
+  }
+  Declarator *Dcl = D->getFirstDeclarator(Declarator::Type);
+  if (!Dcl) {
+    // Check if this is a possible namespace decl
+    D->setDeclSyntaxKind(Declaration::Variable);
+    return false;
+  }
+  if (auto Lit = dyn_cast<LiteralSyntax>(Dcl->getInfo())) {
+    if (Lit->getToken().hasKind(tok::TypeKeyword)) {
+      D->setDeclSyntaxKind(Declaration::Type);
+      return false;
+    } else if(Lit->getToken().hasKind(tok::NamespaceKeyword)) {
+      D->setDeclSyntaxKind(Declaration::Namespace);
+      return false;
+    }
+  // This is should do what I want it to I hope.
   }
   D->setDeclSyntaxKind(Declaration::Variable);
   return false;

@@ -917,6 +917,20 @@ struct DeclarationSyntax : QuaternarySyntax
 
   Token getParamPassingSpecifier() const;
 
+
+  clang::SourceLocation getLocation() const {
+    if (Terms[0]) {
+      return Terms[0]->getLocation();
+    } else if(Terms[1]) {
+      return Terms[1]->getLocation();
+    } else if(Terms[2]) {
+      return Terms[2]->getLocation();
+    } else if(Terms[3]) {
+      return Terms[3]->getLocation();
+    } else {
+      return clang::SourceLocation();
+    }
+  }
   Token *ParamSpecs = nullptr;
   unsigned NumParamSpecs = 0;
   // IntroducerKind IntroKind = Unknown;

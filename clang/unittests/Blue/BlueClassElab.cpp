@@ -304,7 +304,7 @@ TEST(BlueClass, MemberFunctionDecl) {
   StringRef Code = R"BLUE(
 C : type = {
   x:int;
-  foo:(inout this) -> void ={ }
+  foo:(inout this) -> void = { }
 }
 )BLUE";
   auto ToMatch = translationUnitDecl(hasDescendant(cxxRecordDecl(

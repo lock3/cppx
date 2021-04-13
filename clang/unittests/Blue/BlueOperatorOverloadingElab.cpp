@@ -772,7 +772,7 @@ TEST(BlueOperatorOverloading, PlusEqualMemberUse) {
 C : type = {
   operator+=:(in this, in other:C) -> bool = { return false; }
 }
-foo:(inout x:C,y:C) void = {
+foo:(inout x:C,y:C) -> void = {
    x += y;
 }
 )BLUE";
@@ -785,7 +785,7 @@ TEST(BlueOperatorOverloading, MinusEqualMemberUse) {
 C : type = {
   operator-=:(in this, in other:C) -> bool = { return false; }
 }
-foo:(inout x:C,y:C) void = {
+foo:(inout x:C,y:C) -> void = {
    x -= y;
 }
 )BLUE";
@@ -798,7 +798,7 @@ TEST(BlueOperatorOverloading, MultiplyEqualMemberUse) {
 C : type = {
   operator*=:(in this, in other:C) -> bool = { return false; }
 }
-foo:(inout x:C,y:C) void = {
+foo:(inout x:C,y:C) -> void = {
    x *= y;
 }
 )BLUE";
@@ -811,7 +811,7 @@ TEST(BlueOperatorOverloading, DivideEqualMemberUse) {
 C : type = {
   operator/=:(in this, in other:C) -> bool = { return false; }
 }
-foo:(inout x:C,y:C) void = {
+foo:(inout x:C,y:C) -> void = {
    x /= y;
 }
 )BLUE";
@@ -824,7 +824,7 @@ TEST(BlueOperatorOverloading, ModulusEqualMemberUse) {
 C : type = {
   operator%=:(in this, in other:C) -> bool = { return false; }
 }
-foo:(inout x:C,y:C) void = {
+foo:(inout x:C,y:C) -> void = {
    x %= y;
 }
 )BLUE";

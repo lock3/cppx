@@ -89,6 +89,10 @@ namespace blue
     bool nthTokenIs(std::size_t N, TokenKind K) {
       return getLookahead(N) == K;
     }
+    template<typename Callable>
+    bool nthTokenConformsTo(std::size_t N, Callable CB) {
+      return CB(getLookahead(N));
+    }
 
     bool nthTokenIs(std::size_t N, char const* Id) {
       const Token &Tok = peekToken(N);

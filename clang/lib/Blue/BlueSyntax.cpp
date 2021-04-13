@@ -89,11 +89,7 @@ clang::SourceLocation DeclarationSyntax::getErrorLocation() const {
     return getInitializer()->getLocation();
   }
 
-
-  
-
   return clang::SourceLocation();
-  
 }
 bool DeclarationSyntax::declaratorIsThis() const {
   if (getDeclarator()) {

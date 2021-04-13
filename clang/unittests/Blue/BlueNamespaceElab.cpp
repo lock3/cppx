@@ -29,7 +29,7 @@ n1:namespace = { }
 TEST(BlueNamespace, NonEmptyNamespace) {
   StringRef Code = R"BLUE(
 n1:namespace = {
-  var x:int;
+  x:int;
 }
 )BLUE";
   auto ToMatch = namespaceDecl(hasName("n1"),

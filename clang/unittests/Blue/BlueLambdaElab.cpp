@@ -21,7 +21,7 @@ using namespace blue;
 
 TEST(BlueLambda, TrailingReturn) {
   StringRef Code = R"BLUE(
-main : () int = {
+main : () -> int = {
   fn := lambda(x : int) -> int => {
      return x;
   };

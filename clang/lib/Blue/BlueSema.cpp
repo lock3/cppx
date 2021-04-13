@@ -1404,7 +1404,7 @@ Sema::ActOnStartNamespaceDef(clang::Scope *NamespcScope,
       // UD->setImplicit();
       // Parent->addDecl(UD);
       // getCurrentScope()->UsingDirectives.insert(UD);
-      llvm_unreachable("Using directive not implemented yet.");
+      // llvm_unreachable("Using directive not implemented yet.");
     }
   }
 

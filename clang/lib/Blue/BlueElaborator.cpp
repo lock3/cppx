@@ -183,9 +183,6 @@ Declaration *Elaborator::createNamespaceDecl(const DeclarationSyntax *Def,
   if (const IdentifierSyntax *Id
       = dyn_cast_or_null<IdentifierSyntax>(ToGetNameFrom->getDeclarator())) {
       TheDecl->Id = &SemaRef.getCxxAST().Idents.get({Id->getSpelling()});
-  } else {
-    // llvm_unreachable("Some how we have an invalid identifier.");
-    // llvm::outs()<< "I messed up there's not identifier.!\n";
   }
   Scope *CurScope = SemaRef.getCurrentScope();
   CurScope->addDecl(TheDecl);
@@ -374,7 +371,7 @@ static clang::Decl *handleUsing(Sema &SemaRef,
     Name.setIdentifier(DME->getMemberNameInfo().getName().getAsIdentifierInfo(),
                        DME->getExprLoc());
     Name.StartLocation = Name.EndLocation = Arg->getLocation();
-  } else if (auto *WE = dyn_cast<clang::CppxWildcardExpr>(E)) {
+  } else if (isa<clang::CppxWildcardExpr>(E)) {
     if (SemaRef.scopeIsClass()) {
       Diags.Report(Arg->getLocation(),
                    clang::diag::err_using_namespace_in_class);
@@ -559,11 +556,17 @@ clang::Decl *Elaborator::doElaborateDeclarationTyping(Declaration *D) {
   case Declaration::Function:
     return makeFunctionDecl(D);
   case Declaration::Type:
-    if (D->declaratorContainsClass())
+    if (D->declaratorContainsClass()) {
+      llvm::outs() << "Processing class declaration type?\n";
+      D->Def->dump();
       return makeClass(D);
-    else
-      if (D->Decl->declaresTemplate())
+    } else {
+      if (D->Decl->declaresTemplate()) {
+        llvm::outs() << "We are elaborating a template.\n";
+        D->dump();
         return elaborateTypeAliasOrVariableTemplate(D);
+      }
+    }
     return makeValueDecl(D);
   case Declaration::Super:
     Error(D->asDef()->getErrorLocation(), "invalid base class declaration");
@@ -1192,10 +1195,10 @@ clang::Decl *Elaborator::elaborateDeclEarly(Declaration *D) {
 
 clang::Decl *Elaborator::makeValueDecl(Declaration *D) {
   // Elaborate the declarator.
-  if (D->declaratorContainsFunction()) {
-    Error(D->getErrorLocation(), "Function declaration missing introducer.");
-    return nullptr;
-  }
+  // if (D->declaratorContainsFunction()) {
+  //   Error(D->getErrorLocation(), "Function declaration missing introducer.");
+  //   return nullptr;
+  // }
 
   // FIXME: An ill-typed declaration isn't the end of the world. Can we
   // poison the declaration and move on?
@@ -2316,6 +2319,8 @@ clang::Expr *Elaborator::elaborateDeclarator(const Declarator *Dcl) {
     return elaborateClassDeclarator(Dcl);
   case Declarator::ImplicitType:
     return elaborateImplicitTypeDeclarator(Dcl);
+  case Declarator::Using:
+    llvm_unreachable("Using declarator not implemented");
   }
   llvm_unreachable("Unhandled kind of declarator.");
 }
@@ -2451,10 +2456,13 @@ clang::Decl *Elaborator::identifyDeclsInClassBody(Declaration *D,
   Scope *S = SemaRef.getCurrentScope();
   // for (auto const* ChildDecl : BodyArray->children()) {
   for (const Syntax *SS : L->children()) {
+    if (!SS)
+      continue;
     identifyDeclaration(SS);
     Declaration *Member = S->findDecl(SS);
     if (!Member) {
-      if (!SS) {
+      if (auto Declaration = dyn_cast<DeclarationSyntax>(SS)) {
+        Error(Declaration->getErrorLocation(), "invalid member declaration");
         continue;
       }
       Error(SS->getLocation(), "invalid member declaration");
@@ -5386,7 +5394,7 @@ bool Elaborator::delayElaborateDeclType(clang::CXXRecordDecl *RD,
   // because we can end up with recursive elaborations of declarations,
   // possibly having cyclic dependencies.
   // || D->declaresForwardRecordDecl()
-  if (D->declaratorContainsTag()) {
+  if (D->declaratorContainsClass()) {
     delayElaborationClassBody(D);
     return true;
   }

@@ -199,6 +199,8 @@ struct Declaration {
     }
     return D->getLocation();
   }
+
+  void dump();
 private:
   /// The corresponding C++ declaration.
   clang::Decl *Cxx = nullptr;

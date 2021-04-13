@@ -21,7 +21,7 @@
 #include <iostream>
 
 namespace blue {
-
+static bool startsDefinition(Parser &P);
 Parser::Parser(clang::SourceManager &SM, File const& F)
   : Lex(SM, F), Diags(SM.getDiagnostics()) {
   fetchToken();
@@ -114,6 +114,36 @@ Syntax *Parser::parseBlockStatement() {
 
 static inline bool isParameterSpec(tok::TokenKind K);
 
+static inline bool OverloadableOperator(tok::TokenKind K) {
+  switch(K) {
+    case tok::Equal:
+    case tok::EqualEqual:
+    case tok::BangEqual:
+    case tok::Less:
+    case tok::LessEqual:
+    case tok::Greater:
+    case tok::GreaterEqual:
+    case tok::PlusPlus:
+    case tok::MinusMinus:
+    case tok::Plus:
+    case tok::Minus:
+    case tok::Star:
+    case tok::Slash:
+    case tok::Percent:
+    case tok::Bang:
+    case tok::AmpersandAmpersand:
+    case tok::BarBar:
+    case tok::PlusEqual:
+    case tok::MinusEqual:
+    case tok::StarEqual:
+    case tok::SlashEqual:
+    case tok::PercentEqual:
+      return true;
+    default:
+      return false;
+  }
+
+}
 /// Returns true if the tokens at `La` start a definition.
 static bool startsDefinition(Parser &P, std::size_t La)
 {
@@ -125,7 +155,14 @@ static bool startsDefinition(Parser &P, std::size_t La)
     return true;
 
   // Check for definitions of the form `x:` and `x,y,z:`
-  if (P.nthTokenIs(La, tok::Identifier)) {
+  if (P.nthTokenIs(La, tok::Identifier)
+      || (P.nthTokenIs(La, tok::OperatorKeyword)
+          && P.nthTokenConformsTo(La+1, OverloadableOperator))
+      ) {
+    if (P.nthTokenIs(La, tok::OperatorKeyword)) {
+      La += 1;
+    }
+
     if (P.peekToken(La).getSpelling() == "this")
       return true;
     ++La;
@@ -142,6 +179,9 @@ static bool startsDefinition(Parser &P, std::size_t La)
       ++La;
       if (P.nthTokenIs(La, tok::Identifier))
         ++La;
+      else if(P.nthTokenIs(La, tok::OperatorKeyword)
+              && P.nthTokenConformsTo(La+1, OverloadableOperator))
+        La += 2;
       else
         return false;
     }
@@ -153,7 +193,7 @@ static bool startsDefinition(Parser &P, std::size_t La)
 }
 
 /// Returns true if `p` starts a parameter declaration.
-static bool startsDefinition(Parser &P)
+bool startsDefinition(Parser &P)
 {
   return startsDefinition(P, 0);
 }
@@ -403,9 +443,10 @@ Syntax *Parser::parseStatement()
 
   // This will need to be fixed to do look-a-head and correct scanning for
   // declarations of the form x, y, z or x.y.z
-  if (nextTokenIs(tok::Identifier))
-    if(nthTokenIs(1, tok::Colon))
-      return parseDeclarationStatement();
+  if (startsDefinition(*this)) {
+    llvm::outs() << "Parsing parseDeclarationStatement\n";
+    return parseDeclarationStatement();
+  }
 
   return parseExpressionStatement();
 }

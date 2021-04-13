@@ -21,7 +21,7 @@ using namespace blue;
 
 TEST(BlueTypeAliasTemplate, ExplicitTypeAlias) {
   StringRef Code = R"BLUE(
-C:[T:type] -> class = {
+C:[T:type] -> type = {
 }
 x : [T:type] -> type = C[T];
 )BLUE";
