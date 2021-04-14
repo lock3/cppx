@@ -85,27 +85,24 @@ bool decomposeNNS(Sema &SemaRef, llvm::SmallVectorImpl<const Syntax *> &NNSChain
 Declaration *Elaborator::createDeclaration(const Syntax *Def,
                                            Declarator *Dcl,
                                            const Syntax *Init) {
-  // if (const DeclarationSyntax *DS = dyn_cast<DeclarationSyntax>(Def)) {
-  //   if (DS->IntroKind == Declaration::Namespace)
-  //     return createNamespaceDecl(DS, Dcl, Init);
-  
-  // } else
-   if (const PrefixSyntax *PS = dyn_cast<PrefixSyntax>(Def)) {
-    if (PS->getOperation().hasKind(tok::UsingKeyword))
-      return createUsingDecl(PS, Dcl, Init);
-    return nullptr;
+  if (const DeclarationSyntax *DS = dyn_cast<DeclarationSyntax>(Def)) {
+    if (declaratorChainIsForNamespace(Dcl))
+      return createNamespaceDecl(DS, Dcl, Init);
+  } else {
+    if (const PrefixSyntax *PS = dyn_cast<PrefixSyntax>(Def)) {
+      if (PS->getOperation().hasKind(tok::UsingKeyword))
+        return createUsingDecl(PS, Dcl, Init);
+      return nullptr;
+    }
   }
 
   Declaration *TheDecl =
     new Declaration(SemaRef.getCurrentDecl(), Def, Dcl, Init);
 
-
   if (const DeclarationSyntax *Name = dyn_cast<DeclarationSyntax>(Def)) {
     if (const IdentifierSyntax *Id
         = dyn_cast_or_null<IdentifierSyntax>(Name->getDeclarator())) {
         TheDecl->Id = &SemaRef.getCxxAST().Idents.get({Id->getSpelling()});
-    } else {
-      // llvm_unreachable("Some how we have an invalid identifier.");
     }
   } else if (const IdentifierSyntax *Id = dyn_cast<IdentifierSyntax>(Def)) {
     TheDecl->Id = &SemaRef.getCxxAST().Idents.get({Id->getSpelling()});
@@ -556,13 +553,9 @@ clang::Decl *Elaborator::doElaborateDeclarationTyping(Declaration *D) {
     return makeFunctionDecl(D);
   case Declaration::Type:
     if (D->declaratorContainsClass()) {
-      llvm::outs() << "Processing class declaration type?\n";
-      D->Def->dump();
       return makeClass(D);
     } else {
       if (D->Decl->declaresTemplate()) {
-        llvm::outs() << "We are elaborating a template.\n";
-        D->dump();
         return elaborateTypeAliasOrVariableTemplate(D);
       }
     }
@@ -4687,7 +4680,6 @@ clang::Expr *Elaborator::elaborateMemberAccess(clang::Expr *LHS,
     return elaborateNestedNamespaceAccess(LHS, S);
 
   return elaborateMemberAccessOp(LHS, S);
-  // llvm_unreachable("Elaborator::elaborateMemberAccess on it.");
 }
 
 static clang::Expr *handleLookupInsideType(Sema &SemaRef,

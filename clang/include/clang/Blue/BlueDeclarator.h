@@ -127,6 +127,10 @@ private:
   const clang::Expr* Val;
 };
 
+Declarator *findFirstDeclaratorInChain(Declarator *Dcl, Declarator::Kind K);
+
+bool declaratorChainContains(Declarator *Dcl, Declarator::Kind K);
+bool declaratorChainIsForNamespace(Declarator *Dcl);
 } // namespace blue
 
 

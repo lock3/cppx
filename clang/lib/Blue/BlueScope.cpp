@@ -32,6 +32,7 @@ static const char *getScopeKindName(Scope::Kind K) {
   case Scope::Template:
     return "Template";
   }
+  llvm_unreachable("Invalid scope type.");
 }
 
 void Scope::dump(llvm::raw_ostream &os) const {
