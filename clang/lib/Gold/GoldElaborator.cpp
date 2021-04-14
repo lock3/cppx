@@ -620,7 +620,6 @@ processCXXRecordDecl(Elaborator &Elab, SyntaxContext &Context, Sema &SemaRef,
     llvm_unreachable("Incorrectly identified tag type");
   }
 
-
   Decl *Declaration = nullptr;
   if (D->SpecializationArgs) {
     Declaration = handleClassSpecialization(Context, SemaRef, D, TST, MTP);
@@ -663,7 +662,7 @@ processCXXRecordDecl(Elaborator &Elab, SyntaxContext &Context, Sema &SemaRef,
   // Need to do this before the next step because this is actually pushed on to
   // the stack a by the next function called.
   SemaRef.getCxxSema().ActOnTagStartDefinition(SemaRef.getCurClangScope(), Tag);
-
+  // RecordDecl *RD = cast<RecordDecl>(Tag);
   // This keeps the declContext working correctly.
   Sema::DeclContextRAII DCTracking(SemaRef, D, true);
   if (TST == clang::DeclSpec::TST_enum) {
@@ -712,8 +711,8 @@ processCXXRecordDecl(Elaborator &Elab, SyntaxContext &Context, Sema &SemaRef,
     if (!WithinClass) {
       ElaboratingClass &LateElabClass = SemaRef.getCurrentElaboratingClass();
       // Elab.finishDelayedElaboration(LateElabClass);
-      Elab.lateElaborateAttributes(LateElabClass);
       Elab.lateElaborateMethodDecls(LateElabClass);
+      Elab.lateElaborateAttributes(LateElabClass);
       Elab.lateElaborateDefaultParams(LateElabClass);
       // We call this because no new declarations can be added after this point.
       // This is only called for the top level class.
@@ -1571,7 +1570,6 @@ static clang::Decl *handleBuildNNSNamespace(Elaborator &Elab, Sema &SemaRef,
                                           NSId, Name->getLoc(), ParsedAttrs,
                                           UD);
   if (!NSDecl){
-    llvm::outs() << "Error returing from ActOnStartNamespaceDef !NSDecl\n";
     return nullptr;
   }
 
@@ -1809,6 +1807,7 @@ void getFunctionParameters(Sema &SemaRef, Declaration *D,
     bool ArgsParam = false;
     const Syntax *P = ParamList->getChild(I);
     Declaration *PD = ParamScope->findDecl(P);
+
     if (!PD || !PD->Cxx)
       continue;
 
@@ -4645,9 +4644,11 @@ clang::Decl *Elaborator::elaborateField(Declaration *D,
     VDecl->setAccess(clang::AS_public);
     Field = VDecl;
   } else {
+
     bool Mutable = false;
     if (isMutable(SemaRef, D, Mutable))
       return nullptr;
+
     // We are create field within a class.
     Field = SemaRef.getCxxSema().CheckFieldDecl(DN, TInfo->getType(),
                                                 TInfo, /*RecordDecl=*/Owner,
@@ -4881,9 +4882,13 @@ void Elaborator::delayElaborateMemberInitializer(Declaration *D) {
 }
 
 void Elaborator::delayElaborateMethodDecl(Declaration *D) {
+  LateElaboratedMethodDeclaration *CurrentPtr
+      = new LateElaboratedMethodDeclaration(SemaRef, Context, D);
   SemaRef.getCurrentElaboratingClass().LateElaborations.push_back(
-    new LateElaboratedMethodDeclaration(SemaRef, Context, D)
+    CurrentPtr
   );
+  SemaRef.CurrentLateMethodDecl = CurrentPtr;
+  elaborateDecl(D);
 }
 
 void Elaborator::delayElaborateMethodDef(Declaration *D) {
@@ -4903,17 +4908,17 @@ void Elaborator::delayElaborateDefaultParam(Declaration *ParamDecl) {
 
 
 
-void Elaborator::finishDelayedElaboration(ElaboratingClass &Class) {
-  lateElaborateAttributes(Class);
-  lateElaborateMethodDecls(Class);
-  lateElaborateDefaultParams(Class);
-  // We call this because no new declarations can be added after this point.
-  // This is only called for the top level class.
-  SemaRef.getCxxSema().ActOnFinishCXXMemberDecls();
+// void Elaborator::finishDelayedElaboration(ElaboratingClass &Class) {
+//   lateElaborateAttributes(Class);
+//   lateElaborateMethodDecls(Class);
+//   lateElaborateDefaultParams(Class);
+//   // We call this because no new declarations can be added after this point.
+//   // This is only called for the top level class.
+//   SemaRef.getCxxSema().ActOnFinishCXXMemberDecls();
 
-  lateElaborateMemberInitializers(Class);
-  lateElaborateMethodDefs(Class);
-}
+//   lateElaborateMemberInitializers(Class);
+//   lateElaborateMethodDefs(Class);
+// }
 
 void Elaborator::lateElaborateAttributes(ElaboratingClass &Class) {
   BALANCE_DBG();

@@ -74,3 +74,25 @@ temp() : void !{
   auto ToMatch = callExpr();
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
+
+
+
+TEST(GoldDependentTypeNameWithinMemberAccess, TypeMemberAccessInReturnType) {
+  StringRef Code = R"GOLD(
+
+remove_reference[T:type] = class { ty : type = T; }
+remove_reference[T:type][ref T] = class { ty : type = T; }
+remove_reference[T:type][rref T] = class { ty : type = T; }
+
+move[T:type](t:rref T)<noexcept><constexpr>:rref remove_reference[T].ty! {
+  return static_cast[rref remove_reference[T].ty](t);
+}
+
+main():int !{
+  x:auto = move(4);
+  return 0;
+}
+)GOLD";
+  auto ToMatch = callExpr();
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}

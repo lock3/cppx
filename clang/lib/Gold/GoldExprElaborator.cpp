@@ -4089,7 +4089,11 @@ ExprElaborator::elaborateFunctionType(Declarator *D, clang::Expr *Ty) {
   FunctionDeclarator *FuncDcl = D->getAsFunction();
   // FIXME: Handle array-based arguments.
   const ListSyntax *Args = FuncDcl->getParams();
-
+  if (!Args) {
+      SemaRef.Diags.Report(D->getLoc(),
+                            clang::diag::err_invalid_param_list);
+      return nullptr;
+  }
   // bool IsVariadic = D->Data.ParamInfo.VariadicParam;
   // Elaborate the parameter declarations in order to get their types, and save
   // the resulting scope with the declarator.

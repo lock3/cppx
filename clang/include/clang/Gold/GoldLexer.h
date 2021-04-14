@@ -161,6 +161,12 @@ namespace gold {
 
     void matchEscapeSequence();
 
+    // Handling textual mode, where we lex like we are inside of HTML (Kinda).
+    // Token matchInTextMode();
+    Token matchText();
+    Token matchEscapedCharInTextMode();
+
+
     clang::SourceLocation getSourceLocation(char const* Loc);
 
     clang::DiagnosticsEngine& getDiagnostics() {
@@ -233,125 +239,36 @@ namespace gold {
     /// but this is what's used to keep track of comments for tools such as
     /// llvm-lit.
     clang::Preprocessor &PP;
+
+    // Mode for doing single character lexing.
+    bool LexSingleCharacter = false;
+    bool LexingString = false;
+
+    /// This slightly changes the lexing mode by building a text node rather then
+    /// a group of identifiers. This means we will include whitespace.
+    /// This will read all tokens upto the first occurrence of the following
+    /// tokens = \, {, }, #, <, >, &, ~
+    /// This will also handle a special case for >= because that MIGHT be the
+    /// end of the current attribute.
+    // bool TextTokenMode = false;
   };
 
 
-  /// Removes empty lines and comments from a translation unit.
-  struct LineScanner {
-    LineScanner(clang::SourceManager &SM, File const& F, SyntaxContext &Ctx,
-                clang::Preprocessor &PP, bool &GTIO)
-      : Scanner(SM, F, Ctx, PP), GreaterThanIsOperator(GTIO)
-      { }
-
-    // Construct a line scanner for a string literal
-    // Used for fused token data.
-    // the source manager and file must already be initialized
-    // LineScanner(clang::SourceManager &SM, File const &F, const char *Str)
-    //   : Scanner(SM, F, Str)
-    //   { }
-
-    Token operator()();
-
-    clang::DiagnosticsEngine& getDiagnostics() {
-      return Scanner.getDiagnostics();
-    }
-
-    /// The last non-whitespace token that was lexed. Some lines might end
-    /// with an infix operator that continues onto the next line, so we want
-    /// to keep track of that.
-    Token Current;
-
-    /// The underlying scanner.
-    CharacterScanner Scanner;
-
-    /// True when tok::Greater is an operator and not an enclosure
-    bool &GreaterThanIsOperator;
-  };
-
-
-  /// Combines newline and whitespace to create indents, dedents, and
-  /// separators. Note that there are no newlines in the translation unit
-  /// returned from this scanner.
-  struct BlockScanner {
-    BlockScanner(clang::SourceManager &SM, File const& F, SyntaxContext &Ctx,
-                 clang::Preprocessor &PP, bool &GTIO)
-      : Scanner(SM, F, Ctx, PP, GTIO), Prefix() { }
-
-    Token operator()();
-
-    Token combineSpace(Token const& nl, Token const& sp);
-    Token matchSeparator(Token const& nl);
-    Token matchIndent(Token const& nl);
-    Token matchDedent(Token const& nl);
-
-    /// The current level of indentation. If the indentation stack is empty,
-    /// return an empty token.
-    Token currentIndentation() const {
-      if (Prefix.empty())
-        return {};
-      return Prefix.back();
-    }
-
-    /// Push a new indentation level.
-    void pushIndentation(Token const& Tok) {
-      assert(Tok.isSpace());
-      Prefix.push_back(Tok);
-    }
-
-    /// Pops the current indentation level.
-    Token popIndentation() {
-      Token Tok = Prefix.back();
-      Prefix.pop_back();
-      return Tok;
-    }
-
-    /// Save a dedent token.
-    void pushDedent(Token Tok) {
-      Dedents.push_back(Tok);
-    }
-
-    /// Get the next saved dedent token.
-    Token popDedent() {
-      Token Tok = Dedents.back();
-      Dedents.pop_back();
-      return Tok;
-    }
-
-    clang::DiagnosticsEngine& getDiagnostics() {
-      return Scanner.getDiagnostics();
-    }
-
-    /// The underlying scanner.
-    LineScanner Scanner;
-
-    /// A buffered lookahead token.
-    Token Lookahead;
-
-    /// The indentation stack.
-    std::vector<Token> Prefix;
-
-    /// A single newline/space can match multiple dedents.
-    std::vector<Token> Dedents;
-  };
-
-
-  // Lexer
-
+  /// Lexer
   /// The lexer is ultimately responsible for producing tokens from
   /// input source. This is defined by a stack of scanners, each of
   /// which applies a phase of translation.
   struct Lexer {
     Lexer(clang::SourceManager &SM, File const& F, SyntaxContext &Ctx,
-          clang::Preprocessor &PP, bool &GTIO)
-      : Scanner(SM, F, Ctx, PP, GTIO)
+          clang::Preprocessor &PP)
+      : Scanner(SM, F, Ctx, PP)
     { }
 
-    Token operator()()
-    {
+    Token operator()() {
       return Scanner();
     }
 
-    BlockScanner Scanner;
+    CharacterScanner Scanner;
   };
 
 } // namespace gold
