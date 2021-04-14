@@ -1743,10 +1743,13 @@ clang::Decl *Elaborator::elaborateDeclContent(clang::Scope *InitialScope,
     return processCXXRecordDecl(*this, Context, SemaRef, D);
   if (D->declaresForwardRecordDecl())
     return processCXXForwardRecordDecl(*this, Context, SemaRef, D);
+  if (D->declaresFunctionPointerOrArray())
+    return elaborateVariableDecl(InitialScope, D);
   if (D->declaresNamespace())
     return processNamespaceDecl(*this, Context, SemaRef, D);
   if (D->declaresFunction())
     return elaborateFunctionDecl(D);
+
   return elaborateVariableDecl(InitialScope, D);
 }
 

@@ -4291,6 +4291,21 @@ clang::Expr *ExprElaborator::elaboratePointerType(Declarator *D,
     return nullptr;
 
   clang::QualType Result = Context.CxxAST.getPointerType(TInfo->getType());
+
+  // If we have a function pointer we need to build it manually.
+  if (TInfo->getType()->isFunctionType()) {
+    clang::FunctionTypeLoc TL =
+      TInfo->getTypeLoc().getAs<clang::FunctionTypeLoc>();
+    clang::TypeLocBuilder TLB;
+    clang::TypeSourceInfo *FnTSI = BuildFunctionTypeLoc(Context.CxxAST, TLB,
+      TInfo->getType(), TL.getLocalRangeBegin(), TL.getLParenLoc(),
+      TL.getRParenLoc(), TL.getExceptionSpecRange(), TL.getLocalRangeEnd(),
+      TL.getParams());
+    clang::TypeSourceInfo *FnPtrTSI =
+      BuildFunctionPtrTypeLoc(CxxAST, TLB, FnTSI, Ty->getExprLoc());
+    return SemaRef.buildTypeExpr(FnPtrTSI);
+  }
+
   return SemaRef.buildTypeExpr(Result, OpLoc);
 }
 

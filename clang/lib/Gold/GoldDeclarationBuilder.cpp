@@ -215,6 +215,17 @@ bool DeclarationBuilder::verifyDeclaratorChain(const Syntax *DeclExpr,
   if (Cur == nullptr)
     return false;
 
+  while (Cur->isArray() || Cur->isPointer()) {
+    clang::SourceLocation Loc = Cur->getLoc();
+    Cur = Cur->Next;
+    if (!Cur) {
+      if (RequiresDeclOrError)
+        SemaRef.Diags.Report(Loc,
+                             clang::diag::err_invalid_declaration);
+      return true;
+    }
+  }
+
   if (Cur->isFunction()) {
     TheDecl->FunctionDcl = Cur->getAsFunction();
     Cur = Cur->Next;

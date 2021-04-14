@@ -854,7 +854,7 @@ TypeSourceInfo *BuildAnyTypeLoc(clang::ASTContext &Context, QualType T,
 TypeSourceInfo *BuildFunctionTypeLoc(clang::ASTContext &Context, QualType Ty,
     SourceLocation BeginLoc, SourceLocation LParenLoc,
     SourceLocation RParenLoc, clang::SourceRange ExceptionSpecRange,
-    SourceLocation EndLoc, llvm::SmallVectorImpl<clang::ParmVarDecl *> &Params) {
+    SourceLocation EndLoc, llvm::ArrayRef<clang::ParmVarDecl *> Params) {
   TypeLocBuilder TLB;
 
   return BuildFunctionTypeLoc(Context, TLB, Ty, BeginLoc, LParenLoc, RParenLoc,
@@ -865,7 +865,7 @@ TypeSourceInfo *BuildFunctionTypeLoc(clang::ASTContext &Context,
     clang::TypeLocBuilder &TLB, QualType Ty, SourceLocation BeginLoc,
     SourceLocation LParenLoc, SourceLocation RParenLoc,
     clang::SourceRange ExceptionSpecRange, SourceLocation EndLoc,
-    llvm::SmallVectorImpl<clang::ParmVarDecl *> &Params) {
+    llvm::ArrayRef<clang::ParmVarDecl *> Params) {
   assert(Ty->isFunctionType() &&
          "Constructing FunctionTypeLoc out of non-function type");
 
