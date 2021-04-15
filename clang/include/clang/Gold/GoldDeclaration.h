@@ -161,7 +161,7 @@ struct NNSDeclaratorInfo {
 
 enum InitKind {
   IK_None,
-  IK_Exlaim,
+  IK_Exclaim,
   IK_Equals
 };
 
@@ -195,6 +195,16 @@ public:
 
   /// True if this declares a variable.
   bool declaresVariable() const;
+
+  /// True if this declares any kind of pointer.
+  bool declaresPointer() const;
+
+  /// True if this declares any kind of array.
+  bool declaresArray() const;
+
+  /// True if this declares a pointer to a function or an array of
+  /// function pointers.
+  bool declaresFunctionPointerOrArray() const;
 
   /// Declares variable with in body initialization.
   bool declaresInitializedVariable() const;

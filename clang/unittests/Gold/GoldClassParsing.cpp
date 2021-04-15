@@ -873,6 +873,7 @@ main() : int!
   ASSERT_TRUE(matches(Code.str(), MemberBaseAccessOutsideOfClass));
 }
 
+#if 0
 TEST(ClassParsing, NestedClassWithMemberFunction) {
   StringRef Code = R"(
 outer : type = class:
@@ -1425,3 +1426,4 @@ main():int !{
   auto ToMatch = memberExpr(member(hasName("init")));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
+#endif

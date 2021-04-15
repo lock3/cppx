@@ -33,6 +33,7 @@ set(LLVM_LINK_COMPONENTS
   )
 
 add_clang_unittest(GoldTests
+  GoldAlgebraicDeclaratorElab.cpp
   GoldAlignAsAttributeElab.cpp
   GoldArrayElab.cpp
   GoldArrayExec.cpp

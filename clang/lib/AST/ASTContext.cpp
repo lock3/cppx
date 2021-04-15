@@ -2474,11 +2474,17 @@ TypeInfo ASTContext::getTypeInfoImpl(const Type *T) const {
     break;
 
   case Type::CppxTemplate:
-  case Type::CppxKind:
   case Type::CppxNamespace:
   case Type::CppxArgs:
     Width = 0; // Like void, you can't create objects.
     Align = 1; // Not a real value
+    break;
+
+  case Type::CppxKind:
+    // You really shouldn't be creating kind type objects, but I won't tell
+    // you how to live your life.
+    Width = Target->getCharWidth();
+    Align = Target->getCharAlign();
     break;
   }
 

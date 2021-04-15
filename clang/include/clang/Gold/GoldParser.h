@@ -370,6 +370,7 @@ namespace gold
     Syntax *onList(ArraySemantic S, const llvm::SmallVectorImpl<Syntax*>& Vec);
     Syntax *onBinary(const Token& tok, Syntax *e1, Syntax *e2);
     Syntax *onUnary(const Token& tok, Syntax *e1);
+    Syntax *onPostfix(Token const &Tok, Syntax *E1);
     Syntax *onUnaryOrNull(const Token& tok, Syntax *e1);
     Syntax *onCall(const TokenPair& toks, Syntax *e1, Syntax *e2);
     Syntax *onCall(Syntax *e1, Syntax *e2);

@@ -21,8 +21,8 @@ using namespace gold;
 
 TEST(GoldFunctionType, SimpleFnType) {
   StringRef Code = R"(
-void_void : (() -> void)
-intint_int : ((int, int) -> int)
+void_void : ^(() -> void)
+intint_int : ^((int, int) -> int)
 )";
 
   DeclarationMatcher VV = varDecl(hasName("void_void"),
@@ -42,8 +42,8 @@ T : type = class:
     return 10
 
 main() : int!
-  foo_ptr : T.(int) -> int = &T.foo
-  bar_ptr : T.() -> int = &T.bar
+  foo_ptr : ^(T.(int) -> int) = &T.foo
+  bar_ptr : ^(T.() -> int) = &T.bar
   t : T
 
   foo_test = (t.^foo_ptr)(10)
@@ -77,7 +77,7 @@ T[int].bar() : int!
   return 42
 
 main() : int!
-  foo_ptr : T[int].() -> int = &T[int].bar
+  foo_ptr : ^(T[int].() -> int) = &T[int].bar
   t : T[int]
 
   foo_test = (t.^foo_ptr)()
@@ -105,8 +105,8 @@ T : type = class:
     return 10
 
 main() : int!
-  foo_ptr : T.(int)<const> -> int = &T.foo
-  bar_ptr : T.()<const> -> int = &T.bar
+  foo_ptr : ^(T.(int)<const> -> int) = &T.foo
+  bar_ptr : ^(T.()<const> -> int) = &T.bar
   t : T
 
   foo_test = (t.^foo_ptr)(10)

@@ -39,6 +39,7 @@
 #include "clang/Gold/GoldStmtElaborator.h"
 #include "clang/Gold/GoldSyntaxContext.h"
 #include "clang/Gold/GoldDeclarationBuilder.h"
+#include "clang/Gold/GoldDeclaratorBuilder.h"
 
 
 #ifndef _NDEBUG
@@ -1740,10 +1741,13 @@ clang::Decl *Elaborator::elaborateDeclContent(clang::Scope *InitialScope,
     return processCXXRecordDecl(*this, Context, SemaRef, D);
   if (D->declaresForwardRecordDecl())
     return processCXXForwardRecordDecl(*this, Context, SemaRef, D);
+  if (D->declaresFunctionPointerOrArray())
+    return elaborateVariableDecl(InitialScope, D);
   if (D->declaresNamespace())
     return processNamespaceDecl(*this, Context, SemaRef, D);
   if (D->declaresFunction())
     return elaborateFunctionDecl(D);
+
   return elaborateVariableDecl(InitialScope, D);
 }
 
@@ -1803,10 +1807,8 @@ void getFunctionParameters(Sema &SemaRef, Declaration *D,
     bool ArgsParam = false;
     const Syntax *P = ParamList->getChild(I);
     Declaration *PD = ParamScope->findDecl(P);
-    if (!PD) {
-      continue;
-    }
-    if (!PD->Cxx)
+
+    if (!PD || !PD->Cxx)
       continue;
 
     if (cast<clang::ParmVarDecl>(PD->Cxx)->getType()->isVariadicType()) {
@@ -3132,6 +3134,13 @@ static bool actOnVarTemplateSpecialziation(Sema &SemaRef,
   return false;
 }
 
+static inline bool needsTypeElab(const Declaration *D) {
+  return (D->Decl->Next &&
+          (D->Decl->Next->isArray() ||
+           D->Decl->Next->isPointer() ||
+           D->TypeDcl));
+}
+
 clang::Decl *Elaborator::elaborateVariableDecl(clang::Scope *InitialScope,
                                                Declaration *D) {
   BALANCE_DBG();
@@ -3148,13 +3157,17 @@ clang::Decl *Elaborator::elaborateVariableDecl(clang::Scope *InitialScope,
   // as a valid type alias.
   clang::Expr *TypeExpr = nullptr;
   clang::SourceLocation TypeLocation;
-  if (D->TypeDcl) {
-    ExprElaborator TypeElab(Context, SemaRef);
-    TypeExpr = TypeElab.elaborateExplicitType(D->TypeDcl, nullptr);
-  } else {
+
+  if (!needsTypeElab(D)) {
     // This needs to be handled right away.
     TypeExpr = SemaRef.buildTypeExpr(Context.CxxAST.getAutoDeductType(),
                                      D->Op->getLoc());
+  } else {
+    ExprElaborator TypeElab(Context, SemaRef);
+    if (D->Decl->Next->isArray() || D->Decl->Next->isPointer())
+      TypeExpr = TypeElab.elaborateTypeExpr(D->Decl->Next);
+    else
+      TypeExpr = TypeElab.elaborateTypeExpr(D->TypeDcl);
   }
 
   if (!TypeExpr) {
@@ -3209,6 +3222,9 @@ clang::Decl *Elaborator::elaborateVariableDecl(clang::Scope *InitialScope,
           || isa<clang::NamespaceAliasDecl>(D->Cxx)))
         return D->Cxx;
   } else if (VarType->isTypeOfTypes()) {
+    if (TemporaryElaboration)
+      goto BASIC_VARIABLE;
+
     if (D->Template)
       return elaborateTemplateAliasOrVariable(D);
     return elaborateTypeAlias(D);
@@ -3218,6 +3234,7 @@ clang::Decl *Elaborator::elaborateVariableDecl(clang::Scope *InitialScope,
     return elaborateNsAlias(D);
   }
 
+BASIC_VARIABLE:
   bool IsClassMember = D->isDeclaredWithinClass();
 
   // Cannot have a local extern variable with linkage?
@@ -3286,7 +3303,7 @@ clang::Decl *Elaborator::elaborateVariableDecl(clang::Scope *InitialScope,
     // Attempting to use the previously located decl context in order to
     // correctly identify any previous declarations.
     CxxSema.LookupQualifiedName(Previous, PreviousDC);
-  } else{
+  } else {
     lookupFunctionRedecls(SemaRef, CxxScope, Previous);
   }
 
@@ -3388,6 +3405,11 @@ clang::Decl *Elaborator::elaborateVariableDecl(clang::Scope *InitialScope,
                                     getDefaultVariableStorageClass(SemaRef));
     if (IsClassMember)
       NewVD->setAccess(clang::AS_public);
+
+    if (TemporaryElaboration) {
+      D->Cxx = NewVD;
+      return D->Cxx;
+    }
   }
 
 
@@ -4036,7 +4058,20 @@ clang::Decl *Elaborator::elaborateParameterDecl(Declaration *D) {
     return nullptr;
   }
   ExprElaborator TypeElab(Context, SemaRef);
-  clang::Expr *TypeExpr = TypeElab.elaborateTypeExpr(D->TypeDcl);
+  // clang::Expr *TypeExpr = TypeElab.elaborateTypeExpr(D->TypeDcl);
+  clang::Expr *TypeExpr = nullptr;
+  if (!needsTypeElab(D)) {
+    // This needs to be handled right away.
+    TypeExpr = SemaRef.buildTypeExpr(Context.CxxAST.getAutoDeductType(),
+                                     D->Op->getLoc());
+  } else {
+    ExprElaborator TypeElab(Context, SemaRef);
+    if (D->Decl->Next->isArray() || D->Decl->Next->isPointer())
+      TypeExpr = TypeElab.elaborateTypeExpr(D->Decl->Next);
+    else
+      TypeExpr = TypeElab.elaborateTypeExpr(D->TypeDcl);
+  }
+
   if (!TypeExpr) {
     SemaRef.Diags.Report(D->Op->getLoc(),
                          clang::diag::err_failed_to_translate_type);
@@ -4161,6 +4196,9 @@ clang::Decl *Elaborator::elaborateDeclSyntax(const Syntax *S) {
   // Elaborate the declaration.
   Declaration *D = SemaRef.getCurrentScope()->findDecl(S);
   if (D) {
+    if (TemporaryElaboration)
+      TemporaryElaboratedDecls.insert({D, SemaRef.getCurrentScope()});
+
     elaborateDecl(D);
     elaborateDef(D);
     return D->Cxx;
@@ -4767,6 +4805,11 @@ Declaration *Elaborator::identifyDecl(const Syntax *S) {
   if (SemaRef.getCurrentScope()->hasDeclaration(S))
     return nullptr;
 
+
+  // DeclarationBuilder2(nullptr, llvm::outs()).VisitSyntax(S);
+  // llvm::outs() << '\n';
+  // DeclaratorBuilder Build(Context, SemaRef);
+  // Build(S);
   return DeclarationBuilder(SemaRef).build(S);
 }
 
@@ -6123,6 +6166,8 @@ FusedOpKind getFusedOpKind(Sema &SemaRef, llvm::StringRef Spelling) {
     return FOK_DotCaret;
   if (Tokenization == SemaRef.OperatorAmpersandII)
     return FOK_Ampersand;
+  if (Tokenization == SemaRef.OperatorMapII)
+    return FOK_Map;
   return FOK_Unknown;
 }
 

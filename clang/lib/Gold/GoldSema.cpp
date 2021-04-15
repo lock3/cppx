@@ -222,6 +222,7 @@ Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
     OperatorCaretII(&Context.CxxAST.Idents.get("operator'^'")),
     OperatorDotCaretII(&Context.CxxAST.Idents.get("operator'.^'")),
     OperatorAmpersandII(&Context.CxxAST.Idents.get("operator'&'")),
+    OperatorMapII(&Context.CxxAST.Idents.get("operator'=>'")),
     ConstructorII(&Context.CxxAST.Idents.get("constructor")),
     DestructorII(&Context.CxxAST.Idents.get("destructor")),
     VaStartII(&Context.CxxAST.Idents.get("__builtin_va_start")),
@@ -947,6 +948,7 @@ clang::Scope *Sema::enterClangScope(unsigned int ScopeFlags) {
   CxxSema.CurScope = new clang::Scope(getCurClangScope(), ScopeFlags, Diags);
   // Only do this if we are not a template scope to avoid an assertion inside
   // of setEntity.
+  // FIXME: Why do we do this? What does it do?
   if (!CxxSema.CurScope->isTemplateParamScope())
     CxxSema.CurScope->setEntity(nullptr);
   return CxxSema.CurScope;
@@ -1265,22 +1267,19 @@ clang::QualType Sema::getQualTypeFromTypeExpr(const clang::Expr *TyExpr) {
 clang::TypeSourceInfo *
 Sema::getTypeSourceInfoFromExpr(const clang::Expr *TyExpr,
                                 clang::SourceLocation Loc) {
-  if (!TyExpr) {
+  if (!TyExpr)
     return nullptr;
-  }
 
   if (!TyExpr->getType()->isTypeOfTypes()) {
     Diags.Report(Loc, clang::diag::err_not_a_type);
     return nullptr;
   }
 
-  if (const clang::CppxTypeLiteral *Ty
-                                   = dyn_cast<clang::CppxTypeLiteral>(TyExpr)) {
-
+  if (const auto *Ty = dyn_cast<clang::CppxTypeLiteral>(TyExpr))
     return Ty->getValue();
-  }
 
-  llvm_unreachable("Invaild type expression evaluates to type of types.");
+  return BuildAnyTypeLoc(Context.CxxAST, TyExpr->getType(),
+                         TyExpr->getExprLoc());
 }
 
 
@@ -1594,6 +1593,7 @@ void Sema::diagnoseElabCycleError(Declaration *CycleTerminalDecl) {
   assert(!DeclsBeingElaborated.empty() && "We cannot have an empty stack and a "
          "declaration cycle.");
   assert(CycleTerminalDecl->IdDcl);
+
   Diags.Report(CycleTerminalDecl->IdDcl->getLoc(),
                clang::diag::err_decl_use_cycle);
   for (auto *CycleNote : DeclsBeingElaborated){

@@ -12,9 +12,12 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/Gold/GoldDeclarationBuilder.h"
-
-#include "clang/Gold/GoldSema.h"
+#include "clang/Gold/GoldDeclaratorBuilder.h"
 #include "clang/Gold/GoldElaborator.h"
+#include "clang/Gold/GoldExprElaborator.h"
+#include "clang/Gold/GoldSema.h"
+#include "clang/Gold/GoldSymbol.h"
+
 
 #include "clang/Sema/Lookup.h"
 
@@ -30,44 +33,17 @@ DeclarationBuilder::DeclarationBuilder(Sema &S)
 Declaration *DeclarationBuilder::build(const Syntax *S) {
   gold::Scope *CurrentScope = SemaRef.getCurrentScope();
   gold::Declarator *Dcl = nullptr;
-  switch(CurrentScope->getKind()) {
-    case SK_Namespace:
-      Dcl = handleNamespaceScope(S);
-      break;
-    case SK_Parameter:
-      Dcl = handleParameterScope(S);
-      break;
-    case SK_Template:
-      Dcl = handleTemplateScope(S);
-      break;
-    case SK_Function:
-      Dcl = handleFunctionScope(S);
-      break;
-    case SK_Block:
-      Dcl = handleBlockScope(S);
-      break;
-    case SK_Class:
-      Dcl = handleClassScope(S);
-      break;
-    case SK_Control:
-      Dcl = handleControlScope(S);
-      break;
-    case SK_Catch:
-      Dcl = handleCatchScope(S);
-      break;
-    case SK_Enum:
-      Dcl = handleEnumScope(S);
-      break;
-  }
+  DeclaratorBuilder BuildDeclarator(Context, SemaRef, *this);
 
+  Dcl = BuildDeclarator(S);
   if (!Dcl)
     return nullptr;
 
   Declaration *ParentDecl = SemaRef.getCurrentDecl();
   // FIXME: manage memory
   Declaration *TheDecl = new Declaration(ParentDecl, S, Dcl, InitExpr);
-  TheDecl->Id = Id;
-  TheDecl->OpInfo = OpInfo;
+  TheDecl->Id = BuildDeclarator.Id;
+  TheDecl->OpInfo = BuildDeclarator.OpInfo;
   TheDecl->InitOpUsed = InitOperatorUsed;
 
   // Getting information that's necessary in order to correctly restore
@@ -89,8 +65,11 @@ Declaration *DeclarationBuilder::build(const Syntax *S) {
       !TheDecl->declaresFunction() && !TheDecl->SpecializationArgs && Id) {
     auto DeclSet = CurScope->findDecl(Id);
 
-    if (!DeclSet.empty()) {
-      assert((DeclSet.size() == 1) && "elaborated redefinition.");
+    if (!DeclSet.empty() && DeclSet.size() != 1u) {
+      unsigned DiagID =
+        SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                      "redefinition of identifier %0");
+      SemaRef.Diags.Report(TheDecl->getEndOfDecl(), DiagID) << Id;
       TheDecl->setPreviousDecl(*DeclSet.begin());
     }
   }
@@ -231,12 +210,34 @@ bool DeclarationBuilder::verifyDeclaratorChain(const Syntax *DeclExpr,
   if (Cur == nullptr)
     return false;
 
+  while (Cur->isArray() || Cur->isPointer()) {
+    clang::SourceLocation Loc = Cur->getLoc();
+    Cur = Cur->Next;
+    if (!Cur) {
+      if (RequiresDeclOrError)
+        SemaRef.Diags.Report(Loc,
+                             clang::diag::err_invalid_declaration);
+      return true;
+    }
+  }
+
   if (Cur->isFunction()) {
     TheDecl->FunctionDcl = Cur->getAsFunction();
     Cur = Cur->Next;
   }
   if (Cur == nullptr)
     return false;
+
+  while (Cur->isArray() || Cur->isPointer()) {
+    clang::SourceLocation Loc = Cur->getLoc();
+    Cur = Cur->Next;
+    if (!Cur) {
+      if (RequiresDeclOrError)
+        SemaRef.Diags.Report(Loc,
+                             clang::diag::err_invalid_declaration);
+      return true;
+    }
+  }
 
   // This is the last thing so after cur == nullptr if not then we have an
   // invalid declarator
@@ -733,7 +734,7 @@ static bool deduceVariableSyntax(Sema &SemaRef, Declaration *TheDecl,
                                  bool &HadError) {
 
   HadError = false;
-  if (TheDecl->InitOpUsed == IK_Exlaim) {
+  if (TheDecl->InitOpUsed == IK_Exclaim) {
     HadError = true;
     SemaRef.Diags.Report(TheDecl->Init->getLoc(),
                          clang::diag::err_invalid_function_defintion_syntax);
@@ -949,689 +950,5 @@ bool DeclarationBuilder::classifyDecl(const Syntax *DeclExpr,
          && "Declaration type never deduced and no error found");
   return false;
 }
-
-Declarator *DeclarationBuilder::handleNamespaceScope(const Syntax *S) {
-  EnableFunctions = true;
-  EnableNamespaceDecl = true;
-  EnableTags = true;
-  EnableAliases = true;
-  EnableTemplateParameters = false;
-  RequireTypeForVariable = false;
-  EnableNestedNameSpecifiers = true;
-  RequireAliasTypes = false;
-  RequireTypeForFunctions = false;
-  RequiresDeclOrError = true;
-  ContextDeclaresNewName = true;
-  return makeDeclarator(S);
-}
-
-Declarator *DeclarationBuilder::handleParameterScope(const Syntax *S) {
-  EnableFunctions = false;
-  EnableNamespaceDecl = false;
-  EnableTags = false;
-  EnableAliases = false;  // TODO: This may need to be true in the future.
-                          // But I'm not sure how we could pass a namespace as
-                          // a parameter yet.
-  EnableTemplateParameters = false;
-  RequireTypeForVariable = true;
-  EnableNestedNameSpecifiers = false;
-  RequireAliasTypes = false;
-  RequireTypeForFunctions = false;
-  RequiresDeclOrError = true;
-  ContextDeclaresNewName = true;
-  return makeDeclarator(S);
-}
-
-Declarator *DeclarationBuilder::handleTemplateScope(const Syntax *S) {
-  // This is for template parameters.
-  EnableFunctions = false;
-  EnableNamespaceDecl = false;
-  EnableTags = false;
-  EnableAliases = false;
-  // Template parameters cannot have template parameters unless they
-  // are template template parameters, in which case they should be specified
-  // differently.
-  EnableTemplateParameters = false;
-  RequireTypeForVariable = true;
-  EnableNestedNameSpecifiers = false;
-  RequireAliasTypes = false;
-  RequireTypeForFunctions = false;
-  RequiresDeclOrError = true;
-  return makeDeclarator(S);
-}
-
-Declarator *DeclarationBuilder::handleFunctionScope(const Syntax *S) {
-  EnableFunctions = true;
-  EnableNamespaceDecl = false;
-  EnableTags = true;
-  EnableAliases = true;
-  EnableTemplateParameters = false;
-  RequireTypeForVariable = false;
-  EnableNestedNameSpecifiers = false;
-  RequireAliasTypes = true;
-  RequireTypeForFunctions = true;
-  RequiresDeclOrError = false;
-  ContextDeclaresNewName = true;
-  return makeDeclarator(S);
-}
-
-Declarator *DeclarationBuilder::handleBlockScope(const Syntax *S) {
-  EnableFunctions = true;
-  EnableNamespaceDecl = false;
-  EnableTags = true;
-  EnableAliases = true;
-  EnableTemplateParameters = false;
-  RequireTypeForVariable = false;
-  EnableNestedNameSpecifiers = false;
-  RequireAliasTypes = true;
-  RequireTypeForFunctions = true;
-  RequiresDeclOrError = false;
-  return makeDeclarator(S);
-}
-
-Declarator *DeclarationBuilder::handleClassScope(const Syntax *S) {
-  EnableFunctions = true;
-  EnableNamespaceDecl = false;
-  EnableTags = true;
-  EnableAliases = true;
-  EnableTemplateParameters = true;
-  RequireTypeForVariable = true;
-  EnableNestedNameSpecifiers = false;
-  RequireAliasTypes = false;
-  RequireTypeForFunctions = false;
-  RequiresDeclOrError = true;
-  AllowShortCtorAndDtorSyntax = true;
-  ContextDeclaresNewName = true;
-  return makeDeclarator(S);
-}
-
-Declarator *DeclarationBuilder::handleControlScope(const Syntax *S) {
-  EnableFunctions = false;
-  EnableNamespaceDecl = false;
-  EnableTags = false;
-  EnableAliases = false;
-  RequireTypeForVariable = false;
-  EnableTemplateParameters = false;
-  EnableNestedNameSpecifiers = false;
-  RequireAliasTypes = false;
-  RequireTypeForFunctions = false;
-  RequiresDeclOrError = false;
-  return makeDeclarator(S);
-}
-
-Declarator *DeclarationBuilder::handleEnumScope(const Syntax *S) {
-  EnableFunctions = false;
-  EnableNamespaceDecl = false;
-  EnableTags = false;
-  EnableAliases = false;
-  RequireTypeForVariable = false;
-  EnableTemplateParameters = false;
-  EnableNestedNameSpecifiers = false;
-  RequireAliasTypes = false;
-  RequireTypeForFunctions = false;
-  RequiresDeclOrError = true;
-  IsInsideEnum = true;
-  ContextDeclaresNewName = true;
-  // Special case where enum values are allowed to just be names.
-  if (const auto *Name = dyn_cast<AtomSyntax>(S)) {
-    return handleIdentifier(Name, nullptr);
-  }
-  return makeDeclarator(S);
-}
-
-Declarator *DeclarationBuilder::handleCatchScope(const Syntax *S) {
-  EnableFunctions = false;
-  EnableNamespaceDecl = false;
-  EnableTags = false;
-  EnableAliases = false;
-  RequireTypeForVariable = true;
-  EnableTemplateParameters = false;
-  EnableNestedNameSpecifiers = false;
-  RequireAliasTypes = false;
-  RequireTypeForFunctions = false;
-  RequiresDeclOrError = true;
-  return makeDeclarator(S);
-}
-
-static bool isParameterSyntax(Sema& SemaRef, const Syntax *S) {
-  const auto *Call = dyn_cast<CallSyntax>(S);
-  if (!Call)
-    return false;
-  FusedOpKind Op = getFusedOpKind(SemaRef, Call);
-  if (Op == FOK_Colon) {
-    return true;
-  } else if (Op == FOK_Equals) {
-    const Syntax *Arg = Call->getArgument(0);
-    if (!Arg)
-      return false;
-
-    if (getFusedOpKind(SemaRef, dyn_cast<CallSyntax>(Arg)) == FOK_Colon)
-      return true;
-  }
-  return false;
-}
-
-Declarator *
-DeclarationBuilder::buildNestedTemplate(const ElemSyntax *Elem, Declarator *Next) {
-  const auto *ElemArgs = cast<ListSyntax>(Elem->getArguments());
-  Declarator *CurrentNext = Next;
-  const Syntax *NextNameNode = nullptr;
-
-  // Checking for nested template specifier.
-  if (const auto *InnerTemplate = dyn_cast<ElemSyntax>(Elem->getObject())) {
-    // We can be 100% sure we are some kind of specialization.
-    Declarator *ExplicitDcl = handleSpecialization(Elem, Next);
-    CurrentNext = handleTemplateParams(InnerTemplate, ExplicitDcl);
-    NextNameNode = InnerTemplate->getObject();
-  } else {
-    NextNameNode = Elem->getObject();
-    // We assume that this is a specialization if we are @ a function declaration
-    // and a template if not.
-    if (ElemArgs->getNumChildren() == 0) {
-      // The assumption here is that if the parameter list is empty then we
-      // are some kind of specialization, or an error being elaborated.
-      // It's a specializaton if this is a function, and a possible specialization
-      // if it's something else, the error for this is determined later.
-      Declarator *ExplicitDcl = handleSpecialization(Elem, Next);
-      CurrentNext = handleImplicitTemplateParams(Elem, ExplicitDcl);
-    } else {
-      // Attempting to figure out of this is a full specialization or a template.
-      if (isParameterSyntax(SemaRef, ElemArgs->getChild(0))) {
-        // We are template arguments.
-        CurrentNext = handleTemplateParams(Elem, Next);
-      } else {
-        // We are an explicit specialization.
-        Declarator *ExplicitDcl = handleSpecialization(Elem, Next);
-        CurrentNext = handleImplicitTemplateParams(Elem, ExplicitDcl);
-      }
-    }
-  }
-  Declarator *NameDcl = buildNestedOrRegularName(NextNameNode, CurrentNext);
-  if (!NameDcl)
-    return nullptr;
-  NameDcl->recordAttributes(Elem);
-  return NameDcl;
-}
-
-Declarator *
-DeclarationBuilder::buildNestedNameSpec(const CallSyntax *Call, Declarator *Next) {
-  // Current syntax is a . ?
-  FusedOpKind OpKind = getFusedOpKind(SemaRef, Call);
-  if (OpKind == FOK_MemberAccess) {
-    Declarator *ConstructedName = nullptr;
-    AdditionalNodesWithAttrs.insert(Call);
-    ConstructedName = buildNestedOrRegularName(Call->getArgument(1), Next);
-    // When this happens an error should have already been emitted.
-    if (!ConstructedName)
-      return nullptr;
-
-    // Attempt to build up the LHS
-    return buildNestedTemplateSpecializationOrName(Call->getArgument(0),
-                                                    ConstructedName);
-  } else {
-    // if it's not a nested name then we have an error.
-    if (RequiresDeclOrError)
-      SemaRef.Diags.Report(Call->getLoc(),
-                            clang::diag::err_invalid_declaration);
-    return nullptr;
-  }
-}
-
-Declarator *DeclarationBuilder::buildNestedOrRegularName(const Syntax *S, Declarator *Next) {
-  if (const auto *Call = dyn_cast<CallSyntax>(S)) {
-    return buildNestedNameSpec(Call, Next);
-  }
-  return buildNestedName(S, Next);
-}
-
-Declarator *
-DeclarationBuilder::buildNestedName(const Syntax *S, Declarator *Next) {
-  if (const auto *Es = dyn_cast<ErrorSyntax>(S)) {
-    return handleErrorSyntax(Es, Next);
-  }
-
-  if (const auto *SimpleName = dyn_cast<AtomSyntax>(S)) {
-    return handleNestedNameSpecifier(SimpleName, Next);
-  }
-  if (RequiresDeclOrError)
-    SemaRef.Diags.Report(S->getLoc(),
-                         clang::diag::err_invalid_declaration_kind)
-                         << 2;
-  return nullptr;
-}
-
-Declarator *
-DeclarationBuilder::buildNestedTemplateSpecializationOrName(const Syntax *S,
-                                                            Declarator *Next) {
-  if (const auto *Es = dyn_cast<ErrorSyntax>(S))
-    return handleErrorSyntax(Es, Next);
-
-  if (const auto *Elem = dyn_cast<ElemSyntax>(S))
-    return buildNestedTemplate(Elem, Next);
-
-  return buildNestedOrRegularName(S, Next);
-}
-
-Declarator *
-DeclarationBuilder::buildNameDeclarator(const Syntax *S, Declarator *Next) {
-  if (const ErrorSyntax *Es = dyn_cast<ErrorSyntax>(S))
-    return handleErrorSyntax(Es, Next);
-
-  if (const auto *Name = dyn_cast<AtomSyntax>(S))
-    return handleIdentifier(Name, Next);
-
-  unsigned ErrorIndicator = 0;
-  if (const auto *Call = dyn_cast<CallSyntax>(S)) {
-    FusedOpKind OpKind = getFusedOpKind(SemaRef, dyn_cast<CallSyntax>(S));
-    switch(OpKind) {
-      case FOK_MemberAccess:{
-        if (const auto *IdName = dyn_cast<AtomSyntax>(Call->getArgument(1))){
-          AdditionalNodesWithAttrs.insert(Call);
-          return buildNestedTemplateSpecializationOrName(Call->getArgument(0),
-                                                handleIdentifier(IdName, Next));
-        }
-
-        if (const auto *Es = dyn_cast<ErrorSyntax>(Call->getArgument(1)))
-          return handleErrorSyntax(Es, Next);
-        // This might not be a declararation.
-        ErrorIndicator = 2;
-      }
-      break;
-      case FOK_Unknown:
-        ErrorIndicator = 0;
-        break;
-      default:
-        ErrorIndicator = 2;
-    }
-  } else {
-    ErrorIndicator = 1;
-  }
-  if (RequiresDeclOrError)
-    SemaRef.Diags.Report(S->getLoc(), clang::diag::err_invalid_declaration_kind)
-                         << ErrorIndicator;
-  return nullptr;
-}
-
-Declarator *
-DeclarationBuilder::mainElementTemplateOrSpecialization(const ElemSyntax *Elem,
-                                                        Declarator *Next) {
-  const auto *ElemArgs = cast<ListSyntax>(Elem->getArguments());
-  Declarator *CurrentNext = Next;
-  const Syntax *NextNameNode = nullptr;
-  if (const auto *InnerTemplate = dyn_cast<ElemSyntax>(Elem->getObject())) {
-    // We can be 100% sure we are some kind of specialization, either explicit
-    // or partial.
-    Declarator *ExplicitDcl = handleSpecialization(Elem, Next);
-    CurrentNext = handleTemplateParams(InnerTemplate, ExplicitDcl);
-    NextNameNode = InnerTemplate->getObject();
-  } else {
-    NextNameNode = Elem->getObject();
-    // We assume that this is a specialization if we are @ a function declaration
-    // and a template if not.
-    if (ElemArgs->getNumChildren() == 0) {
-      // The assumption here is that if the parameter list is empty then we
-      // are some kind of specialization, or an error being elaborated.
-      // It's a specializaton if this is a function, and a possible specialization
-      // if it's something else, the error for this is determined later.
-      Declarator *ExplicitDcl = handleSpecialization(Elem, Next);
-      CurrentNext = handleImplicitTemplateParams(Elem, ExplicitDcl);
-    } else {
-      // Attempting to figure out of this is a full specialization or a template.
-      if (isParameterSyntax(SemaRef, ElemArgs->getChild(0))) {
-        // We are template arguments.
-        CurrentNext = handleTemplateParams(Elem, Next);
-      } else {
-        // We are an explicit specialization.
-        Declarator *ExplicitDcl = handleSpecialization(Elem, Next);
-        CurrentNext = handleImplicitTemplateParams(Elem, ExplicitDcl);
-      }
-    }
-  }
-  Declarator *NameDcl = buildNameDeclarator(NextNameNode, CurrentNext);
-  if (!NameDcl)
-    return nullptr;
-  NameDcl->recordAttributes(Elem);
-  return NameDcl;
-}
-
-Declarator *
-DeclarationBuilder::buildTemplateOrNameDeclarator(const Syntax *S,
-                                                  Declarator *Next) {
-  if (const ElemSyntax *TemplateParams = dyn_cast<ElemSyntax>(S)) {
-    return mainElementTemplateOrSpecialization(TemplateParams, Next);
-  } else if (const ErrorSyntax *Es = dyn_cast<ErrorSyntax>(S)) {
-    return handleErrorSyntax(Es, Next);
-  } else {
-    return buildNameDeclarator(S, Next);
-  }
-}
-
-Declarator *
-DeclarationBuilder::buildTemplateFunctionOrNameDeclarator(const Syntax *S,
-                                                          Declarator *Next) {
-  if (const CallSyntax *Func = dyn_cast<CallSyntax>(S)) {
-    if (isa<AtomSyntax>(Func->getCallee())) {
-
-      FusedOpKind OpKind = getFusedOpKind(SemaRef, Func);
-      if (OpKind == FOK_MemberAccess) {
-        AdditionalNodesWithAttrs.insert(Func);
-        return buildTemplateOrNameDeclarator(Func, Next);
-      }
-    }
-
-    Declarator *Fn = handleFunction(Func, Next);
-    Declarator *Temp = buildTemplateOrNameDeclarator(Func->getCallee(), Fn);
-    Declarator *Cur = Temp;
-    while(Cur) {
-      if (isa<IdentifierDeclarator>(Cur))
-        break;
-
-      Cur = Cur->Next;
-    }
-
-    if (Cur)
-      Cur->recordAttributes(Func);
-
-    return Temp;
-  } else if (const ErrorSyntax *Es = dyn_cast<ErrorSyntax>(S)) {
-    return handleErrorSyntax(Es, Next);
-  }
-
-  return buildTemplateOrNameDeclarator(S, Next);
-}
-
-Declarator *
-DeclarationBuilder::buildUsingDirectiveDeclarator(const MacroSyntax *S) {
-  InitExpr = S;
-  return new UsingDirectiveDeclarator(S->getCall()->getLoc(), S);
-}
-
-Declarator *DeclarationBuilder::makeTopLevelDeclarator(const Syntax *S,
-                                                       Declarator *Next) {
-  // If we find an atom, then we're done.
-  if(const CallSyntax *Call = dyn_cast<CallSyntax>(S)) {
-    if (const AtomSyntax *Callee = dyn_cast<AtomSyntax>(Call->getCallee())) {
-
-      // Check for "builtin" operators in the declarator.
-      if (Callee->getSpelling() == "operator':'") {
-        RequiresDeclOrError = true;
-        // The LHS is a template, name or function, and the RHS is
-        // ALWAYS a type (or is always supposed to be a type.)
-        return buildTemplateFunctionOrNameDeclarator(Call->getArgument(0),
-                                        handleType(Call->getArgument(1), Next));
-
-      } else if (Callee->getSpelling() == "operator'.'") {
-        return buildNameDeclarator(Call, Next);
-
-      } else if (Callee->getSpelling() == "operator'in'") {
-        return makeTopLevelDeclarator(Call->getArgument(0), Next);
-      }
-    }
-  } else if (const MacroSyntax *Macro = dyn_cast<MacroSyntax>(S)) {
-    if (const AtomSyntax *Call = dyn_cast<AtomSyntax>(Macro->getCall())) {
-      if (Call->getToken().hasKind(tok::UsingKeyword))
-        return buildUsingDirectiveDeclarator(Macro);
-    }
-  } else if(const ErrorSyntax *Err = dyn_cast<ErrorSyntax>(S)) {
-    return handleErrorSyntax(Err, Next);
-  }
-
-  return buildTemplateFunctionOrNameDeclarator(S, Next);
-}
-
-Declarator *
-DeclarationBuilder::appendConversionType(Declarator *CurDcl) {
-  if (!CurDcl)
-    return CurDcl;
-
-  if (ConversionTypeSyntax) {
-    Declarator *Temp = CurDcl;
-
-    // Going until we reach the end of the declarator chain.
-    while(Temp && Temp->Next) Temp = Temp->Next;
-
-    // If we are the conversion operator the next thing to do is to update the
-    // declarator chain by inserting the type after the function in the chain.
-    Temp->Next = handleType(ConversionTypeSyntax, nullptr);
-  }
-  return CurDcl;
-}
-
-Declarator *DeclarationBuilder::makeDeclarator(const Syntax *S) {
-  return appendConversionType(dispatchAndCreateDeclarator(S));
-}
-
-Declarator *DeclarationBuilder::dispatchAndCreateDeclarator(const Syntax *S) {
-
-  // Handling a special case of an invalid enum identifier .name
-  // without an assignment operator. This need to to output
-  // the correct error message.
-  if (IsInsideEnum)
-    if (const auto *Name = dyn_cast<AtomSyntax>(S))
-      return handleIdentifier(Name, nullptr);
-
-  if (const auto *Macro = dyn_cast<MacroSyntax>(S))
-    return makeTopLevelDeclarator(Macro, nullptr);
-
-  const auto *Call = dyn_cast<CallSyntax>(S);
-  if (!Call) {
-    if (RequiresDeclOrError)
-      SemaRef.Diags.Report(S->getLoc(),
-                           clang::diag::err_invalid_declaration_kind)
-                           << 2;
-    return nullptr;
-  }
-
-  const Syntax *Decl = nullptr;
-  FusedOpKind OpKind = getFusedOpKind(SemaRef, Call);
-  switch(OpKind) {
-
-  case FOK_Equals:{
-    const auto *Args = cast<ListSyntax>(Call->getArguments());
-    Decl = Args->getChild(0);
-
-    // This checks if a declaration already exists in a parent scope.
-    // For example, we are in a member function and are accessing a member.
-    if (const AtomSyntax *LHS = dyn_cast<AtomSyntax>(Decl)) {
-      clang::DeclarationNameInfo DNI({
-          &Context.CxxAST.Idents.get(LHS->getSpelling())
-        }, S->getLoc());
-      if (!ContextDeclaresNewName && !SemaRef.checkUnqualifiedNameIsDecl(DNI)) {
-        // this may need an error message depending on context.
-        return nullptr;
-      }
-    }
-
-    // Explicilty ignoring declarations that use x.y or (x)y.
-    // FIXME: THis will need to be removed eventually.
-    if (const CallSyntax *Inner = dyn_cast<CallSyntax>(Decl))
-      if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(Inner->getCallee()))
-        if (Atom->getSpelling() == "operator'()'") {
-          // FIXME: This needs an diagnostic message here.
-          return nullptr;
-        }
-
-    InitExpr = Args->getChild(1);
-    InitOperatorUsed = IK_Equals;
-    break;
-  }
-  case FOK_MemberAccess:{
-    // Member access is a special case because it requires us to recurse and call
-    // this a 2nd time iff it hase 1 argument instead of 2.
-    if (Call->getNumArguments() != 1)
-      // In the event that this is true then we are not a declaration, we are
-      // the expression x.y
-      return nullptr;
-
-    return handleGlobalNameSpecifier(Call,
-                              dispatchAndCreateDeclarator(Call->getArgument(0)));
-    break;
-  }
-  case FOK_Colon:{
-    RequiresDeclOrError = true;
-    Decl = S;
-    InitExpr = nullptr;
-    break;
-  }
-  case FOK_In:{
-    Decl = S;
-    InitExpr = nullptr;
-    break;
-  }
-  case FOK_Exclaim:{
-    const auto *Args = cast<ListSyntax>(Call->getArguments());
-    Decl = Args->getChild(0);
-    InitExpr = Args->getChild(1);
-    InitOperatorUsed = IK_Exlaim;
-    break;
-  }
-  case FOK_Unknown:
-  case FOK_Arrow:
-  case FOK_If:
-  case FOK_Else:
-  case FOK_Return:
-  case FOK_For:
-  case FOK_While:
-  case FOK_DotDot:
-  case FOK_Const:
-  case FOK_Ref:
-  case FOK_RRef:
-  case FOK_Brackets:
-  case FOK_Throw:
-  case FOK_Parens:
-  case FOK_DotCaret:
-  default: {
-    // None of these operators can be the root of a declaration, with the exception
-    // of very specific contexts.
-    if (RequiresDeclOrError) {
-      if (const AtomSyntax *Callee = dyn_cast<AtomSyntax>(Call->getCallee())) {
-        if (AllowShortCtorAndDtorSyntax &&
-              (Callee->getSpelling() == "constructor"
-              || Callee->getSpelling() == "destructor"
-              || (Callee->isFused()
-                  &&
-                  Callee->getFusionBase() == tok::Conversion
-                )
-            )) {
-          return buildTemplateFunctionOrNameDeclarator(Call, nullptr);
-        }
-      }
-      SemaRef.Diags.Report(Call->getCallee()->getLoc(),
-                           clang::diag::err_invalid_declaration_kind)
-                           << 2;
-    }
-    return nullptr;
-  }
-  }
-
-  // We are not a declaration and not an error here.
-  if (!Decl)
-    return nullptr;
-
-  return makeTopLevelDeclarator(Decl, nullptr);
-}
-
-UnknownDeclarator *
-DeclarationBuilder::handleUnknownADeclSyntax(const Syntax *S, Declarator *Next) {
-  llvm_unreachable("DeclarationBuilder::handleUnknownADeclSyntax");
-}
-
-ErrorDeclarator *
-DeclarationBuilder::handleErrorSyntax(const ErrorSyntax *S, Declarator *Next) {
-  auto *D = new ErrorDeclarator(S, Next);
-  return D;
-}
-
-GlobalNameSpecifierDeclarator *
-DeclarationBuilder::handleGlobalNameSpecifier(const CallSyntax *S, Declarator *Next) {
-  auto Ret = new GlobalNameSpecifierDeclarator(S, Next);
-  Ret->recordAttributes(S);
-  return Ret;
-}
-
-NestedNameSpecifierDeclarator *
-DeclarationBuilder::handleNestedNameSpecifier(const AtomSyntax *S, Declarator *Next) {
-  auto Ret = new NestedNameSpecifierDeclarator(S, Next);
-  Ret->recordAttributes(S);
-  return Ret;
-}
-
-IdentifierDeclarator *
-DeclarationBuilder::handleIdentifier(const AtomSyntax *S, Declarator *Next) {
-  // Don't bother with the unnamed name ("_")
-  if (S->getToken().hasKind(tok::AnonymousKeyword)) {
-    auto *D = new IdentifierDeclarator(S, Next);
-    D->recordAttributes(S);
-    return D;
-  }
-
-  // Translating the simple identifier.
-  OriginalName = OriginalNameStorage = S->getSpelling();
-  Id = &Context.CxxAST.Idents.get(OriginalName);
-  std::string UDLSuffix;
-  assert(OriginalName != "operator'.'");
-  if (OriginalName.find('"') != llvm::StringRef::npos) {
-    if (OriginalName.startswith("operator\"")) {
-      OpInfo = SemaRef.OpInfo.getOpInfo(OriginalName);
-      if (!OpInfo) {
-        SemaRef.Diags.Report(S->getLoc(),
-                             clang::diag::err_operator_cannot_be_overloaded)
-                             << OriginalName;
-        return nullptr;
-      }
-    } else if (OriginalName.startswith("literal\"")) {
-      if (!S->getFusionArg()) {
-        SemaRef.Diags.Report(S->getLoc(),
-                       clang::diag::err_user_defined_literal_invalid_identifier)
-                             << /*invalid suffix*/ 0 << 0;
-        return nullptr;
-      }
-      if (const AtomSyntax *Suffix = dyn_cast<AtomSyntax>(S->getFusionArg())){
-        UDLSuffix = Suffix->getSpelling();
-      }
-
-    } else if (OriginalName.startswith("conversion\"")) {
-      ConversionTypeSyntax = S->getFusionArg();
-    }
-  }
-  auto *D = new IdentifierDeclarator(S, Next);
-  D->recordAttributes(S);
-  D->setUserDefinedLiteralSuffix(UDLSuffix);
-  return D;
-}
-
-FunctionDeclarator *
-DeclarationBuilder::handleFunction(const CallSyntax *S, Declarator *Next) {
-  auto Ret = new FunctionDeclarator(S, Next);
-  Ret->recordAttributes(S);
-  return Ret;
-}
-
-TypeDeclarator *
-DeclarationBuilder::handleType(const Syntax *S, Declarator *Next) {
-  return new TypeDeclarator(S, Next);
-}
-
-TemplateParamsDeclarator *
-DeclarationBuilder::handleTemplateParams(const ElemSyntax *S, Declarator *Next) {
-  auto Ret = new TemplateParamsDeclarator(S, Next);
-  Ret->recordAttributes(S);
-  return Ret;
-}
-
-ImplicitEmptyTemplateParamsDeclarator *
-DeclarationBuilder::handleImplicitTemplateParams(const ElemSyntax *Owner,
-                                                 Declarator *Next) {
-  return new ImplicitEmptyTemplateParamsDeclarator(Owner, Next);
-}
-
-SpecializationDeclarator *
-DeclarationBuilder::handleSpecialization(const ElemSyntax *Specialization,
-                                         Declarator *Next) {
-  auto Ret = new SpecializationDeclarator(Specialization, Next);
-  Ret->recordAttributes(Specialization);
-  return Ret;
-}
-
 
 } // end namespace gold
