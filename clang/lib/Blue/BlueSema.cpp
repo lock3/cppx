@@ -1500,4 +1500,25 @@ Sema::getLookupScopeName(Sema::NNSLookupDecl const &D, Sema::NNSKind K) const {
   } // switch (K);
 }
 
+Declaration *Sema::getLookupContextFromExpr(clang::Expr *E) {
+  clang::QualType ExprTy = E->getType().getDesugaredType(CxxAST);
+  if (!ExprTy->isClassType()) {
+    unsigned DiagID = CxxSema.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                  "type is not a class, enum, or union");
+    CxxSema.Diags.Report(E->getExprLoc(), DiagID);
+    return nullptr;
+  }
+  // Getting the record decl.
+  clang::CXXRecordDecl *RD = ExprTy->getAsCXXRecordDecl();
+  if (!RD) {
+    unsigned DiagID = CxxSema.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                  "type is not a class, enum, or union");
+    CxxSema.Diags.Report(E->getExprLoc(), DiagID);
+    return nullptr;
+  }
+  Declaration *D = getDeclaration(RD);
+  assert(D && "Invalid declaration");
+  return D;
+}
+
 } // end namespace Blue

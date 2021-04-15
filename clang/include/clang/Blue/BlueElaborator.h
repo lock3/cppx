@@ -117,7 +117,7 @@ public:
   clang::Expr *elaborateTemplateDeclarator(const Declarator *Dcl);
   clang::Expr *elaborateClassDeclarator(const Declarator *Dcl);
   clang::Expr *elaborateImplicitTypeDeclarator(const Declarator *Dcl);
-
+  
   clang::Decl *makeValueDecl(Declaration *D);
   clang::Decl *makeObjectDecl(Declaration *D, clang::Expr *Ty);
   clang::Decl *makeTypeDecl(Declaration *D, clang::QualType T);
@@ -170,7 +170,10 @@ public:
   clang::Expr *elaborateTripleExpression(const TripleSyntax *S);
   clang::Expr *elaborateListExpression(const ListSyntax *S);
   clang::Expr *elaborateSequenceExpression(const SequenceSyntax *S);
-
+  clang::Expr *elaborateQualifiedMemberAccess(const QualifiedMemberAccessSyntax *S);
+  clang::Expr *elaborateNestedLookupAccess(clang::Expr *Previous,
+                                           const Syntax *Op,
+                                           const Syntax *RHS);
   // clang::Expr *elaborateSeqExpression(const SeqSyntax *S);
   // clang::Expr *elaborateUnaryExpression(const UnarySyntax *S);
   // clang::Expr *elaborateBinaryExpression(const BinarySyntax *S);
@@ -185,7 +188,7 @@ public:
   void elaborateTemplateArgs(const EnclosureSyntax *Enc, const ListSyntax *ArgList,
                              clang::TemplateArgumentListInfo &TemplateArgs,
                    llvm::SmallVectorImpl<clang::TemplateArgument> &ActualArgs);
-  clang::Expr *elabotateTemplateInstantiationWithArgs(const EnclosureSyntax *Enc, clang::Expr *Base,
+  clang::Expr *elabortateTemplateInstantiationWithArgs(const EnclosureSyntax *Enc, clang::Expr *Base,
                                                     const ListSyntax *ArgList);
   clang::Expr *elaborateClassTemplateSelection(clang::Expr *IdExpr,
                                                const EnclosureSyntax *Enc,

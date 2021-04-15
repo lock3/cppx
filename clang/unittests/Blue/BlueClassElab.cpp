@@ -376,3 +376,35 @@ C : type = {
   );
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
+
+
+TEST(BlueClass, BaseClassMemberDisambiguationAccess) {
+  StringRef Code = R"BLUE(
+B : type = {
+  i:int;
+}
+
+C : type = {
+  :B;
+  i:int;
+}
+
+foo:() = {
+  v:C;
+  v.(B)i = 4;
+}
+)BLUE";
+  auto ToMatch = 
+    memberExpr(
+      hasDescendant(
+        declRefExpr(
+          to(
+            varDecl(
+              hasName("v")
+            )
+          )
+        )
+      )
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}

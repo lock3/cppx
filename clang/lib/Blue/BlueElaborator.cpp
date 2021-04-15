@@ -49,8 +49,41 @@
 #include <iostream>
 
 namespace blue {
+
+#define VALUE 0
+#define NAMESPACE 1
+#define TYPE 2
+#define TEMPLATE 3
+static unsigned getExprResultFromType(clang::QualType const &T) {
+  if (T->isCppxNamespaceType())
+    return NAMESPACE;
+  if (T->isTemplateType())
+    return TEMPLATE;
+  if (T->isTypeOfTypes())
+    return TYPE;
+
+  return VALUE;
+}
+
+static inline bool inUsing(Sema &S) {
+  return false;
+  // return S.getCurrentDecl() && S.getCurrentDecl()->Decl &&
+  //   S.getCurrentDecl()->Decl->isUsingDirective();
+}
+
+static bool isACppxDependentExpr(clang::Expr *E) {
+  return isa<clang::CppxTemplateOrArrayExpr>(E)
+         || isa<clang::CppxDependentMemberAccessExpr>(E)
+         || isa<clang::CppxDerefOrPtrExpr>(E);
+}
 static clang::Expr *buildIdExpr(Sema &SemaRef, llvm::StringRef Id,
                                 clang::SourceLocation Loc);
+
+static clang::Expr *handleLookupInsideType(Sema &SemaRef,
+                                           clang::ASTContext &CxxAST,
+                                           clang::Expr *Prev,
+                                           const Syntax *Op,
+                                           const Syntax *RHS, bool AddressOf);
 static auto Error(Sema &SemaRef, clang::SourceLocation Loc) {
   return SemaRef.getCxxSema().Diags.Report(Loc,
                                            clang::diag::err_blue_elaboration);
@@ -2523,6 +2556,8 @@ clang::Expr *Elaborator::doElaborateExpression(const Syntax *S) {
     return elaborateSequenceExpression(cast<SequenceSyntax>(S));
   case Syntax::Control:
     return elaborateControlExpression(cast<ControlSyntax>(S));
+  case Syntax::QualifiedMemberAccess:
+    return elaborateQualifiedMemberAccess(cast<QualifiedMemberAccessSyntax>(S));
   default:
     break;
   }
@@ -3426,7 +3461,7 @@ clang::Expr *Elaborator::elaborateCallExpression(const CallSyntax *S) {
       return elaborateArraySubscriptExpr(IdExpr, LS);
 
 
-    return elabotateTemplateInstantiationWithArgs(ArgEnclosure, IdExpr, LS);
+    return elabortateTemplateInstantiationWithArgs(ArgEnclosure, IdExpr, LS);
 
 
   } else if (ArgEnclosure->isBraceEnclosure()) {
@@ -3447,7 +3482,7 @@ clang::Expr *Elaborator::elaborateCallExpression(const CallSyntax *S) {
 //   if (auto *ULE = dyn_cast<clang::UnresolvedLookupExpr>(LHS)) {
 //     if (auto LS = dyn_cast<ListSyntax>(S->getRightOperand())) {
 //       if (LS->isBracketList())
-//         return elabotateTemplateInstantiationWithArgs(ULE, LS);
+//         return elabortateTemplateInstantiationWithArgs(ULE, LS);
 //       return elaborateFunctionCall(ULE, S);
 //     } else {
 //       llvm_unreachable("This is a VERY strange kind of function call!");
@@ -3608,6 +3643,475 @@ clang::Expr *Elaborator::elaborateListExpression(const ListSyntax *S) {
 
 clang::Expr *Elaborator::elaborateSequenceExpression(const SequenceSyntax *S) {
   llvm_unreachable("elaborateSequenceExpression not implemented yet");
+}
+/*
+
+clang::Expr *ExprElaborator::elaborateMemberAccessRHS(clang::Expr *ElaboratedLHS,
+                                                      const Syntax *LHS,
+                                                      const CallSyntax *Op,
+                                                      const Syntax *RHS) {
+  if (auto RHSAtom = dyn_cast<AtomSyntax>(RHS))
+    return elaborateMemberAccessRHSAtom(ElaboratedLHS, LHS, Op, RHSAtom);
+
+  // A disambiguator of the form (a)b
+  if (const CallSyntax *Disambig = dyn_cast<CallSyntax>(RHS)) {
+    // llvm::outs() << "Calling elaborateDisambuationSyntax\nElaborated LHS:\n";
+    // ElaboratedLHS->dump();
+    return elaborateDisambuationSyntax(ElaboratedLHS, LHS, Op, Disambig);
+  }
+
+  unsigned DiagID =
+    SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                  "member access from non-object");
+  SemaRef.Diags.Report(LHS->getLoc(), DiagID);
+  return nullptr;
+}
+
+clang::Expr *ExprElaborator::elaborateDisambuationSyntax(clang::Expr *ElaboratedLHS,
+                                                         const Syntax *LHSParam,
+                                                         const CallSyntax *Op,
+                                                         const CallSyntax *Disambig) {
+  clang::Expr *LHS = doElaborateExpr(Disambig->getArgument(0));
+  if (!LHS)
+    return nullptr;
+  if (!LHS->getType()->isTypeOfTypes()) {
+    SemaRef.Diags.Report(LHS->getExprLoc(),
+                          clang::diag::err_unexpected_expression_result)
+      << TYPE << getExprResultFromType(LHS->getType());
+    return nullptr;
+  }
+
+  clang::QualType Base =
+    cast<clang::CppxTypeLiteral>(LHS)->getValue()->getType();
+
+  if (ElaboratedLHS->getType()->isDependentType() || Base->isDependentType()) {
+    return handleDependentTypeNameLookup(SemaRef, Op, ElaboratedLHS, Disambig);
+  }
+  clang::Expr *Res =
+    elaborateNestedLookupAccess(LHS, Op, Disambig->getArgument(1));
+  if (!Res)
+    return nullptr;
+
+  if (ElaboratedLHS->getType()->isTypeOfTypes())
+    return Res;
+
+  if (clang::DeclRefExpr *FieldRef = dyn_cast<clang::DeclRefExpr>(Res)) {
+    if (!isa<clang::FieldDecl>(FieldRef->getDecl())) {
+      // FIXME: This is fine because this could be a reference to a static variable
+      // but then again we'd also need to make sure that the LHS is an object
+      // of some kind.
+      return nullptr;
+    }
+    clang::FieldDecl *Field = cast<clang::FieldDecl>(FieldRef->getDecl());
+
+    // FIXME: needs to handle templates and prefixes
+    clang::CXXScopeSpec SS;
+    clang::TypeLoc BaseTL =
+      BuildAnyTypeLoc(CxxAST, Base, LHS->getExprLoc())->getTypeLoc();
+    SS.Extend(CxxAST, clang::SourceLocation(), BaseTL, Disambig->getLoc());
+    clang::UnqualifiedId Id;
+    clang::IdentifierInfo *IdInfo =
+      &Context.CxxAST.Idents.get(Field->getName());
+    Id.setIdentifier(IdInfo, Field->getLocation());
+    clang::tok::TokenKind AccessTokenKind = clang::tok::TokenKind::period;
+    if (ElaboratedLHS->getType()->isPointerType())
+      AccessTokenKind = clang::tok::TokenKind::arrow;
+    clang::SourceLocation Loc;
+    clang::ExprResult Access =
+      SemaRef.getCxxSema().ActOnMemberAccessExpr(SemaRef.getCurClangScope(),
+                                                 ElaboratedLHS, Op->getLoc(),
+                                                 AccessTokenKind, SS, Loc,
+                                                 Id, nullptr);
+    if (Access.isInvalid())
+      return nullptr;
+
+    return Access.get();
+  }
+
+  // Handling member function rebuild.
+  if (auto *ULE = dyn_cast<clang::UnresolvedLookupExpr>(Res)) {
+    // FIXME: I need to figure out if this will work for static functions.
+    clang::CXXScopeSpec SS;
+    bool IsArrow = false;
+    clang::QualType BaseType = ElaboratedLHS->getType();
+    if (ElaboratedLHS->getType()->isPointerType())
+      IsArrow = true;
+    auto BaseExpr
+        = SemaRef.getCxxSema().PerformMemberExprBaseConversion(ElaboratedLHS,
+                                                               IsArrow);
+    if (BaseExpr.isInvalid())
+      return nullptr;
+    clang::TemplateArgumentListInfo TemplateArgs;
+    return clang::UnresolvedMemberExpr::Create(Context.CxxAST, false,
+                                               BaseExpr.get(), BaseType,
+                                               IsArrow, Op->getLoc(),
+                                               SS.getWithLocInContext(Context.CxxAST),
+                                               clang::SourceLocation(),
+                                               ULE->getNameInfo(),
+                                               &TemplateArgs,
+                                               ULE->decls_begin(), ULE->decls_end());
+  }
+  return Res;
+}
+
+
+clang::Expr *ExprElaborator::elaborateDependentExpr(clang::Expr *ElaboratedLHS,
+                                                    const Syntax *LHS,
+                                                    const CallSyntax *Op,
+                                                    const Syntax *RHS) {
+  const AtomSyntax *Atom = dyn_cast<AtomSyntax>(RHS);
+  if (!Atom) {
+    if (auto NameSpecifierCall = dyn_cast<CallSyntax>(RHS)) {
+      FusedOpKind FokOp = getFusedOpKind(SemaRef, NameSpecifierCall);
+      if (FokOp != FOK_Parens) {
+        llvm_unreachable("as far as I know this can't happen.");
+      }
+      Atom = cast<AtomSyntax>(NameSpecifierCall->getArgument(1));
+      clang::Expr *InnerTy = ExprElaborator(SemaRef.getContext(), SemaRef)
+                              .elaborateExpr(NameSpecifierCall->getArgument(0));
+      clang::SourceLocation Loc = NameSpecifierCall->getArgument(0)->getLoc();
+      if (!InnerTy) {
+        SemaRef.Diags.Report(Loc, clang::diag::err_not_a_type);
+        return nullptr;
+      }
+
+      // Handling special case for nested name specifier being a dependent
+      // expression
+      clang::DeclarationNameInfo DNI({
+              &SemaRef.getContext().CxxAST.Idents.get(Atom->getSpelling())},
+                                    RHS->getLoc());
+      return clang::CppxDependentMemberAccessExpr::Create(
+        SemaRef.getContext().CxxAST, ElaboratedLHS,
+        SemaRef.getContext().CxxAST.DependentTy, Atom->getLoc(), DNI, InnerTy);
+    }
+  } else {
+    auto Ret = elaborateConstructDestructExpr(ElaboratedLHS, LHS, Op, Atom);
+    if (Ret)
+      return Ret;
+  }
+  return handleDependentTypeNameLookup(SemaRef, Op, ElaboratedLHS, RHS);
+}
+
+
+clang::Expr *ExprElaborator::elaborateNestedLookupAccess(clang::Expr *Previous,
+                                                         const CallSyntax *Op,
+                                                         const Syntax *RHS) {
+
+}
+*/
+// static clang::Expr *
+// handleDependentTypeNameLookup(Sema &SemaRef,
+//                               const QualifiedMemberAccessSyntax *Op,
+//                               clang::Expr *Prev, const Syntax *RHS);
+static clang::Expr *
+handleDependentTypeNameLookup(Sema &SemaRef,
+                              const Syntax *Op,
+                              clang::Expr *ElaboratedLHS,
+                              clang::Expr *QualTyExpr,
+                              const Syntax *RHS) {
+  llvm_unreachable("handleDependentTypeNameLookup Not implemented yet.");
+  // clang::IdentifierInfo *Id;
+  // clang::Expr *NameSpec = nullptr;
+  // if (auto Call = dyn_cast<CallSyntax>(RHS)) {
+  //   FusedOpKind FusedOp = getFusedOpKind(SemaRef, Call);
+  //   if (FusedOp == FOK_Parens) {
+  //     auto Name = cast<AtomSyntax>(Call->getArgument(1));
+  //     Id = &SemaRef.getContext().CxxAST.Idents.get(Name->getSpelling());
+  //     NameSpec = ExprElaborator(SemaRef.getContext(), SemaRef)
+  //                                          .elaborateExpr(Call->getArgument(0));
+  //   } else if (FusedOp == FOK_MemberAccess) {
+  //     bool DidError = false;
+  //     if (auto RHSCall = dyn_cast<CallSyntax>(RHS)) {
+  //       NameSpec = ExprElaborator(SemaRef.getContext(), SemaRef)
+  //                                          .elaborateExpr(Call->getArgument(0));
+  //     }
+  //     if (DidError) {
+  //       Op->dump();
+  //       llvm_unreachable("as far as I know this can't happen.");
+  //     }
+  //   } else {
+  //     Op->dump();
+  //     llvm_unreachable("as far as I know this can't happen.");
+  //   }
+  // } else {
+  //   auto Name = cast<AtomSyntax>(RHS);
+  //   Id = &SemaRef.getContext().CxxAST.Idents.get(Name->getSpelling());
+
+  //   // Make sure the name exists in the class.
+  //   // FIXME: what if this is an implicit this?
+  //   // FIXME: what if the name is in a dependent base class?
+  //   if (clang::CXXThisExpr *This = dyn_cast<clang::CXXThisExpr>(Prev)) {
+  //     const clang::PointerType *ThisPtr =
+  //       SemaRef.getCxxSema().getCurrentThisType().getTypePtr()->
+  //       getAs<clang::PointerType>();
+
+  //     clang::QualType ThisPte = ThisPtr->getPointeeType();
+  //     clang::CXXRecordDecl *Record = nullptr;
+  //     if (auto *ICNT = ThisPte->getAs<clang::InjectedClassNameType>())
+  //       Record = ICNT->getDecl();
+  //     else
+  //       Record = ThisPte->getAsCXXRecordDecl();
+
+  //     if (!Record) {
+  //       unsigned DiagID =
+  //         SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+  //                                       "expected object of class type");
+  //       SemaRef.Diags.Report(Prev->getExprLoc(), DiagID);
+  //       return nullptr;
+  //     }
+
+  //     if (!Record->hasMemberName({Id})) {
+  //       unsigned DiagID =
+  //         SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+  //                                       "expected member or member function");
+  //       SemaRef.Diags.Report(RHS->getLoc(), DiagID);
+  //       return nullptr;
+  //     }
+  //   }
+  // }
+
+  // clang::DeclarationNameInfo DNI({Id}, RHS->getLoc());
+  // return clang::CppxDependentMemberAccessExpr::Create(
+  //   SemaRef.getContext().CxxAST, Prev, SemaRef.getContext().CxxAST.DependentTy,
+  //   Op->getLoc(), DNI, NameSpec);
+}
+
+clang::Expr *Elaborator::elaborateQualifiedMemberAccess(const QualifiedMemberAccessSyntax *S) {
+  const Syntax *LHS = S->getOperand(0);
+  const Syntax *Qualifier = S->getOperand(1);
+  const Syntax *RHS = S->getOperand(2);
+  // Verifying that there wasn't an error during parsing.
+  if (LHS == nullptr || Qualifier == nullptr || RHS == nullptr)
+    return nullptr;
+
+  clang::Expr *ElaboratedLHS = elaborateExpression(LHS);
+
+  if (!ElaboratedLHS) {
+    SemaRef.getCxxSema().Diags.Report(LHS->getLocation(),
+                                      clang::diag::err_expected_expression);
+    return nullptr;
+  }
+
+  if (ElaboratedLHS->getType()->isTypeOfTypes())
+    llvm_unreachable("Qualified typename member access not implemented yet.");
+    // return elaborateNestedLookupAccess(ElaboratedLHS, Op, RHS);
+
+  if (isACppxDependentExpr(ElaboratedLHS))
+    llvm_unreachable("Working on it CPPX dependent expressions");
+  //   return elaborateDependentExpr(ElaboratedLHS, LHS, Op, RHS);
+
+ clang::Expr *QualExpr = elaborateExpression(Qualifier);
+  if (!QualExpr)
+    return nullptr;
+
+  if (!QualExpr->getType()->isTypeOfTypes()) {
+    SemaRef.getCxxSema().Diags.Report(QualExpr->getExprLoc(),
+                                  clang::diag::err_unexpected_expression_result)
+                          << TYPE << getExprResultFromType(QualExpr->getType());
+    return nullptr;
+  }
+
+  clang::QualType QualTy =
+    cast<clang::CppxTypeLiteral>(QualExpr)->getValue()->getType();
+
+  if (ElaboratedLHS->getType()->isDependentType() || QualTy->isDependentType())
+    return handleDependentTypeNameLookup(SemaRef, S, ElaboratedLHS, QualExpr,
+                                         RHS);
+
+  clang::Expr *Res = elaborateNestedLookupAccess(QualExpr, S, RHS);
+  if (!Res)
+    return nullptr;
+
+  // if (ElaboratedLHS->getType()->isTypeOfTypes())
+  //   return Res;
+
+  if (clang::DeclRefExpr *FieldRef = dyn_cast<clang::DeclRefExpr>(Res)) {
+    if (!isa<clang::FieldDecl>(FieldRef->getDecl())) {
+      // FIXME: This is fine because this could be a reference to a static variable
+      // but then again we'd also need to make sure that the LHS is an object
+      // of some kind.
+      return nullptr;
+    }
+    clang::FieldDecl *Field = cast<clang::FieldDecl>(FieldRef->getDecl());
+
+    // FIXME: needs to handle templates and prefixes
+    clang::CXXScopeSpec SS;
+    clang::TypeLoc BaseTL = gold::BuildAnyTypeLoc(CxxAST, QualTy,
+        ElaboratedLHS->getExprLoc() )->getTypeLoc();
+    SS.Extend(CxxAST, clang::SourceLocation(), BaseTL, Qualifier->getLocation());
+    clang::UnqualifiedId Id;
+    clang::IdentifierInfo *IdInfo =
+      &CxxAST.Idents.get(Field->getName());
+    Id.setIdentifier(IdInfo, Field->getLocation());
+    clang::tok::TokenKind AccessTokenKind = clang::tok::TokenKind::period;
+    if (ElaboratedLHS->getType()->isPointerType())
+      AccessTokenKind = clang::tok::TokenKind::arrow;
+    clang::SourceLocation Loc;
+    clang::ExprResult Access =
+      SemaRef.getCxxSema().ActOnMemberAccessExpr(SemaRef.getCurClangScope(),
+                                                 ElaboratedLHS, S->getLocation(),
+                                                 AccessTokenKind, SS, Loc,
+                                                 Id, nullptr);
+    if (Access.isInvalid())
+      return nullptr;
+
+    return Access.get();
+  }
+
+  // Handling member function rebuild.
+  if (auto *ULE = dyn_cast<clang::UnresolvedLookupExpr>(Res)) {
+    // FIXME: I need to figure out if this will work for static functions.
+    clang::CXXScopeSpec SS;
+    bool IsArrow = false;
+    clang::QualType BaseType = ElaboratedLHS->getType();
+    if (ElaboratedLHS->getType()->isPointerType())
+      IsArrow = true;
+    auto BaseExpr
+        = SemaRef.getCxxSema().PerformMemberExprBaseConversion(ElaboratedLHS,
+                                                               IsArrow);
+    if (BaseExpr.isInvalid())
+      return nullptr;
+    clang::TemplateArgumentListInfo TemplateArgs;
+    return clang::UnresolvedMemberExpr::Create(CxxAST, false,
+                                               BaseExpr.get(), BaseType,
+                                               IsArrow, S->getLocation(),
+                                               SS.getWithLocInContext(CxxAST),
+                                               clang::SourceLocation(),
+                                               ULE->getNameInfo(),
+                                               &TemplateArgs,
+                                               ULE->decls_begin(), ULE->decls_end());
+  }
+  return Res;
+
+
+
+  //----------------------old code----------------------------------------------
+
+  // if (ElaboratedLHS->getType()->isNamespaceType()) {
+  //   unsigned DiagID = CxxSema.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+  //                               "namespace names cannot have a base specifier "
+  //                               "qualifier");
+  //   CxxSema.Diags.Report(LHS->getLocation(), DiagID);
+  //   return nullptr;
+  // }
+
+  // auto LHSTypeExpr = SemaRef.buildTypeExpr(ElaboratedLHS->getType(),
+  //                                          ElaboratedLHS->getExprLoc());
+  // clang::Expr *QualifierExpr = handleLookupInsideType(SemaRef, CxxAST,
+  //                                                     LHSTypeExpr, S,
+  //                                                     Qualifier,
+  //                                                     /*AddressOf=*/ false);
+
+  // // This means the expression evaluated but didn't evaluate to the
+  // // correct expression.
+  // if (!QualifierExpr->getType()->isTypeOfTypes()) {
+  //   if (QualifierExpr->getType()->isDependentType()) {
+  //     llvm_unreachable("dependent qualified name expression not implemented.");
+  //   }
+  //   unsigned DiagID = CxxSema.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+  //                               "invalid nested name qualifier. qualifier must"
+  //                               "evaluate to a type.");
+  //   CxxSema.Diags.Report(Qualifier->getLocation(), DiagID);
+  //   return nullptr;
+  // }
+  // clang::TypeSourceInfo *QualTInfo = SemaRef.getTypeSourceInfoFromExpr(
+  //     QualifierExpr, QualifierExpr->getExprLoc());
+  // clang::CXXRecordDecl *RD = QualTInfo->getType()->getAsCXXRecordDecl();
+  // if (!RD) {
+  //   unsigned DiagID = CxxSema.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+  //                               "invalid nested name qualifier. qualifier must"
+  //                               "evaluate to a type.");
+  //   CxxSema.Diags.Report(Qualifier->getLocation(), DiagID);
+  //   return nullptr;
+  // }
+  // // return handleLookupInsideType(SemaRef, CxxAST, Qualifier, S,
+  // //                               Qualifier,/*AddressOf=*/ false);
+  //   clang::CXXScopeSpec SS;
+  //   SS.MakeSuper(CxxAST, RD, QualifierExpr->getExprLoc(), QualifierExpr->getExprLoc());
+  //   clang::SourceLocation Loc;
+  //   clang::tok::TokenKind AccessTokenKind = clang::tok::TokenKind::period;
+  //   if (ElaboratedLHS->getType()->isPointerType())
+  //     AccessTokenKind = clang::tok::TokenKind::arrow;
+  //   auto RHSName = cast<AtomSyntax>(RHS);
+  //   // clang::IdentifierInfo *Id = &CxxAST.Idents.get(RHSName->getSpelling());
+  //   clang::UnqualifiedId Id;
+  //   clang::IdentifierInfo *IdInfo =
+  //       &getCxxContext().Idents.get(RHSName->getSpelling());
+  //   Id.setIdentifier(IdInfo, RHSName->getLocation());
+  //   clang::SourceLocation TemplateKWLoc;
+  //   llvm::outs() << "Creating member access?\n";
+  //   clang::ExprResult RHSExpr =
+  //     SemaRef.getCxxSema().ActOnMemberAccessExpr(SemaRef.getCurClangScope(),
+  //                                               ElaboratedLHS, S->getLocation(),
+  //                                               AccessTokenKind, SS,
+  //                                               TemplateKWLoc, Id,
+  //                                               nullptr);
+  // // Handling member elaboration.
+  // // return elaborateMemberAccessRHS(ElaboratedLHS, LHS, Op, RHS);
+  // return RHSExpr.get();
+}
+
+clang::Expr *Elaborator::elaborateNestedLookupAccess(clang::Expr *Previous,
+                                                     const Syntax *Op,
+                                                     const Syntax *RHS) {
+  assert(Previous && isa<clang::CppxTypeLiteral>(Previous)
+         && "Expression scoping.");
+
+  // Build up an NNS to ensure we get an instantiation of any specializations.
+  clang::CppxTypeLiteral *Literal = cast<clang::CppxTypeLiteral>(Previous);
+  clang::TypeSourceInfo *TInfo = Literal->getValue();
+  clang::TypeLocBuilder TLB;
+  TInfo = gold::BuildAnyTypeLoc(CxxAST, TLB, TInfo->getType(),
+                                Op->getLocation());
+
+  if (!inUsing(SemaRef) && TInfo->getType()->isDependentType())
+    return handleDependentTypeNameLookup(SemaRef, Op, Previous, nullptr, RHS);
+
+  clang::TypeLoc TL = TLB.getTypeLocInContext(CxxAST, TInfo->getType());
+  clang::QualType RecordType = TInfo->getType();
+  clang::CXXRecordDecl *RD = RecordType->getAsCXXRecordDecl();
+  // FIXME: Fix using statements in this context.
+  // auto *TST = RecordType->getAs<clang::TemplateSpecializationType>();
+  // if (SemaRef.elaboratingUsingInClassScope() && TST) {
+  //   auto *CTD = dyn_cast_or_null<clang::ClassTemplateDecl>(
+  //     TST->getTemplateName().getAsTemplateDecl());
+  //   clang::QualType ContextType =
+  //     Context.CxxAST.getCanonicalType(clang::QualType(TST, 0));
+  //   clang::QualType Injected = CTD->getInjectedClassNameSpecialization();
+  //   if (Context.CxxAST.hasSameType(Injected, ContextType))
+  //     RD = CTD->getTemplatedDecl();
+  //   else
+  //     llvm_unreachable("partials not implemented");
+  // }
+
+  if (RD) {
+    clang::Sema::NestedNameSpecInfo IdInfo(RD->getIdentifier(),
+                                           RD->getBeginLoc(),
+                                           Op->getLocation(),
+                                           clang::QualType());
+    clang::CXXScopeSpec SS;
+    SS.Extend(CxxAST, clang::SourceLocation(), TL, Op->getLocation());
+    bool Failure = SemaRef.getCxxSema().
+      ActOnCXXNestedNameSpecifier(SemaRef.getCurClangScope(), IdInfo,
+                                  false, SS,
+                                  // RecoveryLookup=
+                                  false,
+                                  // IsCorrected=
+                                  nullptr,
+                                  // OnlyNamespace=
+                                  false);
+    if (Failure) {
+      SemaRef.CurNNSContext.clear();
+      return nullptr;
+    }
+
+    SemaRef.CurNNSContext = SS;
+  }
+  clang::Expr *Ret =
+    handleLookupInsideType(SemaRef, CxxAST, Previous, Op,  RHS, /*IsAddrof=*/false);
+  if (!SemaRef.isExtendedQualifiedLookupContext())
+    SemaRef.CurNNSContext.clear();
+  return Ret;
 }
 
 clang::Expr *BuildReferenceToDecl(Sema &SemaRef,
@@ -4360,7 +4864,7 @@ void Elaborator::elaborateTemplateArgs(const EnclosureSyntax *Enc,
 }
 
 clang::Expr *
-Elaborator::elabotateTemplateInstantiationWithArgs(const EnclosureSyntax *Enc,
+Elaborator::elabortateTemplateInstantiationWithArgs(const EnclosureSyntax *Enc,
                                                    clang::Expr *E,
                                                    const ListSyntax *ArgList) {
 
@@ -4682,11 +5186,11 @@ clang::Expr *Elaborator::elaborateMemberAccess(clang::Expr *LHS,
   return elaborateMemberAccessOp(LHS, S);
 }
 
-static clang::Expr *handleLookupInsideType(Sema &SemaRef,
-                                           clang::ASTContext &CxxAST,
-                                           clang::Expr *Prev,
-                                           const BinarySyntax *Op,
-                                           const Syntax *RHS, bool AddressOf) {
+clang::Expr *handleLookupInsideType(Sema &SemaRef,
+                                    clang::ASTContext &CxxAST,
+                                    clang::Expr *Prev,
+                                    const Syntax *Op,
+                                    const Syntax *RHS, bool AddressOf) {
   clang::TypeSourceInfo *TInfo =
                     SemaRef.getTypeSourceInfoFromExpr(Prev, Prev->getExprLoc());
 

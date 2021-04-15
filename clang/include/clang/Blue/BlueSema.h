@@ -464,7 +464,7 @@ public:
   bool QualifiedLookupContext = false;
 
   /// ============= Members related to NNS typo correction. =============== ///
-
+  Declaration *getLookupContextFromExpr(clang::Expr *E);
   /// A C++ scope specifier that gets set during NNS so we can leverage Clang's
   /// typo correction.
   clang::CXXScopeSpec CurNNSContext;
