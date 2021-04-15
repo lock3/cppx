@@ -68,6 +68,10 @@ public:
   // or a type expression.
   using TypeInfo = clang::TypeSourceInfo;
 
+  void setTemporaryElaboration(bool Val = true) {
+    TemporaryElaboration = Val;
+  }
+
   //===--------------------------------------------------------------------===//
   //                        Value Expression Elaboration                      //
   //===--------------------------------------------------------------------===//
@@ -189,6 +193,8 @@ public:
 
   clang::Expr *elaborateFunctionType(Declarator *D, clang::Expr *Ty);
   clang::Expr *elaborateExplicitType(Declarator *D, clang::Expr *Ty);
+  clang::Expr *elaborateArrayType(Declarator *D, clang::Expr *Ty);
+  clang::Expr *elaboratePointerType(Declarator *D, clang::Expr *Ty);
 
 private:
   clang::Expr *handleOperatorConst(const CallSyntax *S);
@@ -196,6 +202,10 @@ private:
   clang::Expr *handleRRefType(const CallSyntax *S);
   clang::Expr *handleFunctionType(const CallSyntax *S);
   clang::Expr *handleArrayType(const CallSyntax *S);
+  clang::Expr *handleArrayTypeInternal(clang::Expr *IdExpr,
+                                       const Syntax *Index,
+                                       clang::SourceLocation IndexLoc,
+                                       clang::Expr *Ty = nullptr);
   clang::Expr *handleOpPackExpansion(const CallSyntax *S);
   clang::Expr *handleBuiltinCall(const CallSyntax *S, unsigned ID);
   clang::Expr *handleVaArg(const CallSyntax *S);
@@ -232,6 +242,10 @@ public:
 
 private:
   bool ElaboratingAddressOfOp = false;
+
+  // True when we want to elaborate an expression without side effects. Used by
+  // the declarator builder.
+  bool TemporaryElaboration = false;
 
 public:
   /// ---------------------------------------------------------------------- ///

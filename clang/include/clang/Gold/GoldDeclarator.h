@@ -51,6 +51,8 @@ class IdentifierDeclarator;
 class NestedNameSpecifierDeclarator;
 class FunctionDeclarator;
 class TypeDeclarator;
+class ArrayDeclarator;
+class PointerDeclarator;
 class TemplateParamsDeclarator;
 class ImplicitEmptyTemplateParamsDeclarator;
 class SpecializationDeclarator;
@@ -100,6 +102,12 @@ enum DeclaratorKind {
   /// of only a macro syntax rather than a call syntax, and will always be a
   /// singleton sequence.
   DK_UsingDirective,
+
+  /// A simple array index.
+  DK_Array,
+
+  /// A pointer or dereference operator.
+  DK_Pointer,
 
   /// This declarator indicates that there was an error evaluating
   /// the declarator. This usually means that there is an ErrorSyntax node
@@ -157,9 +165,8 @@ public:
   Declarator(DeclaratorKind K, Declarator *P)
     : Kind(K), Next(P) { }
 
-  virtual ~Declarator() {
-    delete Next;
-  }
+  virtual ~Declarator() { }
+
   /// The kind of declarator.
   DeclaratorKind getKind() const {
     return Kind;
@@ -167,6 +174,8 @@ public:
 
   bool isIdentifier() const { return Kind == DK_Identifier; }
   bool isType() const { return Kind == DK_Type; }
+  bool isArray() const { return Kind == DK_Array; }
+  bool isPointer() const { return Kind == DK_Pointer; }
   bool isFunction() const { return Kind == DK_Function; }
   bool isUnknown() const { return Kind == DK_Unknown; }
   bool isGlobalNameSpecifier() const { return Kind == DK_GlobalNamespecifier; }
@@ -193,6 +202,10 @@ public:
   const FunctionDeclarator *getAsFunction() const;
   TypeDeclarator *getAsType();
   const TypeDeclarator *getAsType() const;
+  ArrayDeclarator *getAsArray();
+  const ArrayDeclarator *getAsArray() const;
+  PointerDeclarator *getAsPointer();
+  const PointerDeclarator *getAsPointer() const;
   TemplateParamsDeclarator *getAsTemplateParams();
   const TemplateParamsDeclarator *getAsTemplateParams() const;
   ImplicitEmptyTemplateParamsDeclarator *getAsImplicitEmptyTemplateParams();
@@ -346,22 +359,21 @@ public:
 };
 
 class FunctionDeclarator : public Declarator {
-  const CallSyntax *Params;
+  const Syntax *Params;
   gold::Scope *Scope;
   bool HasVariadicParam = false;
 
 public:
-  FunctionDeclarator(const CallSyntax *ParamsNode, gold::Scope *ParamScope,
+  FunctionDeclarator(const Syntax *Params, gold::Scope *ParamScope,
                      Declarator *Next)
     :Declarator(DK_Function, Next),
-    Params(ParamsNode),
+    Params(Params),
     Scope(ParamScope)
   { }
 
-  FunctionDeclarator(const CallSyntax *ParamsNode, Declarator *Next)
-    :FunctionDeclarator(ParamsNode, nullptr, Next)
+  FunctionDeclarator(const Syntax *Params, Declarator *Next)
+    :FunctionDeclarator(Params, nullptr, Next)
   { }
-  const CallSyntax *getCallNode() const { return Params; }
 
   virtual clang::SourceLocation getLoc() const override;
   virtual std::string getString(bool IncludeKind = false) const override;
@@ -393,12 +405,50 @@ public:
   }
 };
 
+class ArrayDeclarator : public Declarator {
+  const Syntax *IndexExpr;
+
+public:
+  ArrayDeclarator(const Syntax *Index, Declarator *Next)
+    : Declarator(DK_Array, Next), IndexExpr(Index)
+    {}
+
+  virtual clang::SourceLocation getLoc() const override;
+  virtual std::string getString(bool IncludeKind = false) const override;
+  const Syntax *getIndex() const {
+    return IndexExpr;
+  }
+
+  static bool classof(const Declarator *Dcl) {
+    return Dcl->getKind() == DK_Array;
+  }
+};
+
+class PointerDeclarator : public Declarator {
+  const Syntax *Op;
+
+public:
+  PointerDeclarator(const Syntax *Op, Declarator *Next)
+    : Declarator(DK_Pointer, Next), Op(Op)
+    {}
+
+  virtual clang::SourceLocation getLoc() const override;
+  virtual std::string getString(bool IncludeKind = false) const override;
+  const Syntax *getOp() const {
+    return Op;
+  }
+
+  static bool classof(const Declarator *Dcl) {
+    return Dcl->getKind() == DK_Pointer;
+  }
+};
+
 class TemplateParamsDeclarator : public Declarator {
-  const ElemSyntax *Params;
+  const ListSyntax *Params;
   gold::Scope *Scope = nullptr;
   clang::TemplateParameterList *ClangParamList;
 protected:
-  TemplateParamsDeclarator(DeclaratorKind DK, const ElemSyntax *ParamsNode,
+  TemplateParamsDeclarator(DeclaratorKind DK, const ListSyntax *ParamsNode,
                            gold::Scope *ParamScope,
                            Declarator *Next)
     :Declarator(DK, Next),
@@ -407,7 +457,7 @@ protected:
     ClangParamList(nullptr)
   { }
 public:
-  TemplateParamsDeclarator(const ElemSyntax *ParamsNode,
+  TemplateParamsDeclarator(const ListSyntax *ParamsNode,
                            gold::Scope *ParamScope,
                            Declarator *Next)
     :Declarator(DK_TemplateParams, Next),
@@ -416,7 +466,7 @@ public:
     ClangParamList(nullptr)
   { }
 
-  TemplateParamsDeclarator(const ElemSyntax *ParamsNode, Declarator *Next)
+  TemplateParamsDeclarator(const ListSyntax *ParamsNode, Declarator *Next)
     :TemplateParamsDeclarator(ParamsNode, nullptr, Next)
   { }
 
@@ -471,11 +521,11 @@ public:
 };
 
 class SpecializationDeclarator : public Declarator {
-  const ElemSyntax *Args;
+  const ListSyntax *Args;
   clang::TemplateArgumentListInfo ArgListInfo;
   bool CreatedAnError = false;
 public:
-  SpecializationDeclarator(const ElemSyntax *SpecializationArgs,
+  SpecializationDeclarator(const ListSyntax *SpecializationArgs,
                            Declarator *Next)
     :Declarator(DK_Specialization, Next),
     Args(SpecializationArgs)

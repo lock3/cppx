@@ -57,12 +57,28 @@ FunctionDeclarator *Declarator::getAsFunction() {
 const FunctionDeclarator *Declarator::getAsFunction() const {
   return cast<FunctionDeclarator>(this);
 }
+
 TypeDeclarator *Declarator::getAsType() {
   return cast<TypeDeclarator>(this);
 }
 const TypeDeclarator *Declarator::getAsType() const {
   return cast<TypeDeclarator>(this);
 }
+
+ArrayDeclarator *Declarator::getAsArray() {
+  return cast<ArrayDeclarator>(this);
+}
+const ArrayDeclarator *Declarator::getAsArray() const {
+  return cast<ArrayDeclarator>(this);
+}
+
+PointerDeclarator *Declarator::getAsPointer() {
+  return cast<PointerDeclarator>(this);
+}
+const PointerDeclarator *Declarator::getAsPointer() const {
+  return cast<PointerDeclarator>(this);
+}
+
 TemplateParamsDeclarator *Declarator::getAsTemplateParams() {
   return cast<TemplateParamsDeclarator>(this);
 }
@@ -224,12 +240,11 @@ std::string FunctionDeclarator::getString(bool IncludeKind) const {
 }
 
 const ListSyntax *FunctionDeclarator::getParams() const {
-  if (Params) {
-    if (isa<ListSyntax>(Params->getArguments())) {
-      return cast<ListSyntax>(Params->getArguments());
-    }
-  }
-  return nullptr;
+  if (!Params)
+    return nullptr;
+
+  assert (isa<ListSyntax>(Params) && "invalid parameters in function declarator");
+  return cast<ListSyntax>(Params);
 }
 
 // ------------------ TypeDeclarator -------------------------------------------
@@ -247,6 +262,26 @@ std::string TypeDeclarator::getString(bool IncludeKind) const {
     Ret += "complex-type-expression";
   }
   return Ret;
+}
+
+// ------------------ ArrayDeclarator --------------------------------------- //
+
+clang::SourceLocation ArrayDeclarator::getLoc() const {
+  return IndexExpr->getLoc();
+}
+
+std::string ArrayDeclarator::getString(bool IncludeKind) const {
+  return "[]";
+}
+
+// ------------------ PointerDeclarator ------------------------------------- //
+
+clang::SourceLocation PointerDeclarator::getLoc() const {
+  return Op->getLoc();
+}
+
+std::string PointerDeclarator::getString(bool IncludeKind) const {
+  return "^";
 }
 
 // ------------------ TemplateParamsDeclarator ---------------------------------
@@ -269,7 +304,7 @@ const Syntax *TemplateParamsDeclarator::getSyntax() const {
 }
 
 const ListSyntax *TemplateParamsDeclarator::getParams() const {
-  return cast<ListSyntax>(Params->getArguments());
+  return Params;
 }
 
 // ------------------ ImplicitEmptyTemplateParamsDeclarator --------------------
@@ -304,11 +339,11 @@ std::string SpecializationDeclarator::getString(bool IncludeKind) const {
 }
 
 bool SpecializationDeclarator::HasArguments() const {
-  return getArgs()->getNumChildren();
+  return getArgs() && getArgs()->getNumChildren();
 }
 
 const ListSyntax *SpecializationDeclarator::getArgs() const {
-  return cast<ListSyntax>(Args->getArguments());
+  return Args;
 }
 
 // ------------------ UsingDirectiveDeclarator ------------------------------ //

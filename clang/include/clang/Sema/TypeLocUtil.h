@@ -18,6 +18,7 @@
 #include "clang/AST/Type.h"
 #include "clang/Basic/SourceLocation.h"
 
+#include "llvm/ADT/APInt.h"
 #include "llvm/ADT/SmallVector.h"
 
 namespace clang {
@@ -53,13 +54,13 @@ clang::TypeSourceInfo *BuildAnyTypeLoc(clang::ASTContext &Context,
 clang::TypeSourceInfo *BuildFunctionTypeLoc(clang::ASTContext &Context,
      clang::QualType Ty, SourceLocation BeginLoc, SourceLocation LParenLoc,
      SourceLocation RParenLoc, clang::SourceRange ExceptionSpecRange,
-     SourceLocation EndLoc, llvm::SmallVectorImpl<clang::ParmVarDecl *> &Params);
+     SourceLocation EndLoc, llvm::ArrayRef<clang::ParmVarDecl *> Params);
 
 clang::TypeSourceInfo *BuildFunctionTypeLoc(clang::ASTContext &Context,
      clang::TypeLocBuilder &TLB, clang::QualType Ty, SourceLocation BeginLoc,
      SourceLocation LParenLoc, SourceLocation RParenLoc,
      clang::SourceRange ExceptionSpecRange, SourceLocation EndLoc,
-     llvm::SmallVectorImpl<clang::ParmVarDecl *> &Params);
+     llvm::ArrayRef<clang::ParmVarDecl *> Params);
 
 clang::TypeSourceInfo *BuildFunctionPtrTypeLoc(clang::ASTContext &Context,
                                                clang::TypeSourceInfo *FnTSI,

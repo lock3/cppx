@@ -195,7 +195,14 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::ConstantArrayTypeLoc>
 
 template<> TypeSourceInfo *BuildTypeLoc<clang::IncompleteArrayTypeLoc>
 (clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
-  llvm_unreachable("unimplemented");
+  const clang::IncompleteArrayType *ArrayType =
+    clang::cast<clang::IncompleteArrayType>(Ty->getAsArrayTypeUnsafe());
+  QualType InnerType = ArrayType->getElementType();
+  BuildAnyTypeLoc(Ctx, TLB, InnerType, Loc);
+
+  auto TypeLocInstance = TLB.push<clang::IncompleteArrayTypeLoc>(Ty);
+  TypeLocInstance.initializeLocal(Ctx, Loc);
+  return TLB.getTypeSourceInfo(Ctx, Ty);
 }
 
 template<> TypeSourceInfo *BuildTypeLoc<clang::IncompleteArrayTypeLoc>
@@ -851,7 +858,7 @@ TypeSourceInfo *BuildAnyTypeLoc(clang::ASTContext &Context, QualType T,
 TypeSourceInfo *BuildFunctionTypeLoc(clang::ASTContext &Context, QualType Ty,
     SourceLocation BeginLoc, SourceLocation LParenLoc,
     SourceLocation RParenLoc, clang::SourceRange ExceptionSpecRange,
-    SourceLocation EndLoc, llvm::SmallVectorImpl<clang::ParmVarDecl *> &Params) {
+    SourceLocation EndLoc, llvm::ArrayRef<clang::ParmVarDecl *> Params) {
   TypeLocBuilder TLB;
 
   return BuildFunctionTypeLoc(Context, TLB, Ty, BeginLoc, LParenLoc, RParenLoc,
@@ -862,7 +869,7 @@ TypeSourceInfo *BuildFunctionTypeLoc(clang::ASTContext &Context,
     clang::TypeLocBuilder &TLB, QualType Ty, SourceLocation BeginLoc,
     SourceLocation LParenLoc, SourceLocation RParenLoc,
     clang::SourceRange ExceptionSpecRange, SourceLocation EndLoc,
-    llvm::SmallVectorImpl<clang::ParmVarDecl *> &Params) {
+    llvm::ArrayRef<clang::ParmVarDecl *> Params) {
   assert(Ty->isFunctionType() &&
          "Constructing FunctionTypeLoc out of non-function type");
 

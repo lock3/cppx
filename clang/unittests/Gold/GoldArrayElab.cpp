@@ -41,3 +41,19 @@ main() : int!
 
   ASSERT_TRUE(matches(Code.str(), YMatcher));
 }
+
+TEST(ArrayMacro, ArrayImplicitRHS) {
+  StringRef Code = R"(
+x[] : int = array{1, 2, 3};
+)";
+
+  ASSERT_TRUE(matches(Code.str(), varDecl(hasType(asString("int [3]")))));
+}
+
+TEST(ArrayMacro, ArrayImplicitLHS) {
+  StringRef Code = R"(
+x : []int = array{1, 2, 3};
+)";
+
+  ASSERT_TRUE(matches(Code.str(), varDecl(hasType(asString("int [3]")))));
+}

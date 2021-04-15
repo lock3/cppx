@@ -666,6 +666,7 @@ public:
   clang::IdentifierInfo *const OperatorCaretII;
   clang::IdentifierInfo *const OperatorDotCaretII;
   clang::IdentifierInfo *const OperatorAmpersandII;
+  clang::IdentifierInfo *const OperatorMapII;
 
   // Tokens used for constructor and destructor;
   clang::IdentifierInfo *const ConstructorII;
@@ -1396,6 +1397,19 @@ struct ElabBalanceChecker {
     }
     assert(!didError && "Pre/post/invariant condition violation");
   }
+};
+
+struct SuppressDiagnosticsRAII
+{
+  SuppressDiagnosticsRAII(clang::Sema &CxxSema)
+    : CxxSema(CxxSema), Saved(CxxSema.Diags.getSuppressAllDiagnostics()) {
+    CxxSema.Diags.setSuppressAllDiagnostics(true);
+  }
+  ~SuppressDiagnosticsRAII() {
+    CxxSema.Diags.setSuppressAllDiagnostics(Saved);
+  }
+  clang::Sema &CxxSema;
+  bool Saved;
 };
 
 } // namespace gold

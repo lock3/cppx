@@ -137,6 +137,45 @@ bool Declaration::declaresVariable() const {
   }
 }
 
+bool Declaration::declaresPointer() const {
+  Declarator *D = Decl;
+  while (D) {
+    if (D->getKind() == DK_Pointer)
+      return true;
+
+    D = D->Next;
+  }
+
+  return false;
+}
+
+bool Declaration::declaresArray() const {
+  Declarator *D = Decl;
+  while (D) {
+    if (D->getKind() == DK_Array)
+      return true;
+
+    D = D->Next;
+  }
+
+  return false;
+}
+
+bool Declaration::declaresFunctionPointerOrArray() const {
+  Declarator *D = Decl;
+  bool ArrayOrPtr = false;
+  while (D) {
+    if (D->getKind() == DK_Pointer || D->getKind() == DK_Array)
+      ArrayOrPtr = true;
+    if (D->getKind() == DK_Function)
+      return ArrayOrPtr;
+
+    D = D->Next;
+  }
+
+  return false;
+}
+
 bool Declaration::templateHasDefaultParameters() const {
   // TODO: This is necessary for figuring out if a template parameter has
   // delayed evaluation or not.
