@@ -305,10 +305,6 @@ static inline bool isDeclIntroducer(tok::TokenKind K) {
 ///     definition
 Syntax *Parser::parseDeclaration() {
   Token Intro;
-  // if (isDeclIntroducer(getLookahead()))
-  //   Intro = consumeToken();
-
-
   Syntax *Pars = nullptr;
   if (nextTokenIs(tok::UsingKeyword)) {
     Pars = parsePrefixExpression();
@@ -1380,13 +1376,17 @@ Syntax *Parser::parsePrefixExpression() {
     }
     return parseFunctionConstructor();
   }
+  case tok::UsingKeyword:{
+    Token Op = consumeToken();
+    Syntax *E = parseExpression();
+    return new PrefixSyntax(Op, E);
+  }
   case tok::PlusPlus:
   case tok::MinusMinus:
   case tok::ConstKeyword:
   case tok::Caret:
   case tok::Plus:
   case tok::Minus:
-  case tok::UsingKeyword:
   case tok::NotKeyword: {
     Token Op = consumeToken();
     Syntax *E = parsePrefixExpression();

@@ -226,6 +226,13 @@ Declaration *Elaborator::createUsingDecl(const PrefixSyntax *Def,
                                          const Syntax *Init) {
   Declaration *TheDecl =
     new Declaration(SemaRef.getCurrentDecl(), Def, Dcl, Init);
+  if (auto Bin = dyn_cast<InfixSyntax>(Def->getOperand())) {
+    if (Bin->getOperation().hasKind(tok::Equal))
+      if (const IdentifierSyntax *Id
+          = dyn_cast_or_null<IdentifierSyntax>(Bin->getOperand(0))) {
+            TheDecl->Id = &SemaRef.getCxxAST().Idents.get({Id->getSpelling()});
+      }
+  }
   Scope *CurScope = SemaRef.getCurrentScope();
   CurScope->addDecl(TheDecl);
   TheDecl->DeclaringContext = SemaRef.getCurClangDeclContext();
@@ -330,13 +337,79 @@ clang::Decl *Elaborator::elaborateDefDecl(const DeclarationSyntax *S) {
 
   return elaborateDeclarationTyping(D);
 }
+// This is to handle using x = y; declaration syntax.
+static clang::Decl *handleNamespaceAliasDecl(Sema &SemaRef,
+                                             Declaration *D,
+                                             const BinarySyntax *Arg,
+                                             clang::SourceLocation UsingLoc) {
+  // clang::SourceLocation ArgLoc = Arg->getLocation();
+  clang::DiagnosticsEngine &Diags = SemaRef.getCxxSema().Diags;
+  const Syntax *Name = Arg->getOperand(0);
+  const Syntax *Init = Arg->getOperand(1);
+  if (!Name) {
+    unsigned DiagID =
+      Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                            "namespace alias missing name");
+    Diags.Report(UsingLoc, DiagID);
+    return nullptr;
+  }
+
+  clang::Expr *E = Elaborator(SemaRef).elaborateExpression(Arg->getOperand(1));
+  if (!E) {
+    Error(SemaRef, UsingLoc) << "invalid using expression";
+    return nullptr;
+  }
+  if (!isa<IdentifierSyntax>(Name)) {
+    Error(SemaRef, Name->getLocation()) << "invalid name for using declaration";
+    return nullptr;
+  }
+  const IdentifierSyntax *NameId = cast<IdentifierSyntax>(Name);
+
+  clang::IdentifierInfo *IdInfo =
+    &SemaRef.getCxxAST().Idents.get(NameId->getSpelling());
+
+  if (D->declaredWithinClassBody()) {
+    SemaRef.getCxxSema().Diags.Report(Name->getLocation(),
+                         clang::diag::err_namespace_alias_within_class);
+    return nullptr;
+  }
+
+  clang::Decl *PossibleNs = SemaRef.getDeclFromExpr(E, Init->getLocation());
+  if (!PossibleNs)
+    return nullptr;
+  assert(isa<clang::NamedDecl>(PossibleNs) && "invalid namespace");
+
+
+  clang::NamedDecl *Ns = cast<clang::NamedDecl>(PossibleNs)->getUnderlyingDecl();
+  clang::DeclContext *Owner = D->DeclaringContext;
+  clang::NamespaceAliasDecl *NsAD
+    = clang::NamespaceAliasDecl::Create(SemaRef.getCxxAST(), Owner,
+                                        UsingLoc, Name->getLocation(),
+                                        IdInfo, clang::NestedNameSpecifierLoc(),
+                                        Init->getLocation(), Ns);
+  Owner->addDecl(NsAD);
+  D->setCxx(SemaRef, NsAD);
+
+  // Nested name specifiers are looked up by clang, so we need to convince
+  // the clang lookup that this namespace actually exists.
+  SemaRef.getCurClangScope()->AddDecl(NsAD);
+  SemaRef.getCxxSema().IdResolver->AddDecl(NsAD);
+  D->CurrentPhase = Phase::Initialization;
+
+  return NsAD;
+}
 
 static clang::Decl *handleUsing(Sema &SemaRef,
+                                Declaration *D,
                                 const Syntax *Arg,
                                 clang::SourceLocation UsingLoc) {
   Sema::ExtendQualifiedLookupRAII ExQual(SemaRef);
   clang::SourceLocation ArgLoc = Arg->getLocation();
   clang::DiagnosticsEngine &Diags = SemaRef.getCxxSema().Diags;
+  if (auto Bin = dyn_cast<InfixSyntax>(Arg)) {
+    if (Bin->getOperation().hasKind(tok::Equal))
+      return handleNamespaceAliasDecl(SemaRef, D, Bin, UsingLoc);
+  }
   clang::Expr *E = Elaborator(SemaRef).elaborateExpression(Arg);
   if (!E)
     return nullptr;
@@ -444,25 +517,25 @@ static clang::Decl *handleUsing(Sema &SemaRef,
     return nullptr;
   }
 
-  clang::Decl *D = SemaRef.getCxxSema().ActOnUsingDeclaration(
+  clang::Decl *UsingDcl = SemaRef.getCxxSema().ActOnUsingDeclaration(
     CxxScope, AS, UsingLoc, TypenameLoc,
     SemaRef.CurNNSContext, Name, clang::SourceLocation(), AttrView);
-  if (!D)
+  if (!UsingDcl)
     return nullptr;
   // FIXME: if this comes from an operator'.', elaborate lhs to
   // differentiate classes and namespaces.
-  if (clang::UsingDecl *UD = dyn_cast<clang::UsingDecl>(D)) {
+  if (clang::UsingDecl *UD = dyn_cast<clang::UsingDecl>(UsingDcl)) {
     for (auto Shadow : cast<clang::UsingDecl>(UD)->shadows())
       SemaRef.getCurrentScope()->Shadows.insert(Shadow);
   }
 
-  return D;
+  return UsingDcl;
 }
 
 clang::Decl *Elaborator::elaboratePrefixDecl(const PrefixSyntax *S) {
   Declaration *D = SemaRef.getCurrentScope()->findDecl(S);
   if (S->getOperation().hasKind(tok::UsingKeyword)) {
-    clang::Decl *Ret = handleUsing(SemaRef, S->getOperand(),
+    clang::Decl *Ret = handleUsing(SemaRef, D, S->getOperand(),
                                    S->getOperation().getLocation());
     D->CurrentPhase = Phase::Initialization;
     return Ret;
