@@ -200,6 +200,8 @@ struct Declaration {
     return D->getLocation();
   }
 
+  clang::AccessSpecifier getAccessSpecifier() const;
+
   void dump();
 private:
   /// The corresponding C++ declaration.

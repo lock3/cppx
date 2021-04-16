@@ -304,8 +304,9 @@ Declaration *Elaborator::identifyDeclaration(const Syntax *S) {
   switch (S->getKind()) {
   case Syntax::Declaration:
     return buildDeclaration(cast<DeclarationSyntax>(S));
-  case Syntax::Prefix:
+  case Syntax::Prefix:{
     return buildDeclaration(cast<PrefixSyntax>(S));
+  }
   default:
     break;
   }
@@ -652,6 +653,13 @@ clang::Decl *Elaborator::doElaborateDeclarationTyping(Declaration *D) {
     Error(D->getErrorLocation(), "Elaboration for this kind of declaration not implemented yet.");
     return nullptr;
   }
+  if (!D->isDeclaredInClass() && isa<DeclarationSyntax>(D->Def)) {
+    auto Def = D->asDef();
+    if (Def->getAccessSpecifier()) {
+      Error(D->getErrorLocation(),
+            "access specifier applied to non-class declaration");
+    }
+  }
   switch(D->getDeclSyntaxKind()) {
   case Declaration::Variable:
     return makeValueDecl(D);
@@ -761,8 +769,12 @@ clang::Decl *Elaborator::elaborateTypeAliasOrVariableTemplate(Declaration *D) {
                                                       Loc, DeclName, MTP.back(),
                                                       VDecl);
     if (InClass) {
-      VTD->setAccess(clang::AS_public);
-      VDecl->setAccess(clang::AS_public);
+      clang::AccessSpecifier AS = clang::AS_public;
+      if (D->getAccessSpecifier() != clang::AS_none) {
+        AS = D->getAccessSpecifier();
+      }
+      VTD->setAccess(AS);
+      VDecl->setAccess(AS);
     }
     SemaRef.getCxxSema().PushOnScopeChains(VTD, SemaRef.getCurClangScope(),
                                            true);
@@ -793,9 +805,13 @@ clang::Decl *Elaborator::elaborateTypeAliasOrVariableTemplate(Declaration *D) {
     // SemaRef.setDeclForDeclaration(D, TypeAlias);
     D->setCxx(SemaRef, TypeAlias);
     // Only the type alias is fully elaborated at this point in time.
-    // if (InClass) {
-    //   D->Cxx->setAccess(clang::AS_public);
-    // }
+    if (InClass) {
+      clang::AccessSpecifier AS = clang::AS_public;
+      if (D->getAccessSpecifier() != clang::AS_none) {
+        AS = D->getAccessSpecifier();
+      }
+      D->getCxx()->setAccess(AS);
+    }
     D->CurrentPhase = Phase::Initialization;
   }
 
@@ -1258,7 +1274,7 @@ clang::Decl *Elaborator::makeObjectDecl(Declaration *D, clang::Expr *Ty) {
 
   assert(Ty->getType()->isTypeOfTypes() && "type of declaration is not a type");
   clang::TypeSourceInfo *T = cast<clang::CppxTypeLiteral>(Ty)->getValue();
-
+  
   clang::DeclContext *Owner = SemaRef.getCurClangDeclContext();
   clang::VarDecl *VD =
     clang::VarDecl::Create(CxxAST, Owner, Loc, Loc, Id, T->getType(), T,
@@ -1300,15 +1316,17 @@ clang::Decl *Elaborator::makeTypeDecl(Declaration *D, clang::QualType T) {
   clang::SourceLocation Loc = Init->getLocation();
   clang::MultiTemplateParamsArg MTP;
 
-
+  clang::AccessSpecifier AS = clang::AS_public;
+  if (D->getAccessSpecifier() != clang::AS_none) {
+    AS = D->getAccessSpecifier();
+  }
   // Constructing the type alias on the way out because we need to correctly
   // construct its internal type before continuing.
   clang::TypeResult TR(PT);
   clang::Decl *TypeAlias = SemaRef.getCxxSema().ActOnAliasDeclaration(
-      SemaRef.getCurClangScope(), clang::AS_public, MTP, Loc, Id,
+      SemaRef.getCurClangScope(), AS, MTP, Loc, Id,
       clang::ParsedAttributesView(), TR, nullptr);
   D->setCxx(SemaRef, TypeAlias);
-  // SemaRef.addDeclToDecl(TypeAlias, D);
   SemaRef.checkForRedeclaration(D);
   return TypeAlias;
 }
@@ -1581,7 +1599,12 @@ bool Elaborator::buildMethod(Declaration *Fn, clang::DeclarationName const &Name
                                        ExLoc);
   }
 
-  (*FD)->setAccess(clang::AS_public);
+  clang::AccessSpecifier AS = clang::AS_public;
+  if (Fn->getAccessSpecifier() != clang::AS_none) {
+    AS = Fn->getAccessSpecifier();
+  }
+  // FTD->setAccess(AS);
+  (*FD)->setAccess(AS);
   return false;
 }
 
@@ -1853,8 +1876,13 @@ clang::Decl *Elaborator::makeFunctionDecl(Declaration *D) {
     FTD->setLexicalDeclContext(Owner);
     FD->setDescribedFunctionTemplate(FTD);
     Owner->addDecl(FTD);
-    if (InClass)
-      FTD->setAccess(clang::AS_public);
+    if (InClass){
+      clang::AccessSpecifier AS = clang::AS_public;
+      if (D->getAccessSpecifier() != clang::AS_none) {
+        AS = D->getAccessSpecifier();
+      }
+      FTD->setAccess(AS);
+    }
 
     // An auto return type here is always dependent.
     if (FD->getReturnType()->isUndeducedAutoType())
@@ -1940,9 +1968,12 @@ clang::Decl *Elaborator::makeClass(Declaration *D) {
   CXXScopeSpec SS;
   TypeResult UnderlyingType;
   AccessSpecifier AS = AS_none;
-  if (WithinClass)
+  if (WithinClass) {
     AS = AS_public;
-
+    if (D->getAccessSpecifier() != clang::AS_none) {
+      AS = D->getAccessSpecifier();
+    }
+  }
   clang::SourceLocation IdLoc = D->Def->getLocation();
   clang::TypeSpecifierType TST = clang::DeclSpec::TST_struct;
   bool ScopeEnumUsesClassTag = false;
@@ -2133,6 +2164,9 @@ bool Elaborator::makeBases(unsigned &DeclIndex,
       continue;
     }
     clang::AccessSpecifier AS = clang::AS_public;
+    if (DeclBodyList[DeclIndex]->getAccessSpecifier() != clang::AS_none) {
+      AS = DeclBodyList[DeclIndex]->getAccessSpecifier();
+    }
     bool IsVirtualBase = false;
     clang::ParsedType PT = getCxxSema().CreateParsedType(TInfo->getType(),TInfo);
     clang::ParsedAttributes Attributes(SemaRef.AttrFactory);
@@ -2197,6 +2231,10 @@ clang::Decl *Elaborator::makeFieldDecl(Declaration *D, clang::Expr *Ty) {
   //   Field = VDecl;
   // } else {
     bool Mutable = false;
+    clang::AccessSpecifier AS = clang::AS_public;
+    if (D->getAccessSpecifier() != clang::AS_none) {
+      AS = D->getAccessSpecifier();
+    }
     // TODO: implement Mutability
     // if (isMutable(SemaRef, D, Mutable))
     //   return nullptr;
@@ -2205,7 +2243,7 @@ clang::Decl *Elaborator::makeFieldDecl(Declaration *D, clang::Expr *Ty) {
                                                 TInfo, /*RecordDecl=*/Owner,
                                                 Loc, Mutable,
                                                 /*BitWidth=*/nullptr, InitStyle,
-                                                Loc, clang::AS_public, nullptr);
+                                                Loc, AS, nullptr);
   // }
   Owner->addDecl(Field);
   D->setCxx(SemaRef, Field);

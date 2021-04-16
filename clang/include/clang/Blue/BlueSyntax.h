@@ -871,13 +871,15 @@ private:
 ///   - a type
 ///   - a constraint
 ///   - an initializer
+///   - an access specifier token.
 struct DeclarationSyntax : QuaternarySyntax
 {
 
   static constexpr KindType Kind = Declaration;
 
-  DeclarationSyntax(Syntax *D, Syntax *T, Syntax *C, Syntax *I)
-    : QuaternarySyntax(Kind, D, T, C, I)
+  DeclarationSyntax(Syntax *D, Syntax *T, Syntax *C, Syntax *I,
+                    Token AccessSpecifier = Token())
+    : QuaternarySyntax(Kind, D, T, C, I), AS(AccessSpecifier)
   { }
 
   /// This attempts to return the first valid source location from a declaration
@@ -917,7 +919,7 @@ struct DeclarationSyntax : QuaternarySyntax
 
   Token getParamPassingSpecifier() const;
 
-
+  Token getAccessSpecifier() const { return AS; }
   clang::SourceLocation getLocation() const {
     if (Terms[0]) {
       return Terms[0]->getLocation();
@@ -933,7 +935,8 @@ struct DeclarationSyntax : QuaternarySyntax
   }
   Token *ParamSpecs = nullptr;
   unsigned NumParamSpecs = 0;
-  // IntroducerKind IntroKind = Unknown;
+  Token AS;
+
 };
 
 /// The top-level container of terms.

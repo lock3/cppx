@@ -225,6 +225,24 @@ clang::SourceLocation Declaration::getErrorLocation() const {
   return clang::SourceLocation();
 }
 
+clang::AccessSpecifier Declaration::getAccessSpecifier() const {
+  if (auto DeclSyn = dyn_cast_or_null<DeclarationSyntax>(Def)) {
+    if (Token T = DeclSyn->getAccessSpecifier()) {
+      switch (T.getKind()) {
+        case tok::PublicKeyword:
+          return clang::AS_public;
+        case tok::PrivateKeyword:
+          return clang::AS_private;
+        case tok::ProtectedKeyword:
+          return clang::AS_protected;
+        default:
+          break;
+      }
+    }
+  }
+  return clang::AS_none;
+}
+
 Phase phaseOf(Declaration *D) {
   return D->CurrentPhase;
 }

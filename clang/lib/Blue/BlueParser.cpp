@@ -147,6 +147,13 @@ static inline bool OverloadableOperator(tok::TokenKind K) {
 /// Returns true if the tokens at `La` start a definition.
 static bool startsDefinition(Parser &P, std::size_t La)
 {
+  if (La == 0) {
+    if (P.nthTokenIs(La, tok::PublicKeyword)
+        || P.nthTokenIs(La, tok::PrivateKeyword)
+        || P.nthTokenIs(La, tok::ProtectedKeyword)) {
+      return true;
+    }
+  }
   // Check for unnamed definitions.
   if (P.nthTokenIs(La, tok::Colon))
     return true;
@@ -285,19 +292,6 @@ Syntax *Parser::parseDescriptor()
   return parsePrefixExpression();
 }
 
-static inline bool isDeclIntroducer(tok::TokenKind K) {
-  switch (K) {
-  case tok::VarKeyword:
-  case tok::FuncKeyword:
-  case tok::TypeKeyword:
-  case tok::SuperKeyword:
-  case tok::MixinKeyword:
-  case tok::NamespaceKeyword:
-    return true;
-  default:
-    return false;
-  }
-}
 
 /// Parse a declaration:
 ///
@@ -311,33 +305,11 @@ Syntax *Parser::parseDeclaration() {
     expectToken(tok::Semicolon);
     return Pars;
   }
-
   Pars = parseDefinition();
   if (!Pars)
     return nullptr;
 
   DeclarationSyntax *Decl = cast<DeclarationSyntax>(Pars);
-  // switch (Intro.getKind()) {
-  // case tok::VarKeyword:
-  //   Decl->IntroKind = DeclarationSyntax::Variable;
-  //   break;
-  // case tok::FuncKeyword:
-  //   Decl->IntroKind = DeclarationSyntax::Function;
-  //   break;
-  // case tok::TypeKeyword:
-  //   Decl->IntroKind = DeclarationSyntax::Type;
-  //   break;
-  // case tok::SuperKeyword:
-  //   Decl->IntroKind = DeclarationSyntax::Super;
-  //   break;
-  // case tok::NamespaceKeyword:
-  //   Decl->IntroKind = DeclarationSyntax::Namespace;
-  //   break;
-  // default:
-  //   Decl->IntroKind = DeclarationSyntax::Unknown;
-  //   break;
-  // }
-
   return Decl;
 }
 
@@ -365,6 +337,13 @@ Syntax *Parser::parseDeclaration() {
 ///     block-statement 
 Syntax *Parser::parseDefinition() {
   // Parse the declarator-list.
+  // Checking for unary declaration syntax.
+  Token AccessSpecifier;
+  if (nextTokenIs(tok::PublicKeyword)
+      || nextTokenIs(tok::PrivateKeyword)
+      || nextTokenIs(tok::ProtectedKeyword)) {
+    AccessSpecifier = consumeToken();
+  }
   Syntax *Decl = nullptr;
   if (nextTokenIsNot(tok::Colon)) {
     Decl = parseDeclaratorList();
@@ -377,7 +356,7 @@ Syntax *Parser::parseDefinition() {
   else
     expectToken(tok::Semicolon);
 
-  return new DeclarationSyntax(Decl, DC.Type, DC.Cons, IC.Init);
+  return new DeclarationSyntax(Decl, DC.Type, DC.Cons, IC.Init, AccessSpecifier);
 }
 
 static inline bool isCloseEnclosure(tok::TokenKind K) {
