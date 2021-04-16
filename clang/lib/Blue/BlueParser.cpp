@@ -163,7 +163,7 @@ static bool startsDefinition(Parser &P, std::size_t La)
       La += 1;
     }
 
-    if (P.peekToken(La).getSpelling() == "this")
+    if (P.peekToken(La).getSpelling() == "this" && La != 0)
       return true;
     ++La;
 
@@ -1607,8 +1607,9 @@ Syntax *Parser::parseIdExpression() {
   }
 
   Token Id = expectToken(tok::Identifier);
-  if (Id)
+  if (Id) {
     return new IdentifierSyntax(Id);
+  }
 
   return nullptr;
 }

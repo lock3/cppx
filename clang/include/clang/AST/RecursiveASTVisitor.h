@@ -2424,6 +2424,9 @@ DEF_TRAVERSE_STMT(CXXDependentScopeMemberExpr, {
 
 DEF_TRAVERSE_STMT(CppxDependentMemberAccessExpr, {
   TRY_TO(TraverseDeclarationNameInfo(S->getMemberNameInfo()));
+  if (S->getNameQualifierExpr()){
+    TRY_TO(TraverseStmt(S->getNameQualifierExpr()));
+  }
 })
 
 DEF_TRAVERSE_STMT(CppxTemplateOrArrayExpr, { })

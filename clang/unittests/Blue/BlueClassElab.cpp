@@ -394,7 +394,7 @@ foo:() = {
   v.(B)i = 4;
 }
 )BLUE";
-  auto ToMatch = 
+  auto ToMatch =
     memberExpr(
       hasDescendant(
         declRefExpr(
@@ -406,5 +406,47 @@ foo:() = {
         )
       )
   );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+
+
+TEST(BlueClass, DependentExpressionDisambiguation) {
+  StringRef Code = R"BLUE(
+B : type = {
+  i:int;
+}
+
+C :[T:type] -> type = {
+  :B;
+  i:int;
+
+  foo:(this) -> void = {
+    this.(B)i = 4;
+  }
+}
+
+
+)BLUE";
+  auto ToMatch =cppxDependentMemberAccessExpr();
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(BlueClass, DependentDisambiguationExpression) {
+  StringRef Code = R"BLUE(
+B :[T:type] -> type = {
+  i:int;
+}
+
+C : [T:type] -> type = {
+  :B[T];
+  i:int;
+  foo:(this) -> void = {
+    this.(B[T])i = 4;
+  }
+}
+
+)BLUE";
+  auto ToMatch =cppxDependentMemberAccessExpr();
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
