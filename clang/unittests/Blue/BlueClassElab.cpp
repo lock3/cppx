@@ -450,3 +450,22 @@ C : [T:type] -> type = {
   auto ToMatch =cppxDependentMemberAccessExpr();
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
+
+TEST(BlueClass, DependendBaseClassFunctionCall) {
+  StringRef Code = R"BLUE(
+B :[T:type] -> type = {
+  i:int;
+}
+
+C : [T:type] -> type = {
+  :B[T];
+  i:int;
+  foo:(this) -> void = {
+    this.(B[T])foo() = 4;
+  }
+}
+
+)BLUE";
+  auto ToMatch = cppxDependentMemberAccessExpr();
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
