@@ -253,6 +253,10 @@ namespace
 
       if (P.nextTokenIs(tok::LeftBrace)) {
         Clause.Init = P.parseBlockStatement();
+      } else if (P.nextTokenIs(tok::DefaultKeyword)
+                 || P.nextTokenIs(tok::DeleteKeyword)) {
+        Clause.Init = new LiteralSyntax(P.consumeToken());
+        P.expectToken(tok::Semicolon);
       } else {
         Clause.Init = P.parseExpression();
         P.expectToken(tok::Semicolon);

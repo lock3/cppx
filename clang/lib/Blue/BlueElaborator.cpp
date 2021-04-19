@@ -3516,10 +3516,31 @@ void Elaborator::elaborateFunctionDef(Declaration *D) {
 
   Sema::ScopeRAII FnScope(SemaRef, Scope::Function, D->Init);
   SemaRef.setCurrentDecl(D);
-  auto Enclosure = dyn_cast<EnclosureSyntax>(D->Init);
-  clang::Stmt *Body = elaborateEnclosureStmt(Enclosure);
-  SemaRef.setClangDeclContext(cast<clang::FunctionDecl>(D->getCxx()));
-  SemaRef.getCxxSema().ActOnFinishFunctionBody(FuncDecl, Body);
+  if (auto Enclosure = dyn_cast<EnclosureSyntax>(D->Init)) {
+    clang::Stmt *Body = elaborateEnclosureStmt(Enclosure);
+    SemaRef.setClangDeclContext(cast<clang::FunctionDecl>(D->getCxx()));
+    SemaRef.getCxxSema().ActOnFinishFunctionBody(FuncDecl, Body);
+
+  } else if (auto Lit = dyn_cast<LiteralSyntax>(D->Init)) {
+    if (Lit->getToken().hasKind(tok::DeleteKeyword)) {
+      FnDecl->setDeletedAsWritten(true);
+    } else if (Lit->getToken().hasKind(tok::DefaultKeyword)) {
+      if (auto Method = dyn_cast<clang::CXXMethodDecl>(FnDecl)) {
+        Method->setDefaulted(true);
+      } else {
+        Method->setInvalidDecl();
+        Error(D->Init->getLocation(), "unable to create a default function "
+              "that isn't a specail method");
+      }
+    } else {
+      // this is for elaborating anything taht isn't a default or delete kw.
+      clang::Expr *BodyE = elaborateExpression(D->Init);
+      SemaRef.setClangDeclContext(cast<clang::FunctionDecl>(D->getCxx()));
+      SemaRef.getCxxSema().ActOnFinishFunctionBody(FuncDecl, BodyE);
+    }
+  } else {
+    llvm_unreachable("unknown function body!");
+  }
 
   // Return the current decl to whatever it was before.
   SemaRef.setCurrentDecl(CurrentDeclaration);

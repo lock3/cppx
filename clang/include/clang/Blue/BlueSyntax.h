@@ -299,7 +299,9 @@ struct MultiarySyntax : Syntax
   clang::SourceLocation getLocation() const {
     if (NumTerms == 0)
       return clang::SourceLocation();
-
+    if (!Terms[0]) {
+      return clang::SourceLocation();
+    }
     return Terms[0]->getLocation();
   }
 
