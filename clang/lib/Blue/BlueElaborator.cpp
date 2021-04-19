@@ -1914,6 +1914,9 @@ clang::Decl *Elaborator::makeFunctionDecl(Declaration *D) {
   clang::QualType CompletedFnTy = FD->getType();
   const clang::FunctionProtoType *FPT =
       CompletedFnTy->getAs<clang::FunctionProtoType>();
+  bool VirtualWasGiven = false;
+  bool FinalWasGiven = false;
+  bool OverrideWasGiven = false;
   auto EPI = FPT->getExtProtoInfo();
   for (Token Tok : D->ThisParamSpecifiers) {
     switch(Tok.getKind()) {
@@ -1931,9 +1934,85 @@ clang::Decl *Elaborator::makeFunctionDecl(Declaration *D) {
       case tok::ForwardKeyword:
         EPI.RefQualifier = clang::RQ_RValue;
         break;
+      case tok::VirtualKeyword:{
+        if (VirtualWasGiven) {
+          SemaRef.getCxxSema().Diags.Report(Tok.getLocation(),
+                               clang::diag::err_duplicate_attribute);
+          FD->setInvalidDecl();
+          break;
+        }
+        VirtualWasGiven = true;
+        if (clang::CXXMethodDecl *MD = dyn_cast<clang::CXXMethodDecl>(FD)) {
+          if (MD->getStorageClass() != clang::SC_None) {
+            SemaRef.getCxxSema().Diags.Report(Tok.getLocation(),
+                 clang::diag::err_cannot_applied_to_function_with_storage_class)
+                                << "virtual";
+            FD->setInvalidDecl();
+            break;
+          }
+          if (MD->getReturnType() == CxxAST.getAutoDeductType()) {
+            SemaRef.getCxxSema().Diags.Report(Tok.getLocation(),
+                                              clang::diag::err_auto_fn_virtual);
+            FD->setInvalidDecl();
+            break;
+          }
+          MD->setVirtualAsWritten(true);
+          break;
+        } else {
+          SemaRef.getCxxSema().Diags.Report(Tok.getLocation(),
+                                    clang::diag::err_invalid_attribute_for_decl)
+                                    << "virtual" << "member function";
+          FD->setInvalidDecl();
+          break;
+        }
+      }
+      case tok::FinalKeyword:{
+          if (FinalWasGiven) {
+            SemaRef.getCxxSema().Diags.Report(Tok.getLocation(),
+                                          clang::diag::err_duplicate_attribute);
+            FD->setInvalidDecl();
+            break;
+          }
+          FinalWasGiven = true;
+          FD->addAttr(clang::FinalAttr::Create(CxxAST, Tok.getLocation(),
+                                          clang::AttributeCommonInfo::AS_Keyword,
+                                static_cast<clang::FinalAttr::Spelling>(false)));
+        }
+        break;
+      case tok::OverrideKeyword:
+        if (OverrideWasGiven) {
+          SemaRef.getCxxSema().Diags.Report(Tok.getLocation(),
+                                        clang::diag::err_duplicate_attribute);
+          FD->setInvalidDecl();
+          break;
+        }
+        OverrideWasGiven = true;
+        if (clang::CXXMethodDecl *MD = dyn_cast<clang::CXXMethodDecl>(FD)) {
+          if (isa<clang::CXXConstructorDecl>(FD)
+              || isa<clang::CXXDestructorDecl>(FD))
+          {
+            SemaRef.getCxxSema().Diags.Report(Tok.getLocation(),
+                                clang::diag::err_invalid_attribute_for_decl)
+                                << "override" << "member function";
+            FD->setInvalidDecl();
+            break;
+          }
+
+          // Adding override attribute.
+          MD->addAttr(clang::OverrideAttr::Create(CxxAST, Tok.getLocation(),
+                                            clang::AttributeCommonInfo::AS_Keyword));
+          break;
+        }
+        SemaRef.getCxxSema().Diags.Report(Tok.getLocation(),
+                              clang::diag::err_invalid_attribute_for_decl)
+                              << "override" << "member function";
+        FD->setInvalidDecl();
+        break;
       case tok::Identifier:
-        D->FunctionThisParam->dump();
-        llvm_unreachable("Unhandled this identifier");
+        Error(Tok.getLocation(),
+              "unknown identifier given as declaration specifier for 'this'");
+        FD->setInvalidDecl();
+        break;
       default:
         llvm::outs() << "Unhandled this prefix token.\n";
         D->FunctionThisParam->dump();
@@ -1947,11 +2026,102 @@ clang::Decl *Elaborator::makeFunctionDecl(Declaration *D) {
                                   FPT->getExceptionSpecInfo())) {
     return nullptr;
   }
+
+  CxxSema.FilterLookupForScope(Previous, Owner,
+                               CxxScope, !InClass, !InClass);
   CxxSema.CheckFunctionDeclaration(CxxScope, FD, Previous, false);
+
+  bool IsMethod = false;
+  if (clang::CXXMethodDecl *MD = dyn_cast<clang::CXXMethodDecl>(FD)) {
+    checkCXXMethodDecl(MD);
+    CxxSema.CheckOverrideControl(MD);
+    if (MD->size_overridden_methods() != 0 && !OverrideWasGiven) {
+      Error(MD->getBeginLoc(),
+            "any method that override a method must be marked 'override'" );
+    }
+    IsMethod = true;
+  }
+
+  // Handle function template specialization.
+  // if (!FD->isInvalidDecl() && !Previous.empty() && Specialization && !IsMethod) {
+  //   clang::TemplateArgumentListInfo *Args =
+  //     D->SpecializationArgs->HasArguments() ?
+  //          &D->SpecializationArgs->getArgList() : nullptr;
+  //   if (CxxSema.CheckFunctionTemplateSpecialization(FD, Args, Previous))
+  //     FD->setInvalidDecl();
+  // }
+
   // FIXME: this is not necessarily what should happen.
   if (FD->isInvalidDecl())
     return nullptr;
   return FD;
+}
+
+void Elaborator::checkCXXMethodDecl(clang::CXXMethodDecl *MD) {
+  // We can't check dependent instance methods.
+  if (MD && MD->isInstance() &&
+      (MD->getParent()->hasAnyDependentBases() ||
+       MD->getType()->isDependentType()))
+    return;
+
+  // We should delay checking of methods declared inside of a fragment.
+  if (MD && MD->isInFragment())
+    return;
+
+  // Doing member checking to make sure that we can sew together virtual
+  // function overrides.s
+  if (MD && !MD->isVirtual()) {
+    // If we have a non-virtual method, check if if hides a virtual method.
+    // (In that case, it's most likely the method has the wrong type.)
+    llvm::SmallVector<clang::CXXMethodDecl *, 8> OverloadedMethods;
+    SemaRef.getCxxSema().FindHiddenVirtualMethods(MD, OverloadedMethods);
+
+    if (!OverloadedMethods.empty()) {
+      if (clang::OverrideAttr *OA = MD->getAttr<clang::OverrideAttr>()) {
+        SemaRef.getCxxSema().Diags.Report(OA->getLocation(),
+                  clang::diag::override_keyword_hides_virtual_member_function)
+                              << "override" << (OverloadedMethods.size() > 1);
+      } else if (clang::FinalAttr *FA = MD->getAttr<clang::FinalAttr>()) {
+        SemaRef.getCxxSema().Diags.Report(FA->getLocation(),
+                  clang::diag::override_keyword_hides_virtual_member_function)
+                          << (FA->isSpelledAsSealed() ? "sealed" : "final")
+                          << (OverloadedMethods.size() > 1);
+      }
+      SemaRef.getCxxSema().NoteHiddenVirtualMethods(MD, OverloadedMethods);
+      MD->setInvalidDecl();
+      return;
+    }
+    // Fall through into the general case diagnostic.
+    // FIXME: We might want to attempt typo correction here.
+  }
+
+  if (!MD || !MD->isVirtual()) {
+    if (clang::OverrideAttr *OA = MD->getAttr<clang::OverrideAttr>()) {
+      SemaRef.getCxxSema().Diags.Report(OA->getLocation(),
+        clang::diag::override_keyword_only_allowed_on_virtual_member_functions)
+                            << "override"
+                          << clang::FixItHint::CreateRemoval(OA->getLocation());
+      MD->dropAttr<clang::OverrideAttr>();
+    }
+    if (clang::FinalAttr *FA = MD->getAttr<clang::FinalAttr>()) {
+      SemaRef.getCxxSema().Diags.Report(FA->getLocation(),
+        clang::diag::override_keyword_only_allowed_on_virtual_member_functions)
+                            << (FA->isSpelledAsSealed() ? "sealed" : "final")
+                        << clang::FixItHint::CreateRemoval(FA->getLocation());
+      MD->dropAttr<clang::FinalAttr>();
+    }
+    return;
+  }
+
+  // C++11 [class.virtual]p5:
+  //   If a function is marked with the virt-specifier override and
+  //   does not override a member function of a base class, the program is
+  //   ill-formed.
+  bool HasOverriddenMethods = MD->size_overridden_methods() != 0;
+  if (MD->hasAttr<clang::OverrideAttr>() && !HasOverriddenMethods)
+    SemaRef.getCxxSema().Diags.Report(MD->getLocation(),
+                      clang::diag::err_function_marked_override_not_overriding)
+                          << MD->getDeclName();
 }
 
 

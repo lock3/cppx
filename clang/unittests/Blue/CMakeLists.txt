@@ -63,6 +63,7 @@ add_clang_unittest(BlueTests
   BlueTypeAliasTemplateElab.cpp
   BlueUsingElab.cpp
   BlueVariableElab.cpp
+  BlueVirtualMethodElab.cpp
   BlueWhileElab.cpp
   )
 

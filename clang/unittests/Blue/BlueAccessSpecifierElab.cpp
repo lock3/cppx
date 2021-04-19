@@ -18,23 +18,6 @@ using namespace clang::tooling;
 using namespace clang;
 using namespace blue;
 
-// TEST(BlueUsingDirective, Wildcard) {
-//   StringRef Code = R"(
-// ns:namespace = {
-//   x:int = 7;
-// }
-
-// using ns._;
-// )";
-
-//   auto Match = usingDirectiveDecl();
-//   ASSERT_TRUE(matches(Code.str(), Match));
-// }
-
-
-
-// TODO: I need to create failure tests for public, private, and protected
-// method and member access.
 TEST(BlueClass, Access_PrivateMember) {
   StringRef Code = R"(
 c : type = {
@@ -96,7 +79,7 @@ c : type = {
 TEST(BlueClass, Access_PrivateMemberFunctions) {
   StringRef Code = R"(
 c : type = {
-  private foo: () -> int = {
+  private foo: (in this) -> int = {
     return 4
   }
 }
@@ -123,7 +106,7 @@ c : type = {
 TEST(BlueClass, Access_PublicMemberFunctions) {
   StringRef Code = R"(
 c : type = {
-  public foo:() -> int = {
+  public foo:(in this) -> int = {
     return 4
   }
 })";
@@ -136,7 +119,7 @@ c : type = {
 TEST(BlueClass, Access_ImplicitPublicMemberFunctions) {
   StringRef Code = R"(
 c : type = {
-  foo: () -> int = {
+  foo: (in this) -> int = {
     return 4;
   }
 })";
@@ -147,11 +130,11 @@ c : type = {
 }
 
 
-// Class template Member function 
+// Class template Member function
 TEST(BlueClass, Access_PrivateMemberFunctionTemplate) {
   StringRef Code = R"(
 c : type = {
-  private foo: [T:type] -> (i:T) -> int= {
+  private foo: [T:type] -> (in this, i:T) -> int= {
     return 4
   }
 })";
@@ -164,7 +147,7 @@ c : type = {
 TEST(BlueClass, Access_ProtectedMemberFunctionTemplate) {
   StringRef Code = R"(
 c : type = {
-  protected foo: [T:type] -> (i:T) -> int ={
+  protected foo: [T:type] -> (in this, i:T) -> int ={
     return 4;
   }
 }
@@ -178,7 +161,7 @@ c : type = {
 TEST(BlueClass, Access_PublicMemberFunctionTemplate) {
   StringRef Code = R"(
 c : type = {
-  public foo:[T:type] -> (i:T) -> int = {
+  public foo:[T:type] -> (in this, i:T) -> int = {
     return 4;
   }
 })";
@@ -191,7 +174,7 @@ c : type = {
 TEST(BlueClass, Access_ImplicitPublicMemberFunctionTemplate) {
   StringRef Code = R"(
 c : type = {
-  foo: [T:type] -> (i:T) -> int = {
+  foo: [T:type] -> (in this, i:T) -> int = {
     return 4;
   }
 })";

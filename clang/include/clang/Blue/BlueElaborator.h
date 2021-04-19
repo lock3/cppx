@@ -122,6 +122,7 @@ public:
   clang::Decl *makeObjectDecl(Declaration *D, clang::Expr *Ty);
   clang::Decl *makeTypeDecl(Declaration *D, clang::QualType T);
   clang::Decl *makeFunctionDecl(Declaration *D);
+  void checkCXXMethodDecl(clang::CXXMethodDecl *MD);
   clang::Decl *makeClass(Declaration *D);
   bool makeBases(unsigned &DeclIndex,
                 llvm::SmallVectorImpl<Declaration *> & DeclBodyList,
@@ -151,6 +152,8 @@ public:
                                                const EnclosureSyntax *ES);
   void elaborateFieldInit(Declaration *D);
   void elaborateFunctionDef(Declaration *D);
+
+  
 
   clang::Expr *elaborateExpression(const Syntax *S);
   clang::Expr *elaborateConstantExpression(const Syntax *S);

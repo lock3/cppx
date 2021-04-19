@@ -1030,6 +1030,9 @@ Syntax *Parser::parseParameterList()
 
 inline bool isParameterSpec(tok::TokenKind K) {
   switch (K) {
+  case tok::OverrideKeyword:
+  case tok::FinalKeyword:
+  case tok::VirtualKeyword:
   case tok::InKeyword:
   case tok::InoutKeyword:
   case tok::OutKeyword:
@@ -1055,8 +1058,8 @@ inline bool isParameterSpec(tok::TokenKind K) {
 /// TODO: Can paramters be packs (yes, but what's the syntax?).
 Syntax *Parser::parseParameter()
 {
-  llvm::SmallVector<Token, 1> ParamSpecs;
-  if (Token ParamSpec = matchTokenIf(isParameterSpec))
+  llvm::SmallVector<Token, 4> ParamSpecs;
+  while(Token ParamSpec = matchTokenIf(isParameterSpec))
     ParamSpecs.push_back(ParamSpec);
 
   // Match unnamed variants.
