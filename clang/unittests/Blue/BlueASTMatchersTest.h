@@ -16,16 +16,16 @@
 #include "clang/Tooling/Tooling.h"
 #include "gtest/gtest.h"
 #include "clang/AST/DeclTemplate.h"
-
+#include "clang/AST/ExprCppx.h"
 namespace clang {
 namespace ast_matchers {
 extern const internal::VariadicDynCastAllOfMatcher<Decl, VarTemplateDecl> varTemplateDecl;
+
 extern const internal::VariadicDynCastAllOfMatcher<
   Decl, VarTemplateSpecializationDecl> varTemplateSpecializationDecl;
+
 extern const internal::VariadicDynCastAllOfMatcher<
   Decl, VarTemplatePartialSpecializationDecl> varTemplatePartialSpecializationDecl;
-
-  
 
 extern const internal::VariadicDynCastAllOfMatcher<Decl, TemplateTemplateParmDecl>
     templateTemplateParmDecl;
@@ -38,6 +38,13 @@ extern const internal::VariadicDynCastAllOfMatcher<Stmt, CXXFoldExpr>
 
 extern const internal::VariadicDynCastAllOfMatcher<Stmt, SizeOfPackExpr>
     sizeOfPackExpr;
+
+extern const internal::VariadicDynCastAllOfMatcher<Stmt, CXXPseudoDestructorExpr>
+    cxxPseudoDestructorExpr;
+
+extern const internal::VariadicDynCastAllOfMatcher<Stmt, CppxDependentMemberAccessExpr>
+    cppxDependentMemberAccessExpr;
+
 
 // I created this because it didn't exist before this and I acutally needed it
 // for a particular test.

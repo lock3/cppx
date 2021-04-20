@@ -20,7 +20,7 @@ using namespace blue;
 
 TEST(BlueLogicalOp, And) {
   StringRef Code = R"BLUE(
-var x:=4 and 5;
+x:=4 and 5;
   )BLUE";
   auto ToMatch = binaryOperator(hasOperatorName("&&"));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
@@ -28,7 +28,7 @@ var x:=4 and 5;
 
 TEST(BlueLogicalOp, Or) {
   StringRef Code = R"BLUE(
-var x:=4 or 5;
+x:=4 or 5;
   )BLUE";
   auto ToMatch = binaryOperator(hasOperatorName("||"));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
@@ -36,7 +36,7 @@ var x:=4 or 5;
 
 TEST(BlueLogicalOp, UnaryNot) {
   StringRef Code = R"BLUE(
-var x:=not true;
+x:=not true;
   )BLUE";
   auto ToMatch = unaryOperator(hasOperatorName("!"));
   ASSERT_TRUE(matches(Code.str(), ToMatch));

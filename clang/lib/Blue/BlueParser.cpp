@@ -21,7 +21,7 @@
 #include <iostream>
 
 namespace blue {
-
+static bool startsDefinition(Parser &P);
 Parser::Parser(clang::SourceManager &SM, File const& F)
   : Lex(SM, F), Diags(SM.getDiagnostics()) {
   fetchToken();
@@ -114,9 +114,46 @@ Syntax *Parser::parseBlockStatement() {
 
 static inline bool isParameterSpec(tok::TokenKind K);
 
+static inline bool OverloadableOperator(tok::TokenKind K) {
+  switch(K) {
+    case tok::Equal:
+    case tok::EqualEqual:
+    case tok::BangEqual:
+    case tok::Less:
+    case tok::LessEqual:
+    case tok::Greater:
+    case tok::GreaterEqual:
+    case tok::PlusPlus:
+    case tok::MinusMinus:
+    case tok::Plus:
+    case tok::Minus:
+    case tok::Star:
+    case tok::Slash:
+    case tok::Percent:
+    case tok::Bang:
+    case tok::AmpersandAmpersand:
+    case tok::BarBar:
+    case tok::PlusEqual:
+    case tok::MinusEqual:
+    case tok::StarEqual:
+    case tok::SlashEqual:
+    case tok::PercentEqual:
+      return true;
+    default:
+      return false;
+  }
+
+}
 /// Returns true if the tokens at `La` start a definition.
 static bool startsDefinition(Parser &P, std::size_t La)
 {
+  if (La == 0) {
+    if (P.nthTokenIs(La, tok::PublicKeyword)
+        || P.nthTokenIs(La, tok::PrivateKeyword)
+        || P.nthTokenIs(La, tok::ProtectedKeyword)) {
+      return true;
+    }
+  }
   // Check for unnamed definitions.
   if (P.nthTokenIs(La, tok::Colon))
     return true;
@@ -125,8 +162,15 @@ static bool startsDefinition(Parser &P, std::size_t La)
     return true;
 
   // Check for definitions of the form `x:` and `x,y,z:`
-  if (P.nthTokenIs(La, tok::Identifier)) {
-    if (P.peekToken(La).getSpelling() == "this")
+  if (P.nthTokenIs(La, tok::Identifier)
+      || (P.nthTokenIs(La, tok::OperatorKeyword)
+          && P.nthTokenConformsTo(La+1, OverloadableOperator))
+      ) {
+    if (P.nthTokenIs(La, tok::OperatorKeyword)) {
+      La += 1;
+    }
+
+    if (P.peekToken(La).getSpelling() == "this" && La != 0)
       return true;
     ++La;
 
@@ -142,6 +186,9 @@ static bool startsDefinition(Parser &P, std::size_t La)
       ++La;
       if (P.nthTokenIs(La, tok::Identifier))
         ++La;
+      else if(P.nthTokenIs(La, tok::OperatorKeyword)
+              && P.nthTokenConformsTo(La+1, OverloadableOperator))
+        La += 2;
       else
         return false;
     }
@@ -153,7 +200,7 @@ static bool startsDefinition(Parser &P, std::size_t La)
 }
 
 /// Returns true if `p` starts a parameter declaration.
-static bool startsDefinition(Parser &P)
+bool startsDefinition(Parser &P)
 {
   return startsDefinition(P, 0);
 }
@@ -206,6 +253,10 @@ namespace
 
       if (P.nextTokenIs(tok::LeftBrace)) {
         Clause.Init = P.parseBlockStatement();
+      } else if (P.nextTokenIs(tok::DefaultKeyword)
+                 || P.nextTokenIs(tok::DeleteKeyword)) {
+        Clause.Init = new LiteralSyntax(P.consumeToken());
+        P.expectToken(tok::Semicolon);
       } else {
         Clause.Init = P.parseExpression();
         P.expectToken(tok::Semicolon);
@@ -245,19 +296,6 @@ Syntax *Parser::parseDescriptor()
   return parsePrefixExpression();
 }
 
-static inline bool isDeclIntroducer(tok::TokenKind K) {
-  switch (K) {
-  case tok::VarKeyword:
-  case tok::FuncKeyword:
-  case tok::TypeKeyword:
-  case tok::SuperKeyword:
-  case tok::MixinKeyword:
-  case tok::NamespaceKeyword:
-    return true;
-  default:
-    return false;
-  }
-}
 
 /// Parse a declaration:
 ///
@@ -265,43 +303,17 @@ static inline bool isDeclIntroducer(tok::TokenKind K) {
 ///     definition
 Syntax *Parser::parseDeclaration() {
   Token Intro;
-  if (isDeclIntroducer(getLookahead()))
-    Intro = consumeToken();
-
-
   Syntax *Pars = nullptr;
   if (nextTokenIs(tok::UsingKeyword)) {
     Pars = parsePrefixExpression();
     expectToken(tok::Semicolon);
     return Pars;
   }
-
-  Pars =  parseDefinition();
+  Pars = parseDefinition();
   if (!Pars)
     return nullptr;
 
   DeclarationSyntax *Decl = cast<DeclarationSyntax>(Pars);
-  switch (Intro.getKind()) {
-  case tok::VarKeyword:
-    Decl->IntroKind = DeclarationSyntax::Variable;
-    break;
-  case tok::FuncKeyword:
-    Decl->IntroKind = DeclarationSyntax::Function;
-    break;
-  case tok::TypeKeyword:
-    Decl->IntroKind = DeclarationSyntax::Type;
-    break;
-  case tok::SuperKeyword:
-    Decl->IntroKind = DeclarationSyntax::Super;
-    break;
-  case tok::NamespaceKeyword:
-    Decl->IntroKind = DeclarationSyntax::Namespace;
-    break;
-  default:
-    Decl->IntroKind = DeclarationSyntax::Unknown;
-    break;
-  }
-
   return Decl;
 }
 
@@ -329,9 +341,17 @@ Syntax *Parser::parseDeclaration() {
 ///     block-statement 
 Syntax *Parser::parseDefinition() {
   // Parse the declarator-list.
+  // Checking for unary declaration syntax.
+  Token AccessSpecifier;
+  if (nextTokenIs(tok::PublicKeyword)
+      || nextTokenIs(tok::PrivateKeyword)
+      || nextTokenIs(tok::ProtectedKeyword)) {
+    AccessSpecifier = consumeToken();
+  }
   Syntax *Decl = nullptr;
-  if (nextTokenIsNot(tok::Colon))
+  if (nextTokenIsNot(tok::Colon)) {
     Decl = parseDeclaratorList();
+  }
 
   DescriptorClause DC = parseDescriptorClause(*this);
   InitializerClause IC;
@@ -340,7 +360,7 @@ Syntax *Parser::parseDefinition() {
   else
     expectToken(tok::Semicolon);
 
-  return new DeclarationSyntax(Decl, DC.Type, DC.Cons, IC.Init);
+  return new DeclarationSyntax(Decl, DC.Type, DC.Cons, IC.Init, AccessSpecifier);
 }
 
 static inline bool isCloseEnclosure(tok::TokenKind K) {
@@ -387,6 +407,8 @@ Syntax *Parser::parseStatementSeq() {
   return new ListSyntax(AllocateSeq(SS), SS.size());
 }
 
+
+
 /// Parse a statement.
 ///
 ///   statement:
@@ -398,7 +420,9 @@ Syntax *Parser::parseStatement()
   if (nextTokenIs(tok::LeftBrace))
     return parseBlockStatement();
 
-  if (isDeclIntroducer(getLookahead()))
+  // This will need to be fixed to do look-a-head and correct scanning for
+  // declarations of the form x, y, z or x.y.z
+  if (startsDefinition(*this))
     return parseDeclarationStatement();
 
   return parseExpressionStatement();
@@ -477,6 +501,8 @@ Syntax *Parser::parseDeclarator() {
 
   // Consume and build the correct name specifier, this only applies for
   // namespace name declarations.
+  // This declaration cannot have nested name qualififiers in the form of
+  // x.(y)z
   while(nextTokenIs(tok::Dot)) {
     Token DotTok = matchToken(tok::Dot);
     Syntax *RHS = parseIdExpression();
@@ -786,6 +812,7 @@ Syntax *Parser::parseTraditionalForExpression() {
   Syntax *Condition = nullptr;
   if (!nextTokenIs(tok::Semicolon))
     Condition = parseEqualityExpression();
+
   expectToken(tok::Semicolon);
 
   Syntax *Increment = nullptr;
@@ -1007,6 +1034,9 @@ Syntax *Parser::parseParameterList()
 
 inline bool isParameterSpec(tok::TokenKind K) {
   switch (K) {
+  case tok::OverrideKeyword:
+  case tok::FinalKeyword:
+  case tok::VirtualKeyword:
   case tok::InKeyword:
   case tok::InoutKeyword:
   case tok::OutKeyword:
@@ -1032,8 +1062,8 @@ inline bool isParameterSpec(tok::TokenKind K) {
 /// TODO: Can paramters be packs (yes, but what's the syntax?).
 Syntax *Parser::parseParameter()
 {
-  llvm::SmallVector<Token, 1> ParamSpecs;
-  if (Token ParamSpec = matchTokenIf(isParameterSpec))
+  llvm::SmallVector<Token, 4> ParamSpecs;
+  while(Token ParamSpec = matchTokenIf(isParameterSpec))
     ParamSpecs.push_back(ParamSpec);
 
   // Match unnamed variants.
@@ -1249,7 +1279,7 @@ static bool isPrefixOperator(Parser &P, tok::TokenKind Open,
   case tok::Plus:
   case tok::Minus:
   case tok::NotKeyword:
-  case tok::ClassKeyword:
+  case tok::MinusGreater:
       return true;
   default:
       break;
@@ -1304,8 +1334,8 @@ EnclosureCharacterization characterizePrefixOp(Parser &p)
 ///   prefix-expression:
 ///     postfix-expression
 ///     [ expression-list? ] prefix-expression
-///     [ parameter-group ] prefix-expression
-///     ( parameter-group? ) prefix-expression
+///     [ parameter-group ] -> prefix-expression
+///     ( parameter-group? ) -> prefix-expression
 ///     const prefix-expression
 ///     ^ prefix-expression
 ///     - prefix-expression
@@ -1318,6 +1348,7 @@ Syntax *Parser::parsePrefixExpression() {
     auto info = characterizePrefixOp(*this);
     if (!info.isOperator)
       break;
+
     if (!info.isEmpty && info.hasParameters)
       return parseTemplateConstructor();
     else
@@ -1326,9 +1357,15 @@ Syntax *Parser::parsePrefixExpression() {
 
   case tok::LeftParen: {
     auto info = characterizePrefixOp(*this);
-    if (!info.isOperator)
+    if (!info.isOperator) {
       break;
+    }
     return parseFunctionConstructor();
+  }
+  case tok::UsingKeyword:{
+    Token Op = consumeToken();
+    Syntax *E = parseExpression();
+    return new PrefixSyntax(Op, E);
   }
   case tok::PlusPlus:
   case tok::MinusMinus:
@@ -1336,7 +1373,6 @@ Syntax *Parser::parsePrefixExpression() {
   case tok::Caret:
   case tok::Plus:
   case tok::Minus:
-  case tok::UsingKeyword:
   case tok::NotKeyword: {
     Token Op = consumeToken();
     Syntax *E = parsePrefixExpression();
@@ -1357,7 +1393,11 @@ Syntax *Parser::parsePrefixExpression() {
 Syntax* Parser::parseTemplateConstructor()
 {
   Syntax *Op = parseBracketEnclosed(&Parser::parseParameterGroup);
-  Syntax *Type = parsePrefixExpression();
+  Syntax *Type = nullptr;
+  if (nextTokenIs(tok::MinusGreater)) {
+    consumeToken();
+    Type = parsePrefixExpression();
+  }
   return new TemplateSyntax(Op, Type);
 }
 
@@ -1375,11 +1415,15 @@ Syntax* Parser::parseArrayConstructor()
 /// Parse a function type constructor.
 ///
 ///   prefix-expression:
-///     ( parameter-group? ) prefix-expression
+///     ( parameter-group? ) -> prefix-expression
 Syntax* Parser::parseFunctionConstructor()
 {
   Syntax *Op = parseParenEnclosed(&Parser::parseParameterGroup);
-  Syntax *Type = parsePrefixExpression();
+  Syntax *Type = nullptr;
+  if (nextTokenIs(tok::MinusGreater)) {
+    consumeToken();
+    Type = parsePrefixExpression();
+  }
   return new FunctionSyntax(Op, Type);
 }
 
@@ -1404,8 +1448,23 @@ Syntax *Parser::parsePostfixExpression() {
       E0 = new CallSyntax(E0, Args);
     }
     else if (Token Dot = matchToken(tok::Dot)) {
-      Syntax *Member = parseIdExpression();
-      E0 = new InfixSyntax(Dot, E0, Member);
+      if (nextTokenIs(tok::LeftParen)) {
+        Token LParen = matchToken(tok::LeftParen);
+        Syntax *QualIdE = parsePrefixExpression();
+        if (Token RParen = matchToken(tok::RightParen)) {
+          Syntax *Member = parseIdExpression();
+          E0 = new QualifiedMemberAccessSyntax(Dot, LParen, RParen, E0, QualIdE, Member);
+        } else {
+          // we are missing the ending R Paren
+          Diags.Report(getInputLocation(), clang::diag::err_expected) <<
+                       getSpelling(tok::RightParen);
+          // Don't change the current expression
+        }
+      } else {
+
+        Syntax *Member = parseIdExpression();
+        E0 = new InfixSyntax(Dot, E0, Member);
+      }
     }
     else if (Token Op = matchToken(tok::Caret)) {
       E0 = new PostfixSyntax(Op, E0);
@@ -1452,6 +1511,13 @@ Syntax *Parser::parsePointerExpression() {
 
 Syntax *Parser::parsePrimaryExpression() {
   switch (getLookahead()) {
+  case tok::DecltypeKeyword:
+  case tok::SizeOfKeyword:
+  case tok::AlignOfKeyword:
+  case tok::NoExceptKeyword:
+  case tok::TypeidKeyword: {
+    return parseBuiltinCompilerOp();
+  }
   case tok::BinaryInteger:
   case tok::DecimalInteger:
   case tok::HexadecimalInteger:
@@ -1470,8 +1536,6 @@ Syntax *Parser::parsePrimaryExpression() {
   case tok::IntKeyword:
   case tok::BoolKeyword:
   case tok::TypeKeyword:
-    // Class keyword
-  case tok::ClassKeyword:
   case tok::NamespaceKeyword:
     // Built in type functions
   case tok::IntegerKeyword:
@@ -1519,6 +1583,27 @@ Syntax *Parser::parsePrimaryExpression() {
   return nullptr;
 }
 
+static bool isBuiltinCompilerOperator(tok::TokenKind K) {
+  switch(K) {
+    case tok::DecltypeKeyword:
+    case tok::SizeOfKeyword:
+    case tok::AlignOfKeyword:
+    case tok::NoExceptKeyword:
+    case tok::TypeidKeyword:
+      return true;
+    default:
+      return false;
+  }
+}
+
+Syntax *Parser::parseBuiltinCompilerOp() {
+  assert(nthTokenConformsTo(0, isBuiltinCompilerOperator));
+  Token Op = matchTokenIf(isBuiltinCompilerOperator);
+  assert(Op && "Invalid call to parseBuiltinCompilerOp");
+  Syntax *Args = parseParenEnclosed(&Parser::parseExpressionList);
+  return new BuiltinCompilerOpSyntax(Op, Args);
+}
+
 static inline bool isOperator(tok::TokenKind K) {
   return K >= tok::Question && K <= tok::MinusMinus;
 }
@@ -1536,8 +1621,9 @@ Syntax *Parser::parseIdExpression() {
   }
 
   Token Id = expectToken(tok::Identifier);
-  if (Id)
+  if (Id) {
     return new IdentifierSyntax(Id);
+  }
 
   return nullptr;
 }

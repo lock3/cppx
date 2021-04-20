@@ -95,5 +95,31 @@ std::string Declarator::getString() const {
   llvm_unreachable("Unimplemented kind of declarator.");
 }
 
+Declarator *findFindDeclaratorInChain(Declarator *Dcl, Declarator::Kind K) {
+  Declarator *D = Dcl;
+  while(D) {
+    if (D->getKind() == K)
+      return D;
+    D = D->getNext();
+  }
+  return nullptr;
+}
+
+bool declaratorChainContains(Declarator *Dcl, Declarator::Kind K) {
+  return bool(findFindDeclaratorInChain(Dcl, K));
+}
+
+bool declaratorChainIsForNamespace(Declarator *Dcl) {
+  Declarator *TypeDcl = findFindDeclaratorInChain(Dcl, Declarator::Type);
+  if (!TypeDcl)
+    return false;
+
+  if (auto PossibleNs = dyn_cast_or_null<LiteralSyntax>(TypeDcl->getInfo())){
+    return PossibleNs->getToken().hasKind(tok::NamespaceKeyword);
+  }
+  return false;
+
+}
+
 } // namespace blue
 

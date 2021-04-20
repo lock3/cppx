@@ -89,6 +89,10 @@ namespace blue
     bool nthTokenIs(std::size_t N, TokenKind K) {
       return getLookahead(N) == K;
     }
+    template<typename Callable>
+    bool nthTokenConformsTo(std::size_t N, Callable CB) {
+      return CB(getLookahead(N));
+    }
 
     bool nthTokenIs(std::size_t N, char const* Id) {
       const Token &Tok = peekToken(N);
@@ -222,6 +226,7 @@ namespace blue
     Syntax *parsePointerExpression(Syntax *E);
     Syntax *parsePointerExpression();
     Syntax *parsePrimaryExpression();
+    Syntax *parseBuiltinCompilerOp();
     Syntax *parseIdExpression();
     Syntax *parseTupleExpression();
     Syntax *parseArrayExpression();
@@ -271,6 +276,7 @@ namespace blue
     Syntax *parseLetExpression();
     Syntax *parseLambdaExpression();
     Syntax *parseCapture();
+    
 
     Syntax *parseTemplateConstructor();
     Syntax *parseArrayConstructor();

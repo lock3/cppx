@@ -20,7 +20,7 @@ using namespace blue;
 
 TEST(BlueNamespace, EmptyNamespace) {
   StringRef Code = R"BLUE(
-namespace n1:namespace = { }
+n1:namespace = { }
 )BLUE";
   auto ToMatch = namespaceDecl(hasName("n1"));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
@@ -28,8 +28,8 @@ namespace n1:namespace = { }
 
 TEST(BlueNamespace, NonEmptyNamespace) {
   StringRef Code = R"BLUE(
-namespace n1:namespace = {
-  var x:int;
+n1:namespace = {
+  x:int;
 }
 )BLUE";
   auto ToMatch = namespaceDecl(hasName("n1"),
@@ -42,11 +42,11 @@ namespace n1:namespace = {
 
 TEST(BlueNamespace, UsingNSQualifier) {
   StringRef Code = R"BLUE(
-namespace n1:namespace = {
-  var x:int;
+n1:namespace = {
+  x:int;
 }
-func foo:() void = {
-  var y:= n1.x;
+foo:() -> void = {
+  y:= n1.x;
 }
 )BLUE";
   auto ToMatch = translationUnitDecl(has(namespaceDecl(hasName("n1"),
@@ -61,8 +61,8 @@ func foo:() void = {
 
 TEST(BlueNamespace, NestedNameQualifierForNamespace) {
   StringRef Code = R"BLUE(
-namespace n1.n2:namespace = {
-  var x:int;
+n1.n2:namespace = {
+  x:int;
 }
 )BLUE";
   auto ToMatch = namespaceDecl(hasName("n1"),

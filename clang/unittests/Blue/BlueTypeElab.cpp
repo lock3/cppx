@@ -21,7 +21,7 @@ using namespace blue;
 
 #define BLUE_BUILTIN_TYPE_TEST(TYPE_STRING, TEST_SUFFIX, EXPECTED_TYPE_STR)\
 TEST(BlueType, BuiltInType_##TEST_SUFFIX) {\
-  StringRef Code = "var i:" TYPE_STRING ";";\
+  StringRef Code = "i:" TYPE_STRING ";";\
   DeclarationMatcher VarIMatcher = varDecl(\
     hasName("i"), hasType(asString(EXPECTED_TYPE_STR))\
   );\
@@ -68,7 +68,7 @@ BLUE_BUILTIN_TYPE_TEST("float128", float128, "__float128")
 //      are what was expected as per the spec & it matches what we use
 //      internally.
 TEST(BlueType, BuiltInType_IntegerCompilerFunction_Signed_1) {
-  StringRef Code = "var i:integer[1, signed];";
+  StringRef Code = "i:integer[1, signed];";
   DeclarationMatcher VarIMatcher = varDecl(
     hasName("i"), hasType(asString("signed char"))
   );
@@ -76,7 +76,7 @@ TEST(BlueType, BuiltInType_IntegerCompilerFunction_Signed_1) {
 }
 
 TEST(BlueType, BuiltInType_IntegerCompilerFunction_Signed_2) {
-  StringRef Code = "var i:integer[2, signed];";
+  StringRef Code = "i:integer[2, signed];";
   DeclarationMatcher VarIMatcher = varDecl(
     hasName("i"), hasType(asString("short"))
   );
@@ -84,7 +84,7 @@ TEST(BlueType, BuiltInType_IntegerCompilerFunction_Signed_2) {
 }
 
 TEST(BlueType, BuiltInType_IntegerCompilerFunction_Signed_4) {
-  StringRef Code = "var i:integer[4, signed];";
+  StringRef Code = "i:integer[4, signed];";
   DeclarationMatcher VarIMatcher = varDecl(
     hasName("i"), hasType(asString("int"))
   );
@@ -92,7 +92,7 @@ TEST(BlueType, BuiltInType_IntegerCompilerFunction_Signed_4) {
 }
 
 TEST(BlueType, BuiltInType_IntegerCompilerFunction_Signed_8) {
-  StringRef Code = "var i:integer[8, signed];";
+  StringRef Code = "i:integer[8, signed];";
   DeclarationMatcher VarIMatcher = varDecl(
     hasName("i"), hasType(asString("long"))
   );
@@ -100,7 +100,7 @@ TEST(BlueType, BuiltInType_IntegerCompilerFunction_Signed_8) {
 }
 
 TEST(BlueType, BuiltInType_IntegerCompilerFunction_Signed_16) {
-  StringRef Code = "var i:integer[16, signed];";
+  StringRef Code = "i:integer[16, signed];";
   DeclarationMatcher VarIMatcher = varDecl(
     hasName("i"), hasType(asString("__int128"))
   );
@@ -109,7 +109,7 @@ TEST(BlueType, BuiltInType_IntegerCompilerFunction_Signed_16) {
 
 
 TEST(BlueType, BuiltInType_IntegerCompilerFunction_Unsigned_1) {
-  StringRef Code = "var i:integer[1, unsigned];";
+  StringRef Code = "i:integer[1, unsigned];";
   DeclarationMatcher VarIMatcher = varDecl(
     hasName("i"), hasType(asString("unsigned char"))
   );
@@ -117,7 +117,7 @@ TEST(BlueType, BuiltInType_IntegerCompilerFunction_Unsigned_1) {
 }
 
 TEST(BlueType, BuiltInType_IntegerCompilerFunction_Unsigned_2) {
-  StringRef Code = "var i:integer[2, unsigned];";
+  StringRef Code = "i:integer[2, unsigned];";
   DeclarationMatcher VarIMatcher = varDecl(
     hasName("i"), hasType(asString("unsigned short"))
   );
@@ -125,7 +125,7 @@ TEST(BlueType, BuiltInType_IntegerCompilerFunction_Unsigned_2) {
 }
 
 TEST(BlueType, BuiltInType_IntegerCompilerFunction_Unsigned_4) {
-  StringRef Code = "var i:integer[4, unsigned];";
+  StringRef Code = "i:integer[4, unsigned];";
   DeclarationMatcher VarIMatcher = varDecl(
     hasName("i"), hasType(asString("unsigned int"))
   );
@@ -133,7 +133,7 @@ TEST(BlueType, BuiltInType_IntegerCompilerFunction_Unsigned_4) {
 }
 
 TEST(BlueType, BuiltInType_IntegerCompilerFunction_Unsigned_8) {
-  StringRef Code = "var i:integer[8, unsigned];";
+  StringRef Code = "i:integer[8, unsigned];";
   DeclarationMatcher VarIMatcher = varDecl(
     hasName("i"), hasType(asString("unsigned long"))
   );
@@ -141,7 +141,7 @@ TEST(BlueType, BuiltInType_IntegerCompilerFunction_Unsigned_8) {
 }
 
 TEST(BlueType, BuiltInType_IntegerCompilerFunction_Unsigned_16) {
-  StringRef Code = "var i:integer[16, unsigned];";
+  StringRef Code = "i:integer[16, unsigned];";
   DeclarationMatcher VarIMatcher = varDecl(
     hasName("i"), hasType(asString("unsigned __int128"))
   );
@@ -151,39 +151,39 @@ TEST(BlueType, BuiltInType_IntegerCompilerFunction_Unsigned_16) {
 
 
 TEST(BlueType, BuiltInType_IntegerCompilerFunction_NonMultipleOf2ByteCount) {
-  BlueFailureTest("var i:integer[3, signed];");
+  BlueFailureTest("i:integer[3, signed];");
 }
 
 TEST(BlueType, BuiltInType_IntegerCompilerFunction_InvalidSecondArg) {
-  BlueFailureTest("var i:integer[2, 2];");
+  BlueFailureTest("i:integer[2, 2];");
 }
 
 TEST(BlueType, BuiltInType_IntegerCompilerFunction_TwoFewArgs) {
-  BlueFailureTest("var i:integer[2];");
+  BlueFailureTest("i:integer[2];");
 }
 
 TEST(BlueType, BuiltInType_IntegerCompilerFunction_ToManyArgs) {
-  BlueFailureTest("var i:integer[3, signed, 4];");
+  BlueFailureTest("i:integer[3, signed, 4];");
 }
 
 TEST(BlueType, BuiltInType_IntegerCompilerFunction_UnexpectedLiteralType) {
-  BlueFailureTest("var i:integer['x', signed];");
+  BlueFailureTest("i:integer['x', signed];");
 }
 
 TEST(BlueType, BuiltInType_IntegerCompilerFunction_StringLiteral) {
-  BlueFailureTest(R"BLUE(var i:integer["x", signed];)BLUE");
+  BlueFailureTest(R"BLUE(i:integer["x", signed];)BLUE");
 }
 
 TEST(BlueType, BuiltInType_IntegerCompilerFunction_CharacterLiteral) {
-  BlueFailureTest(R"BLUE(var i:integer['x', signed];)BLUE");
+  BlueFailureTest(R"BLUE(i:integer['x', signed];)BLUE");
 }
 
 TEST(BlueType, BuiltInType_IntegerCompilerFunction_NegativeValue) {
-  BlueFailureTest("var i:integer[-3, signed];");
+  BlueFailureTest("i:integer[-3, signed];");
 }
 
 TEST(BlueType, BuiltInType_CharacterCompilerFunction_ASCII) {
-  StringRef Code = "var i:character[1, ascii];";
+  StringRef Code = "i:character[1, ascii];";
   DeclarationMatcher VarIMatcher = varDecl(
     hasName("i"), hasType(asString("char"))
   );
@@ -191,7 +191,7 @@ TEST(BlueType, BuiltInType_CharacterCompilerFunction_ASCII) {
 }
 
 TEST(BlueType, BuiltInType_CharacterCompilerFunction_UTF8) {
-  StringRef Code = "var i:character[1, utf];";
+  StringRef Code = "i:character[1, utf];";
   DeclarationMatcher VarIMatcher = varDecl(
     hasName("i"), hasType(asString("char8_t"))
   );
@@ -199,7 +199,7 @@ TEST(BlueType, BuiltInType_CharacterCompilerFunction_UTF8) {
 }
 
 TEST(BlueType, BuiltInType_CharacterCompilerFunction_UTF16) {
-  StringRef Code = "var i:character[2, utf];";
+  StringRef Code = "i:character[2, utf];";
   DeclarationMatcher VarIMatcher = varDecl(
     hasName("i"), hasType(asString("unsigned short"))
   );
@@ -207,7 +207,7 @@ TEST(BlueType, BuiltInType_CharacterCompilerFunction_UTF16) {
 }
 
 TEST(BlueType, BuiltInType_CharacterCompilerFunction_UTF32) {
-  StringRef Code = "var i:character[4, utf];";
+  StringRef Code = "i:character[4, utf];";
   DeclarationMatcher VarIMatcher = varDecl(
     hasName("i"), hasType(asString("unsigned int"))
   );
@@ -216,7 +216,7 @@ TEST(BlueType, BuiltInType_CharacterCompilerFunction_UTF32) {
 
 
 TEST(BlueType, BuiltInType_RealCompilerFunction_Binary_Float) {
-  StringRef Code = "var i:real[4, binary];";
+  StringRef Code = "i:real[4, binary];";
   DeclarationMatcher VarIMatcher = varDecl(
     hasName("i"), hasType(asString("float"))
   );
@@ -224,7 +224,7 @@ TEST(BlueType, BuiltInType_RealCompilerFunction_Binary_Float) {
 }
 
 TEST(BlueType, BuiltInType_RealCompilerFunction_Binary_Double) {
-  StringRef Code = "var i:real[8, binary];";
+  StringRef Code = "i:real[8, binary];";
   DeclarationMatcher VarIMatcher = varDecl(
     hasName("i"), hasType(asString("double"))
   );
@@ -232,9 +232,9 @@ TEST(BlueType, BuiltInType_RealCompilerFunction_Binary_Double) {
 }
 
 TEST(BlueType, BuiltInType_RealCompilerFunction_Binary_Invalid_1) {
-  BlueFailureTest("var i:real[1, binary];");
+  BlueFailureTest("i:real[1, binary];");
 }
 
 TEST(BlueType, BuiltInType_RealCompilerFunction_Binary_Invalid_2) {
-  BlueFailureTest("var i:real[2, binary];");
+  BlueFailureTest("i:real[2, binary];");
 }

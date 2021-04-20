@@ -20,8 +20,8 @@ using namespace blue;
 
 TEST(BlueUsingDirective, Wildcard) {
   StringRef Code = R"(
-namespace ns:namespace = {
-  var x:int = 7;
+ns:namespace = {
+  x:int = 7;
 }
 
 using ns._;
@@ -33,8 +33,8 @@ using ns._;
 
 TEST(BlueUsingDirective, Specific) {
   StringRef Code = R"(
-namespace ns:namespace = {
-  var x:int = 7;
+ns:namespace = {
+  x:int = 7;
 }
 
 using ns._;
@@ -42,4 +42,34 @@ using ns._;
 
   auto Match = usingDirectiveDecl();
   ASSERT_TRUE(matches(Code.str(), Match));
+}
+
+
+TEST(BlueUsingDirective, NamespaceAlias) {
+  StringRef Code = R"(
+ns:namespace = {
+  x:int = 7;
+}
+
+using N = ns;
+)";
+
+  auto ToMatch = namespaceAliasDecl(hasName("N"));
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(BlueUsingDirective, NamespaceAliasReferenceThroughIt) {
+  StringRef Code = R"(
+ns:namespace = {
+  x:int = 7;
+}
+
+using N = ns;
+foo:()={
+  N.x = 5;
+}
+)";
+
+  auto ToMatch = namespaceAliasDecl(hasName("N"));
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
 }

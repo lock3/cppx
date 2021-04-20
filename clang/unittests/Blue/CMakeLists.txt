@@ -33,17 +33,20 @@ set(LLVM_LINK_COMPONENTS
   )
 
 add_clang_unittest(BlueTests
+  BlueAccessSpecifierElab.cpp
   BlueArithmeticOpElab.cpp
   BlueArrayElab.cpp
   BlueAssignmentOpElab.cpp
   BlueASTMatchersTest.cpp
   BlueTypeElab.cpp
   BlueBitwiseOpElab.cpp
+  BlueBuiltinElabElab.cpp
   BlueClassElab.cpp
   BlueClassTemplateElab.cpp
   BlueComparisonOp.cpp
   BlueConstructorElab.cpp
   BlueConstTypeElab.cpp
+  BlueDefaultAndDeleteFunctionElab.cpp
   BlueDefaultParametersElab.cpp
   BlueDestructorElab.cpp
   BlueForElab.cpp
@@ -62,6 +65,7 @@ add_clang_unittest(BlueTests
   BlueTypeAliasTemplateElab.cpp
   BlueUsingElab.cpp
   BlueVariableElab.cpp
+  BlueVirtualMethodElab.cpp
   BlueWhileElab.cpp
   )
 

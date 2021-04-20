@@ -20,8 +20,8 @@ using namespace blue;
 
 TEST(BlueFor, NoBraces) {
   StringRef Code = R"BLUE(
-func main : () int = {
-  var y : int = 0;
+main : () -> int = {
+  y : int = 0;
   for (x : int = 0; x < 10; x+=1)
     x = y;
 
@@ -34,8 +34,8 @@ func main : () int = {
 
 TEST(BlueFor, Braces) {
   StringRef Code = R"BLUE(
-func main : () int = {
-  var y : int = 0;
+main : () -> int = {
+  y : int = 0;
   for (x : int = 0; x < 10; x+=1) {
     y+=1;
     x = y;
@@ -50,8 +50,8 @@ func main : () int = {
 
 TEST(BlueFor, NoVar) {
   StringRef Code = R"BLUE(
-func main : () int = {
-  var y : int = 0;
+main : () -> int = {
+  y : int = 0;
   for (;y < 10; y+=1) {
     y+=1;
   }
@@ -65,8 +65,8 @@ func main : () int = {
 
 TEST(BlueFor, NoInc) {
   StringRef Code = R"BLUE(
-func main : () int = {
-  var y : int = 0;
+main : () -> int = {
+  y : int = 0;
   for (x : int = 0; x < 10; ) {
     x+=1;
   }
@@ -80,8 +80,8 @@ func main : () int = {
 
 TEST(BlueFor, Infinite) {
   StringRef Code = R"BLUE(
-func main : () int = {
-  var y : int = 0;
+main : ()  -> int = {
+  y : int = 0;
   for (;;) {
     y+=1;
   }

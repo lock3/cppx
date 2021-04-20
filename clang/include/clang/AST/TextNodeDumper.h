@@ -417,6 +417,7 @@ public:
   void VisitSequenceSyntax(const blue::SequenceSyntax *S);
   void VisitLiteralSyntax(const blue::LiteralSyntax *S);
   void VisitIdentifierSyntax(const blue::IdentifierSyntax *S);
+  void VisitBuiltinCompilerOpSyntax(const blue::BuiltinCompilerOpSyntax *S);
 };
 
 } // namespace clang

@@ -20,9 +20,9 @@ using namespace blue;
 
 TEST(BlueArray, SimpleArrayDecl){
   StringRef Code = R"BLUE(
-var x : [2]int;
-var y : [2][4]int;
-var z : [2][4][8]int;
+x : [2]int;
+y : [2][4]int;
+z : [2][4][8]int;
 )BLUE";
 
   auto XMatch = varDecl(hasName("x"), hasType(asString("int [2]")));
@@ -35,11 +35,11 @@ var z : [2][4][8]int;
 
 TEST(BlueArray, MultidimensionalAccess) {
   StringRef Code = R"BLUE(
-var x : [2]int;
-var y : [2][4]int;
-var z : [2][4][8]int;
+x : [2]int;
+y : [2][4]int;
+z : [2][4][8]int;
 
-func f:() = {
+f:() = {
   x[0] = 3;
   y[0][1] = 3;
   z[0][1][2] = 3;

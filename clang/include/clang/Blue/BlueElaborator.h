@@ -117,11 +117,12 @@ public:
   clang::Expr *elaborateTemplateDeclarator(const Declarator *Dcl);
   clang::Expr *elaborateClassDeclarator(const Declarator *Dcl);
   clang::Expr *elaborateImplicitTypeDeclarator(const Declarator *Dcl);
-
+  
   clang::Decl *makeValueDecl(Declaration *D);
   clang::Decl *makeObjectDecl(Declaration *D, clang::Expr *Ty);
   clang::Decl *makeTypeDecl(Declaration *D, clang::QualType T);
   clang::Decl *makeFunctionDecl(Declaration *D);
+  void checkCXXMethodDecl(clang::CXXMethodDecl *MD);
   clang::Decl *makeClass(Declaration *D);
   bool makeBases(unsigned &DeclIndex,
                 llvm::SmallVectorImpl<Declaration *> & DeclBodyList,
@@ -152,8 +153,11 @@ public:
   void elaborateFieldInit(Declaration *D);
   void elaborateFunctionDef(Declaration *D);
 
+  
+
   clang::Expr *elaborateExpression(const Syntax *S);
   clang::Expr *elaborateConstantExpression(const Syntax *S);
+  clang::Expr *doElaborateConstantExpression(const Syntax *S);
   clang::Expr *doElaborateExpression(const Syntax *S);
 
   clang::Expr *elaborateLiteralExpression(const LiteralSyntax *S);
@@ -170,7 +174,16 @@ public:
   clang::Expr *elaborateTripleExpression(const TripleSyntax *S);
   clang::Expr *elaborateListExpression(const ListSyntax *S);
   clang::Expr *elaborateSequenceExpression(const SequenceSyntax *S);
+  clang::Expr *elaborateQualifiedMemberAccess(const QualifiedMemberAccessSyntax *S);
+  clang::Expr *elaborateNestedLookupAccess(clang::Expr *Previous,
+                                           const Syntax *Op,
+                                           const Syntax *RHS);
 
+  clang::Expr *elaborateCompilerOp(const BuiltinCompilerOpSyntax *S);
+  clang::Expr *elaborateTypeTraitsOp(Token Tok, const Syntax *Arg,
+                                    clang::UnaryExprOrTypeTrait Trait);
+  clang::Expr *elaborateNoExceptOp(Token AlignOfTok,const Syntax *Arg);
+  clang::Expr *elaborateTypeidOp(Token Tok,const Syntax *Arg);
   // clang::Expr *elaborateSeqExpression(const SeqSyntax *S);
   // clang::Expr *elaborateUnaryExpression(const UnarySyntax *S);
   // clang::Expr *elaborateBinaryExpression(const BinarySyntax *S);
@@ -185,7 +198,7 @@ public:
   void elaborateTemplateArgs(const EnclosureSyntax *Enc, const ListSyntax *ArgList,
                              clang::TemplateArgumentListInfo &TemplateArgs,
                    llvm::SmallVectorImpl<clang::TemplateArgument> &ActualArgs);
-  clang::Expr *elabotateTemplateInstantiationWithArgs(const EnclosureSyntax *Enc, clang::Expr *Base,
+  clang::Expr *elabortateTemplateInstantiationWithArgs(const EnclosureSyntax *Enc, clang::Expr *Base,
                                                     const ListSyntax *ArgList);
   clang::Expr *elaborateClassTemplateSelection(clang::Expr *IdExpr,
                                                const EnclosureSyntax *Enc,
@@ -235,6 +248,7 @@ public:
 
   // Diagnostics
   void Error(clang::SourceLocation Loc, llvm::StringRef Msg);
+  clang::DiagnosticBuilder error(clang::SourceLocation Loc);
 
 private:
   std::size_t ImplicitSemaDecls = 0;

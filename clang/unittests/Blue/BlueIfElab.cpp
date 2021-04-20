@@ -20,7 +20,7 @@ using namespace blue;
 
 TEST(BlueIf, NoBraces) {
   StringRef Code = R"BLUE(
-func main : () int = {
+main : () -> int = {
   if (1)
     return 1;
   else
@@ -33,7 +33,7 @@ func main : () int = {
 
 TEST(BlueIf, Braces) {
   StringRef Code = R"BLUE(
-func main : () int = {
+main : () -> int = {
   if (1) {
     3;
     return 1;
@@ -49,7 +49,7 @@ func main : () int = {
 
 TEST(BlueIf, Staggered1) {
   StringRef Code = R"BLUE(
-func main : () int = {
+main : () -> int = {
   if (1)
     return 1;
   else {
@@ -64,7 +64,7 @@ func main : () int = {
 
 TEST(BlueIf, Staggered2) {
   StringRef Code = R"BLUE(
-func main : () int = {
+main : () -> int = {
   if (1) {
     4;
     return 1;

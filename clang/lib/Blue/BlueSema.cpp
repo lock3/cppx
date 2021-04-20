@@ -1404,7 +1404,7 @@ Sema::ActOnStartNamespaceDef(clang::Scope *NamespcScope,
       // UD->setImplicit();
       // Parent->addDecl(UD);
       // getCurrentScope()->UsingDirectives.insert(UD);
-      llvm_unreachable("Using directive not implemented yet.");
+      // llvm_unreachable("Using directive not implemented yet.");
     }
   }
 
@@ -1495,7 +1495,30 @@ Sema::getLookupScopeName(Sema::NNSLookupDecl const &D, Sema::NNSKind K) const {
   // FIXME: supply enough information in the NNSLookupDecl to create this.
   case NNSK_Record:
     return {false, nullptr};
+  default:
+    llvm_unreachable("Invalid nested name lookup!");
   } // switch (K);
+}
+
+Declaration *Sema::getLookupContextFromExpr(clang::Expr *E) {
+  clang::QualType ExprTy = E->getType().getDesugaredType(CxxAST);
+  if (!ExprTy->isClassType()) {
+    unsigned DiagID = CxxSema.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                  "type is not a class, enum, or union");
+    CxxSema.Diags.Report(E->getExprLoc(), DiagID);
+    return nullptr;
+  }
+  // Getting the record decl.
+  clang::CXXRecordDecl *RD = ExprTy->getAsCXXRecordDecl();
+  if (!RD) {
+    unsigned DiagID = CxxSema.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                  "type is not a class, enum, or union");
+    CxxSema.Diags.Report(E->getExprLoc(), DiagID);
+    return nullptr;
+  }
+  Declaration *D = getDeclaration(RD);
+  assert(D && "Invalid declaration");
+  return D;
 }
 
 } // end namespace Blue

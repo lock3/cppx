@@ -20,8 +20,8 @@ using namespace blue;
 
 TEST(BlueOperatorOverloading, EqualityMemberDecl) {
   StringRef Code = R"BLUE(
-type C : class = {
-  func operator==:(in this, in other:C) bool = { return false; }
+C : type = {
+  operator==:(in this, in other:C) -> bool = { return false; }
 }
 )BLUE";
   auto ToMatch = translationUnitDecl(hasDescendant(cxxRecordDecl(
@@ -34,8 +34,8 @@ type C : class = {
 
 TEST(BlueOperatorOverloading, EqualityFreeDecl) {
   StringRef Code = R"BLUE(
-type C : class = { }
-func operator==:(in x:C, in y:C) bool = { return false; }
+C : type = { }
+operator==:(in x:C, in y:C) -> bool = { return false; }
 )BLUE";
   auto ToMatch = translationUnitDecl(
     has(functionDecl(
@@ -49,8 +49,8 @@ func operator==:(in x:C, in y:C) bool = { return false; }
 
 TEST(BlueOperatorOverloading, InequalityMemberDecl) {
   StringRef Code = R"BLUE(
-type C : class = {
-  func operator!=:(in this, in other:C) bool = { return false; }
+C : type = {
+  operator!=:(in this, in other:C) -> bool = { return false; }
 }
 )BLUE";
   auto ToMatch = translationUnitDecl(hasDescendant(cxxRecordDecl(
@@ -63,8 +63,8 @@ type C : class = {
 
 TEST(BlueOperatorOverloading, InequalityFreeDecl) {
   StringRef Code = R"BLUE(
-type C : class = { }
-func operator!=:(in x:C, in y:C) bool = { return false; }
+C : type = { }
+operator!=:(in x:C, in y:C) -> bool = { return false; }
 )BLUE";
   auto ToMatch = translationUnitDecl(
     has(functionDecl(
@@ -77,8 +77,8 @@ func operator!=:(in x:C, in y:C) bool = { return false; }
 
 TEST(BlueOperatorOverloading, LessMemberDecl) {
   StringRef Code = R"BLUE(
-type C : class = {
-  func operator<:(in this, in other:C) bool = { return false; }
+C : type = {
+  operator<:(in this, in other:C) -> bool = { return false; }
 }
 )BLUE";
   auto ToMatch = translationUnitDecl(hasDescendant(cxxRecordDecl(
@@ -91,8 +91,8 @@ type C : class = {
 
 TEST(BlueOperatorOverloading, LessFreeDecl) {
   StringRef Code = R"BLUE(
-type C : class = { }
-func operator<:(in x:C, in y:C) bool = { return false; }
+C : type = { }
+operator<:(in x:C, in y:C) -> bool = { return false; }
 )BLUE";
   auto ToMatch = translationUnitDecl(
     has(functionDecl(
@@ -105,8 +105,8 @@ func operator<:(in x:C, in y:C) bool = { return false; }
 
 TEST(BlueOperatorOverloading, GreaterMemberDecl) {
   StringRef Code = R"BLUE(
-type C : class = {
-  func operator>:(in this, in other:C) bool = { return false; }
+C : type = {
+  operator>:(in this, in other:C) -> bool = { return false; }
 }
 )BLUE";
   auto ToMatch = translationUnitDecl(hasDescendant(cxxRecordDecl(
@@ -119,8 +119,8 @@ type C : class = {
 
 TEST(BlueOperatorOverloading, GreaterFreeDecl) {
   StringRef Code = R"BLUE(
-type C : class = { }
-func operator>:(in x:C, in y:C) bool = { return false; }
+C : type = { }
+operator>:(in x:C, in y:C) -> bool = { return false; }
 )BLUE";
   auto ToMatch = translationUnitDecl(
     has(functionDecl(
@@ -134,8 +134,8 @@ func operator>:(in x:C, in y:C) bool = { return false; }
 
 TEST(BlueOperatorOverloading, LessEqualMemberDecl) {
   StringRef Code = R"BLUE(
-type C : class = {
-  func operator<=:(in this, in other:C) bool = { return false; }
+C : type = {
+  operator<=:(in this, in other:C) -> bool = { return false; }
 }
 )BLUE";
   auto ToMatch = translationUnitDecl(hasDescendant(cxxRecordDecl(
@@ -148,8 +148,8 @@ type C : class = {
 
 TEST(BlueOperatorOverloading, LessEqualFreeDecl) {
   StringRef Code = R"BLUE(
-type C : class = { }
-func operator<=:(in x:C, in y:C) bool = { return false; }
+C : type = { }
+operator<=:(in x:C, in y:C) -> bool = { return false; }
 )BLUE";
   auto ToMatch = translationUnitDecl(
     has(functionDecl(
@@ -162,8 +162,8 @@ func operator<=:(in x:C, in y:C) bool = { return false; }
 
 TEST(BlueOperatorOverloading, GreaterEqualMemberDecl) {
   StringRef Code = R"BLUE(
-type C : class = {
-  func operator>=:(in this, in other:C) bool = { return false; }
+C : type = {
+  operator>=:(in this, in other:C) -> bool = { return false; }
 }
 )BLUE";
   auto ToMatch = translationUnitDecl(hasDescendant(cxxRecordDecl(
@@ -176,8 +176,8 @@ type C : class = {
 
 TEST(BlueOperatorOverloading, GreaterEqualFreeDecl) {
   StringRef Code = R"BLUE(
-type C : class = { }
-func operator>=:(in x:C, in y:C) bool = { return false; }
+C : type = { }
+operator>=:(in x:C, in y:C) -> bool = { return false; }
 )BLUE";
   auto ToMatch = translationUnitDecl(
     has(functionDecl(
@@ -190,8 +190,8 @@ func operator>=:(in x:C, in y:C) bool = { return false; }
 
 TEST(BlueOperatorOverloading, UnaryPlusMemberDecl) {
   StringRef Code = R"BLUE(
-type C : class = {
-  func operator+:(in this) bool = { return false; }
+C : type = {
+  operator+:(in this) -> bool = { return false; }
 }
 )BLUE";
   auto ToMatch = translationUnitDecl(hasDescendant(cxxRecordDecl(
@@ -204,8 +204,8 @@ type C : class = {
 
 TEST(BlueOperatorOverloading, UnaryMinusMemberDecl) {
   StringRef Code = R"BLUE(
-type C : class = {
-  func operator-:(in this) bool = { return false; }
+C : type = {
+  operator-:(in this) -> bool = { return false; }
 }
 )BLUE";
   auto ToMatch = translationUnitDecl(hasDescendant(cxxRecordDecl(
@@ -218,8 +218,8 @@ type C : class = {
 
 TEST(BlueOperatorOverloading, BinaryPlusMemberDecl) {
   StringRef Code = R"BLUE(
-type C : class = {
-  func operator+:(in this, in other:C) bool = { return false; }
+C : type = {
+  operator+:(in this, in other:C) -> bool = { return false; }
 }
 )BLUE";
   auto ToMatch = translationUnitDecl(hasDescendant(cxxRecordDecl(
@@ -232,8 +232,8 @@ type C : class = {
 
 TEST(BlueOperatorOverloading, BinaryPlusFreeDecl) {
   StringRef Code = R"BLUE(
-type C : class = { }
-func operator+:(in x:C, in y:C) bool = { return false; }
+C : type = { }
+operator+:(in x:C, in y:C) -> bool = { return false; }
 )BLUE";
   auto ToMatch = translationUnitDecl(
     has(functionDecl(
@@ -246,8 +246,8 @@ func operator+:(in x:C, in y:C) bool = { return false; }
 
 TEST(BlueOperatorOverloading, BinaryMinusMemberDecl) {
   StringRef Code = R"BLUE(
-type C : class = {
-  func operator-:(in this, in other:C) bool = { return false; }
+C : type = {
+  operator-:(in this, in other:C) -> bool = { return false; }
 }
 )BLUE";
   auto ToMatch = translationUnitDecl(hasDescendant(cxxRecordDecl(
@@ -260,8 +260,8 @@ type C : class = {
 
 TEST(BlueOperatorOverloading, BinaryMinusFreeDecl) {
   StringRef Code = R"BLUE(
-type C : class = { }
-func operator-:(in x:C, in y:C) bool = { return false; }
+C : type = { }
+operator-:(in x:C, in y:C) -> bool = { return false; }
 )BLUE";
   auto ToMatch = translationUnitDecl(
     has(functionDecl(
@@ -274,8 +274,8 @@ func operator-:(in x:C, in y:C) bool = { return false; }
 
 TEST(BlueOperatorOverloading, MultiplyMemberDecl) {
   StringRef Code = R"BLUE(
-type C : class = {
-  func operator*:(in this, in other:C) bool = { return false; }
+C : type = {
+  operator*:(in this, in other:C) -> bool = { return false; }
 }
 )BLUE";
   auto ToMatch = translationUnitDecl(hasDescendant(cxxRecordDecl(
@@ -288,8 +288,8 @@ type C : class = {
 
 TEST(BlueOperatorOverloading, MultiplyFreeDecl) {
   StringRef Code = R"BLUE(
-type C : class = { }
-func operator*:(in x:C, in y:C) bool = { return false; }
+C : type = { }
+operator*:(in x:C, in y:C) -> bool = { return false; }
 )BLUE";
   auto ToMatch = translationUnitDecl(
     has(functionDecl(
@@ -302,8 +302,8 @@ func operator*:(in x:C, in y:C) bool = { return false; }
 
 TEST(BlueOperatorOverloading, DivideMemberDecl) {
   StringRef Code = R"BLUE(
-type C : class = {
-  func operator/:(in this, in other:C) bool = { return false; }
+C : type = {
+  operator/:(in this, in other:C) -> bool = { return false; }
 }
 )BLUE";
   auto ToMatch = translationUnitDecl(hasDescendant(cxxRecordDecl(
@@ -316,8 +316,8 @@ type C : class = {
 
 TEST(BlueOperatorOverloading, DivideFreeDecl) {
   StringRef Code = R"BLUE(
-type C : class = { }
-func operator/:(in x:C, in y:C) bool = { return false; }
+C : type = { }
+operator/:(in x:C, in y:C) -> bool = { return false; }
 )BLUE";
   auto ToMatch = translationUnitDecl(
     has(functionDecl(
@@ -330,8 +330,8 @@ func operator/:(in x:C, in y:C) bool = { return false; }
 
 TEST(BlueOperatorOverloading, ModulusMemberDecl) {
   StringRef Code = R"BLUE(
-type C : class = {
-  func operator%:(in this, in other:C) bool = { return false; }
+C : type = {
+  operator%:(in this, in other:C) -> bool = { return false; }
 }
 )BLUE";
   auto ToMatch = translationUnitDecl(hasDescendant(cxxRecordDecl(
@@ -344,8 +344,8 @@ type C : class = {
 
 TEST(BlueOperatorOverloading, ModulusFreeDecl) {
   StringRef Code = R"BLUE(
-type C : class = { }
-func operator%:(in x:C, in y:C) bool = { return false; }
+C : type = { }
+operator%:(in x:C, in y:C) -> bool = { return false; }
 )BLUE";
   auto ToMatch = translationUnitDecl(
     has(functionDecl(
@@ -358,8 +358,8 @@ func operator%:(in x:C, in y:C) bool = { return false; }
 
 TEST(BlueOperatorOverloading, PlusEqualMemberDecl) {
   StringRef Code = R"BLUE(
-type C : class = {
-  func operator+=:(in this, in other:C) bool = { return false; }
+C : type = {
+  operator+=:(in this, in other:C) -> bool = { return false; }
 }
 )BLUE";
   auto ToMatch = translationUnitDecl(hasDescendant(cxxRecordDecl(
@@ -372,8 +372,8 @@ type C : class = {
 
 TEST(BlueOperatorOverloading, MinusEqualMemberDecl) {
   StringRef Code = R"BLUE(
-type C : class = {
-  func operator-=:(in this, in other:C) bool = { return false; }
+C : type = {
+  operator-=:(in this, in other:C) -> bool = { return false; }
 }
 )BLUE";
   auto ToMatch = translationUnitDecl(hasDescendant(cxxRecordDecl(
@@ -386,8 +386,8 @@ type C : class = {
 
 TEST(BlueOperatorOverloading, MultiplyEqualMemberDecl) {
   StringRef Code = R"BLUE(
-type C : class = {
-  func operator*=:(in this, in other:C) bool = { return false; }
+C : type = {
+  operator*=:(in this, in other:C) -> bool = { return false; }
 }
 )BLUE";
   auto ToMatch = translationUnitDecl(hasDescendant(cxxRecordDecl(
@@ -400,8 +400,8 @@ type C : class = {
 
 TEST(BlueOperatorOverloading, DivideEqualMemberDecl) {
   StringRef Code = R"BLUE(
-type C : class = {
-  func operator/=:(in this, in other:C) bool = { return false; }
+C : type = {
+  operator/=:(in this, in other:C) -> bool = { return false; }
 }
 )BLUE";
   auto ToMatch = translationUnitDecl(hasDescendant(cxxRecordDecl(
@@ -414,8 +414,8 @@ type C : class = {
 
 TEST(BlueOperatorOverloading, ModulusEqualMemberDecl) {
   StringRef Code = R"BLUE(
-type C : class = {
-  func operator%=:(in this, in other:C) bool = { return false; }
+C : type = {
+  operator%=:(in this, in other:C) -> bool = { return false; }
 }
 )BLUE";
   auto ToMatch = translationUnitDecl(hasDescendant(cxxRecordDecl(
@@ -428,8 +428,8 @@ type C : class = {
 
 // TEST(BlueOperatorOverloading, LeftShiftMemberDecl) {
 //   StringRef Code = R"BLUE(
-// type C : class = {
-//   func operator<<:(in this, in other:C) bool = { return false; }
+// C : type = {
+//   operator<<:(in this, in other:C) bool = { return false; }
 // }
 // )BLUE";
 //   auto ToMatch = translationUnitDecl(hasDescendant(cxxRecordDecl(
@@ -443,8 +443,8 @@ type C : class = {
 
 // TEST(BlueOperatorOverloading, RightShiftMemberDecl) {
 //   StringRef Code = R"BLUE(
-// type C : class = {
-//   func operator>>:(in this, in other:C) bool = { return false; }
+// C : type = {
+//   operator>>:(in this, in other:C) bool = { return false; }
 // }
 // )BLUE";
 //   auto ToMatch = translationUnitDecl(hasDescendant(cxxRecordDecl(
@@ -461,10 +461,10 @@ type C : class = {
 // -----------------------------------------------------------------------------
 TEST(BlueOperatorOverloading, EqualityMemberUse) {
   StringRef Code = R"BLUE(
-type C : class = {
-  func operator==:(in this, in other:C) bool = { return false; }
+C : type = {
+  operator==:(in this, in other:C) -> bool = { return false; }
 }
-func foo:(x:C,y:C) = {
+foo:(x:C,y:C) = {
   return x == y;
 }
 )BLUE";
@@ -475,9 +475,9 @@ func foo:(x:C,y:C) = {
 
 TEST(BlueOperatorOverloading, EqualityFreeUse) {
   StringRef Code = R"BLUE(
-type C : class = { }
-func operator==:(in x:C, in y:C) bool = { return false; }
-func foo:(in x:C, in y:C) = {
+C : type = { }
+operator==:(in x:C, in y:C) -> bool = { return false; }
+foo:(in x:C, in y:C) = {
   return x == y;
 }
 )BLUE";
@@ -487,10 +487,10 @@ func foo:(in x:C, in y:C) = {
 
 TEST(BlueOperatorOverloading, InequalityMemberUse) {
   StringRef Code = R"BLUE(
-type C : class = {
-  func operator!=:(in this, in other:C) bool = { return false; }
+C : type = {
+  operator!=:(in this, in other:C) -> bool = { return false; }
 }
-func foo:(x:C,y:C) = {
+foo:(x:C,y:C) = {
   return x != y;
 }
 )BLUE";
@@ -500,9 +500,9 @@ func foo:(x:C,y:C) = {
 
 TEST(BlueOperatorOverloading, InequalityFreeUse) {
   StringRef Code = R"BLUE(
-type C : class = { }
-func operator!=:(in x:C, in y:C) bool = { return false; }
-func foo:(x:C,y:C) = {
+C : type = { }
+operator!=:(in x:C, in y:C) -> bool = { return false; }
+foo:(x:C,y:C) = {
   return x != y;
 }
 )BLUE";
@@ -512,10 +512,10 @@ func foo:(x:C,y:C) = {
 
 TEST(BlueOperatorOverloading, LessMemberUse) {
   StringRef Code = R"BLUE(
-type C : class = {
-  func operator<:(in this, in other:C) bool = { return false; }
+C : type = {
+  operator<:(in this, in other:C) -> bool = { return false; }
 }
-func foo:(x:C,y:C) = {
+foo:(x:C,y:C) = {
   return x < y;
 }
 )BLUE";
@@ -525,9 +525,9 @@ func foo:(x:C,y:C) = {
 
 TEST(BlueOperatorOverloading, LessFreeUse) {
   StringRef Code = R"BLUE(
-type C : class = { }
-func operator<:(in x:C, in y:C) bool = { return false; }
-func foo:(x:C,y:C) = {
+C : type = { }
+operator<:(in x:C, in y:C) -> bool = { return false; }
+foo:(x:C,y:C) = {
   return x < y;
 }
 )BLUE";
@@ -542,10 +542,10 @@ func foo:(x:C,y:C) = {
 
 TEST(BlueOperatorOverloading, GreaterMemberUse) {
   StringRef Code = R"BLUE(
-type C : class = {
-  func operator>:(in this, in other:C) bool = { return false; }
+C : type = {
+  operator>:(in this, in other:C) -> bool = { return false; }
 }
-func foo:(x:C,y:C) = {
+foo:(x:C,y:C) = {
   return x > y;
 }
 )BLUE";
@@ -555,9 +555,9 @@ func foo:(x:C,y:C) = {
 
 TEST(BlueOperatorOverloading, GreaterFreeUse) {
   StringRef Code = R"BLUE(
-type C : class = { }
-func operator>:(in x:C, in y:C) bool = { return false; }
-func foo:(x:C,y:C) = {
+C : type = { }
+operator>:(in x:C, in y:C) -> bool = { return false; }
+foo:(x:C,y:C) = {
   return x > y;
 }
 )BLUE";
@@ -568,10 +568,10 @@ func foo:(x:C,y:C) = {
 
 TEST(BlueOperatorOverloading, LessEqualMemberUse) {
   StringRef Code = R"BLUE(
-type C : class = {
-  func operator<=:(in this, in other:C) bool = { return false; }
+C : type = {
+  operator<=:(in this, in other:C) -> bool = { return false; }
 }
-func foo:(x:C,y:C) = {
+foo:(x:C,y:C) = {
   return x <= y;
 }
 )BLUE";
@@ -581,9 +581,9 @@ func foo:(x:C,y:C) = {
 
 TEST(BlueOperatorOverloading, LessEqualFreeUse) {
   StringRef Code = R"BLUE(
-type C : class = { }
-func operator<=:(in x:C, in y:C) bool = { return false; }
-func foo:(x:C,y:C) = {
+C : type = { }
+operator<=:(in x:C, in y:C) -> bool = { return false; }
+foo:(x:C,y:C) = {
   return x <= y;
 }
 )BLUE";
@@ -593,10 +593,10 @@ func foo:(x:C,y:C) = {
 
 TEST(BlueOperatorOverloading, GreaterEqualMemberUse) {
   StringRef Code = R"BLUE(
-type C : class = {
-  func operator>=:(in this, in other:C) bool = { return false; }
+C : type = {
+  operator>=:(in this, in other:C) -> bool = { return false; }
 }
-func foo:(x:C,y:C) = {
+foo:(x:C,y:C) = {
   return x >= y;
 }
 )BLUE";
@@ -606,9 +606,9 @@ func foo:(x:C,y:C) = {
 
 TEST(BlueOperatorOverloading, GreaterEqualFreeUse) {
   StringRef Code = R"BLUE(
-type C : class = { }
-func operator>=:(in x:C, in y:C) bool = { return false; }
-func foo:(x:C,y:C) = {
+C : type = { }
+operator>=:(in x:C, in y:C) -> bool = { return false; }
+foo:(x:C,y:C) = {
   return x >= y;
 }
 )BLUE";
@@ -618,10 +618,10 @@ func foo:(x:C,y:C) = {
 
 TEST(BlueOperatorOverloading, UnaryPlusMemberUse) {
   StringRef Code = R"BLUE(
-type C : class = {
-  func operator+:(in this) bool = { return false; }
+C : type = {
+  operator+:(in this) -> bool = { return false; }
 }
-func foo:(x:C) = {
+foo:(x:C) = {
   return +x;
 }
 )BLUE";
@@ -631,10 +631,10 @@ func foo:(x:C) = {
 
 TEST(BlueOperatorOverloading, UnaryMinusMemberUse) {
   StringRef Code = R"BLUE(
-type C : class = {
-  func operator-:(in this) bool = { return false; }
+C : type = {
+  operator-:(in this) -> bool = { return false; }
 }
-func foo:(x:C) = {
+foo:(x:C) = {
   return -x;
 }
 )BLUE";
@@ -644,10 +644,10 @@ func foo:(x:C) = {
 
 TEST(BlueOperatorOverloading, BinaryPlusMemberUse) {
   StringRef Code = R"BLUE(
-type C : class = {
-  func operator+:(in this, in other:C) bool = { return false; }
+C : type = {
+  operator+:(in this, in other:C) -> bool = { return false; }
 }
-func foo:(x:C,y:C) = {
+foo:(x:C,y:C) = {
   return x + y;
 }
 )BLUE";
@@ -657,9 +657,9 @@ func foo:(x:C,y:C) = {
 
 TEST(BlueOperatorOverloading, BinaryPlusFreeUse) {
   StringRef Code = R"BLUE(
-type C : class = { }
-func operator+:(in x:C, in y:C) bool = { return false; }
-func foo:(x:C,y:C) = {
+C : type = { }
+operator+:(in x:C, in y:C) -> bool = { return false; }
+foo:(x:C,y:C) = {
   return x + y;
 }
 )BLUE";
@@ -669,10 +669,10 @@ func foo:(x:C,y:C) = {
 
 TEST(BlueOperatorOverloading, BinaryMinusMemberUse) {
   StringRef Code = R"BLUE(
-type C : class = {
-  func operator-:(in this, in other:C) bool = { return false; }
+C : type = {
+  operator-:(in this, in other:C) -> bool = { return false; }
 }
-func foo:(x:C,y:C) = {
+foo:(x:C,y:C) = {
   return x - y;
 }
 )BLUE";
@@ -682,9 +682,9 @@ func foo:(x:C,y:C) = {
 
 TEST(BlueOperatorOverloading, BinaryMinusFreeUse) {
   StringRef Code = R"BLUE(
-type C : class = { }
-func operator-:(in x:C, in y:C) bool = { return false; }
-func foo:(x:C,y:C) = {
+C : type = { }
+operator-:(in x:C, in y:C) -> bool = { return false; }
+foo:(x:C,y:C) = {
   return x - y;
 }
 )BLUE";
@@ -694,10 +694,10 @@ func foo:(x:C,y:C) = {
 
 TEST(BlueOperatorOverloading, MultiplyMemberUse) {
   StringRef Code = R"BLUE(
-type C : class = {
-  func operator*:(in this, in other:C) bool = { return false; }
+C : type = {
+  operator*:(in this, in other:C) -> bool = { return false; }
 }
-func foo:(x:C,y:C) = {
+foo:(x:C,y:C) = {
   return x * y;
 }
 )BLUE";
@@ -707,9 +707,9 @@ func foo:(x:C,y:C) = {
 
 TEST(BlueOperatorOverloading, MultiplyFreeUse) {
   StringRef Code = R"BLUE(
-type C : class = { }
-func operator*:(in x:C, in y:C) bool = { return false; }
-func foo:(x:C,y:C) = {
+C : type = { }
+operator*:(in x:C, in y:C) -> bool = { return false; }
+foo:(x:C,y:C) = {
   return x * y;
 }
 )BLUE";
@@ -719,10 +719,10 @@ func foo:(x:C,y:C) = {
 
 TEST(BlueOperatorOverloading, DivideMemberUse) {
   StringRef Code = R"BLUE(
-type C : class = {
-  func operator/:(in this, in other:C) bool = { return false; }
+C : type = {
+  operator/:(in this, in other:C) -> bool = { return false; }
 }
-func foo:(x:C,y:C) = {
+foo:(x:C,y:C) = {
   return x / y;
 }
 )BLUE";
@@ -732,9 +732,9 @@ func foo:(x:C,y:C) = {
 
 TEST(BlueOperatorOverloading, DivideFreeUse) {
   StringRef Code = R"BLUE(
-type C : class = { }
-func operator/:(in x:C, in y:C) bool = { return false; }
-func foo:(x:C,y:C) = {
+C : type = { }
+operator/:(in x:C, in y:C) -> bool = { return false; }
+foo:(x:C,y:C) = {
   return x / y;
 }
 )BLUE";
@@ -744,10 +744,10 @@ func foo:(x:C,y:C) = {
 
 TEST(BlueOperatorOverloading, ModulusMemberUse) {
   StringRef Code = R"BLUE(
-type C : class = {
-  func operator%:(in this, in other:C) bool = { return false; }
+C : type = {
+  operator%:(in this, in other:C) -> bool = { return false; }
 }
-func foo:(x:C,y:C) = {
+foo:(x:C,y:C) = {
   return x % y;
 }
 )BLUE";
@@ -757,9 +757,9 @@ func foo:(x:C,y:C) = {
 
 TEST(BlueOperatorOverloading, ModulusFreeUse) {
   StringRef Code = R"BLUE(
-type C : class = { }
-func operator%:(in x:C, in y:C) bool = { return false; }
-func foo:(x:C,y:C) = {
+C : type = { }
+operator%:(in x:C, in y:C) -> bool = { return false; }
+foo:(x:C,y:C) = {
   return x % y;
 }
 )BLUE";
@@ -769,10 +769,10 @@ func foo:(x:C,y:C) = {
 
 TEST(BlueOperatorOverloading, PlusEqualMemberUse) {
   StringRef Code = R"BLUE(
-type C : class = {
-  func operator+=:(in this, in other:C) bool = { return false; }
+C : type = {
+  operator+=:(in this, in other:C) -> bool = { return false; }
 }
-func foo:(inout x:C,y:C) void = {
+foo:(inout x:C,y:C) -> void = {
    x += y;
 }
 )BLUE";
@@ -782,10 +782,10 @@ func foo:(inout x:C,y:C) void = {
 
 TEST(BlueOperatorOverloading, MinusEqualMemberUse) {
   StringRef Code = R"BLUE(
-type C : class = {
-  func operator-=:(in this, in other:C) bool = { return false; }
+C : type = {
+  operator-=:(in this, in other:C) -> bool = { return false; }
 }
-func foo:(inout x:C,y:C) void = {
+foo:(inout x:C,y:C) -> void = {
    x -= y;
 }
 )BLUE";
@@ -795,10 +795,10 @@ func foo:(inout x:C,y:C) void = {
 
 TEST(BlueOperatorOverloading, MultiplyEqualMemberUse) {
   StringRef Code = R"BLUE(
-type C : class = {
-  func operator*=:(in this, in other:C) bool = { return false; }
+C : type = {
+  operator*=:(in this, in other:C) -> bool = { return false; }
 }
-func foo:(inout x:C,y:C) void = {
+foo:(inout x:C,y:C) -> void = {
    x *= y;
 }
 )BLUE";
@@ -808,10 +808,10 @@ func foo:(inout x:C,y:C) void = {
 
 TEST(BlueOperatorOverloading, DivideEqualMemberUse) {
   StringRef Code = R"BLUE(
-type C : class = {
-  func operator/=:(in this, in other:C) bool = { return false; }
+C : type = {
+  operator/=:(in this, in other:C) -> bool = { return false; }
 }
-func foo:(inout x:C,y:C) void = {
+foo:(inout x:C,y:C) -> void = {
    x /= y;
 }
 )BLUE";
@@ -821,10 +821,10 @@ func foo:(inout x:C,y:C) void = {
 
 TEST(BlueOperatorOverloading, ModulusEqualMemberUse) {
   StringRef Code = R"BLUE(
-type C : class = {
-  func operator%=:(in this, in other:C) bool = { return false; }
+C : type = {
+  operator%=:(in this, in other:C) -> bool = { return false; }
 }
-func foo:(inout x:C,y:C) void = {
+foo:(inout x:C,y:C) -> void = {
    x %= y;
 }
 )BLUE";

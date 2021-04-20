@@ -20,7 +20,7 @@ using namespace blue;
 
 TEST(BlueLet, NoBraces) {
   StringRef Code = R"BLUE(
-func main : () int = {
+main : () -> int = {
   let (y : int = 0) while (y < 10)
                       y+=1;
 }
@@ -31,7 +31,7 @@ func main : () int = {
 
 TEST(BlueLet, Braces) {
   StringRef Code = R"BLUE(
-func main : () int = {
+main : () -> int = {
   let (y : int = 0) {
     while (y < 10)
       y+=1;

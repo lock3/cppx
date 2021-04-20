@@ -2435,5 +2435,8 @@ void TextNodeDumper::VisitLiteralSyntax(const blue::LiteralSyntax *S) {
 void TextNodeDumper::VisitIdentifierSyntax(const blue::IdentifierSyntax *S) {
   OS << " '" << S->getSpelling() << "'";
 }
+void TextNodeDumper::VisitBuiltinCompilerOpSyntax(const blue::BuiltinCompilerOpSyntax *S) {
+  OS << " '" << S->getOperator().getSpelling() << "'";
+}
 
 

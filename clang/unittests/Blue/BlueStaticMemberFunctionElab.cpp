@@ -20,8 +20,8 @@ using namespace blue;
 
 TEST(BlueStaticMethod, SimpleStaticMethod) {
   StringRef Code = R"BLUE(
-type X:class= {
-  func foo:(x:int) = {
+X : type= {
+  foo:(x:int) = {
     return x;
   }
 }

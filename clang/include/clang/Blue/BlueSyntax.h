@@ -299,7 +299,9 @@ struct MultiarySyntax : Syntax
   clang::SourceLocation getLocation() const {
     if (NumTerms == 0)
       return clang::SourceLocation();
-
+    if (!Terms[0]) {
+      return clang::SourceLocation();
+    }
     return Terms[0]->getLocation();
   }
 
@@ -543,6 +545,35 @@ struct TripleSyntax : TernarySyntax
   }
 };
 
+struct QualifiedMemberAccessSyntax : TernarySyntax {
+private:
+  Token DotTok;
+  Token LParenTok;
+  Token RParenTok;
+public:
+  static constexpr KindType Kind = QualifiedMemberAccess;
+
+  QualifiedMemberAccessSyntax(Token DotToken, Token LParenToken, Token RParenToken,
+               Syntax *S0, Syntax *S1, Syntax *S2)
+    : TernarySyntax(Kind, S0, S1, S2),
+    DotTok(DotToken), LParenTok(LParenToken), RParenTok(RParenToken)
+  { }
+
+  Token getDot() const {
+    return DotTok;
+  }
+  Token getLParen() const {
+    return LParenTok;
+  }
+  Token getRParen() const {
+    return RParenTok;
+  }
+
+  static bool classof(const Syntax *S) {
+    return S->getKind() == Kind;
+  }
+};
+
 /// A quadruple of terms.
 struct QuadrupleSyntax : QuaternarySyntax
 {
@@ -577,6 +608,30 @@ struct PrefixSyntax : UnarySyntax
   }
 
   Token Op;
+};
+
+
+/// The reason that this exists and this isn't just a prefix expression,
+/// is that this requires different elaboration from other prefix expressions.
+/// I thought it would be easier to elaborate if these were handled as a
+/// separate group.
+struct BuiltinCompilerOpSyntax : public UnarySyntax {
+  Token Keyword;
+  static constexpr KindType Kind = BuiltinCompilerOp;
+
+  BuiltinCompilerOpSyntax(Token Kw, Syntax *S)
+    :UnarySyntax(Kind, S),
+    Keyword(Kw)
+  { }
+
+  clang::SourceLocation getLocation() const {
+    return Keyword.getLocation();
+  }
+
+  Token getOperator() const { return Keyword; }
+  static bool classof(const Syntax *S) {
+    return S->getKind() == Kind;
+  }
 };
 
 /// Compound type constructors for arrays, templates, and functions.
@@ -842,35 +897,15 @@ private:
 ///   - a type
 ///   - a constraint
 ///   - an initializer
+///   - an access specifier token.
 struct DeclarationSyntax : QuaternarySyntax
 {
-  // The introducer-keyword that started this declaration, if any.
-  enum IntroducerKind : unsigned {
-    // A parameter or ill-formed declaration
-    Unknown,
-
-    // A variable declaration
-    Variable,
-
-    // A function declaration
-    Function,
-
-    // A declaration with a type as its value.
-    Type,
-
-    // A declaration of a base class.
-    Super,
-
-    // A namespace declaration
-    Namespace,
-  };
 
   static constexpr KindType Kind = Declaration;
 
   DeclarationSyntax(Syntax *D, Syntax *T, Syntax *C, Syntax *I,
-                    IntroducerKind IdK = Unknown)
-    : QuaternarySyntax(Kind, D, T, C, I),
-    IntroKind(IdK)
+                    Token AccessSpecifier = Token())
+    : QuaternarySyntax(Kind, D, T, C, I), AS(AccessSpecifier)
   { }
 
   /// This attempts to return the first valid source location from a declaration
@@ -910,9 +945,24 @@ struct DeclarationSyntax : QuaternarySyntax
 
   Token getParamPassingSpecifier() const;
 
+  Token getAccessSpecifier() const { return AS; }
+  clang::SourceLocation getLocation() const {
+    if (Terms[0]) {
+      return Terms[0]->getLocation();
+    } else if(Terms[1]) {
+      return Terms[1]->getLocation();
+    } else if(Terms[2]) {
+      return Terms[2]->getLocation();
+    } else if(Terms[3]) {
+      return Terms[3]->getLocation();
+    } else {
+      return clang::SourceLocation();
+    }
+  }
   Token *ParamSpecs = nullptr;
   unsigned NumParamSpecs = 0;
-  IntroducerKind IntroKind = Unknown;
+  Token AS;
+
 };
 
 /// The top-level container of terms.

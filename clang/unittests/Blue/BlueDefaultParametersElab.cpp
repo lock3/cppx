@@ -20,7 +20,7 @@ using namespace blue;
 
 TEST(BlueDefaultParameter, DefaultArg) {
   StringRef Code = R"BLUE(
-func foo:(x:int = 5) = {
+foo:(x:int = 5) = {
   return x;
 })BLUE";
   auto ToMatch = parmVarDecl(hasDescendant(integerLiteral(equals(5))));
@@ -29,11 +29,11 @@ func foo:(x:int = 5) = {
 
 TEST(BlueDefaultParameter, CallWithDefaultArgument) {
   StringRef Code = R"BLUE(
-func foo:(x:int = 5) = {
+foo:(x:int = 5) = {
   return x;
 }
 
-func bar:() = {
+bar:() = {
   return foo();
 })BLUE";
   auto ToMatch = callExpr(callee(
@@ -46,11 +46,11 @@ func bar:() = {
 
 TEST(BlueDefaultParameter, GivenArgumentForDefault) {
   StringRef Code = R"BLUE(
-func foo:(x:int = 5) = {
+foo:(x:int = 5) = {
   return x;
 }
 
-func bar:() = {
+bar:() = {
   return foo(3);
 })BLUE";
   auto ToMatch = callExpr(callee(
@@ -61,14 +61,14 @@ func bar:() = {
 
 TEST(BlueDefaultParameter, DefaultArgForMemberFunctionCall) {
   StringRef Code = R"BLUE(
-type X:class= {
+X : type = {
 
-  func foo:(in this, x:int = 5) = {
+  foo:(in this, x:int = 5) = {
     return x;
   }
 }
 
-func bar:(t:^X) = {
+bar:(t:^X) = {
   return t.foo();
 })BLUE";
   auto ToMatch = 	cxxMemberCallExpr(callee(
@@ -79,14 +79,14 @@ func bar:(t:^X) = {
 
 TEST(BlueDefaultParameter, InvalidDefaultThis) {
   StringRef Code = R"BLUE(
-type X:class= {
+X : type = {
 
-  func foo:(in this := 4, x:int = 5) = {
+  foo:(in this := 4, x:int = 5) = {
     return x;
   }
 }
 
-func bar:(t:^X) = {
+bar:(t:^X) = {
   return t.foo();
 })BLUE";
   BlueFailureTest(Code);
@@ -94,7 +94,7 @@ func bar:(t:^X) = {
 
 TEST(BlueDefaultParameter, DefaultArgumentsWithTrailingNonDefaults) {
   StringRef Code = R"BLUE(
-func foo:(x:int = 5, y:int) = {
+foo:(x:int = 5, y:int) = {
   return x;
 }
 )BLUE";

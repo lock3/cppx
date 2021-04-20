@@ -20,7 +20,7 @@ using namespace blue;
 
 TEST(BlueArithmeticOp, Plus) {
   StringRef Code = R"BLUE(
-var x:=4 + 5;
+x:=4 + 5;
   )BLUE";
   auto ToMatch = binaryOperator(hasOperatorName("+"));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
@@ -28,7 +28,7 @@ var x:=4 + 5;
 
 TEST(BlueArithmeticOp, Minus) {
   StringRef Code = R"BLUE(
-var x:=4 - 5;
+x:=4 - 5;
   )BLUE";
   auto ToMatch = binaryOperator(hasOperatorName("-"));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
@@ -36,7 +36,7 @@ var x:=4 - 5;
 
 TEST(BlueArithmeticOp, Multiplication) {
   StringRef Code = R"BLUE(
-var x:=4 * 5;
+x:=4 * 5;
   )BLUE";
   auto ToMatch = binaryOperator(hasOperatorName("*"));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
@@ -44,7 +44,7 @@ var x:=4 * 5;
 
 TEST(BlueArithmeticOp, Division) {
   StringRef Code = R"BLUE(
-var x:=4 / 5;
+x:=4 / 5;
   )BLUE";
   auto ToMatch = binaryOperator(hasOperatorName("/"));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
@@ -52,7 +52,7 @@ var x:=4 / 5;
 
 TEST(BlueArithmeticOp, Modulus) {
   StringRef Code = R"BLUE(
-var x:=4 % 5;
+x:=4 % 5;
   )BLUE";
   auto ToMatch = binaryOperator(hasOperatorName("%"));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
@@ -61,7 +61,7 @@ var x:=4 % 5;
 
 TEST(BlueArithmeticOp, UnaryPlus) {
   StringRef Code = R"BLUE(
-var x:=+5;
+x:=+5;
   )BLUE";
   auto ToMatch = unaryOperator(hasOperatorName("+"));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
@@ -69,7 +69,7 @@ var x:=+5;
 
 TEST(BlueArithmeticOp, UnaryMinus) {
   StringRef Code = R"BLUE(
-var x:=-5;
+x:=-5;
   )BLUE";
   auto ToMatch = unaryOperator(hasOperatorName("-"));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
@@ -77,9 +77,9 @@ var x:=-5;
 
 TEST(BlueArithmeticOp, PlusEqual) {
   StringRef Code = R"BLUE(
-func foo:() void = {
-  var x:int;
-  var y:int;
+foo:() -> void = {
+  x:int;
+  y:int;
   x += y;
 }
   )BLUE";
@@ -89,9 +89,9 @@ func foo:() void = {
 
 TEST(BlueArithmeticOp, MinusEqual) {
   StringRef Code = R"BLUE(
-func foo:() void = {
-  var x:int;
-  var y:int;
+foo:() -> void = {
+  x:int;
+  y:int;
   x -= y;
 }
   )BLUE";
@@ -101,9 +101,9 @@ func foo:() void = {
 
 TEST(BlueArithmeticOp, MultiplicationEqual) {
   StringRef Code = R"BLUE(
-func foo:() void = {
-  var x:int;
-  var y:int;
+foo:() -> void = {
+  x:int;
+  y:int;
   x *= y;
 }
   )BLUE";
@@ -113,9 +113,9 @@ func foo:() void = {
 
 TEST(BlueArithmeticOp, DivEqual) {
   StringRef Code = R"BLUE(
-func foo:() void = {
-  var x:int;
-  var y:int;
+foo:() -> void = {
+  x:int;
+  y:int;
   x /= y;
 }
   )BLUE";
@@ -125,9 +125,9 @@ func foo:() void = {
 
 TEST(BlueArithmeticOp, ModEqual) {
   StringRef Code = R"BLUE(
-func foo:() void = {
-  var x:int;
-  var y:int;
+foo:() -> void = {
+  x:int;
+  y:int;
   x %= y;
 }
   )BLUE";
@@ -138,8 +138,8 @@ func foo:() void = {
 
 TEST(BlueArithmeticOp, PreIncrement) {
   StringRef Code = R"BLUE(
-func foo:() void = {
-  var x:int;
+foo:() -> void = {
+  x:int;
   ++x;
 }
   )BLUE";
@@ -149,8 +149,8 @@ func foo:() void = {
 
 TEST(BlueArithmeticOp, PostIncrement) {
   StringRef Code = R"BLUE(
-func foo:() void = {
-  var x:int;
+foo:() -> void = {
+  x:int;
   x++;
 }
   )BLUE";
@@ -162,8 +162,8 @@ func foo:() void = {
 
 TEST(BlueArithmeticOp, PreDecrement) {
   StringRef Code = R"BLUE(
-func foo:() void = {
-  var x:int;
+foo:() -> void = {
+  x:int;
   --x;
 }
   )BLUE";
@@ -173,8 +173,8 @@ func foo:() void = {
 
 TEST(BlueArithmeticOp, PostDecrement) {
   StringRef Code = R"BLUE(
-func foo:() void = {
-  var x:int;
+foo:() -> void = {
+  x:int;
   x--;
 }
   )BLUE";

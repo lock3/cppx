@@ -158,7 +158,33 @@ struct Declaration {
   /// Get the def as a DefSyntax.
   const DeclarationSyntax *asDef() const;
 
-  DeclarationSyntax::IntroducerKind getIntroducerKind() const;
+  // The introducer-keyword that started this declaration, if any.
+  enum DeclSyntaxKind : unsigned {
+    // A parameter or ill-formed declaration
+    Unknown,
+
+    // A variable declaration
+    Variable,
+
+    // A function declaration
+    Function,
+
+    // A declaration with a type as its value.
+    Type,
+
+    // A declaration of a base class.
+    Super,
+
+    // A namespace declaration
+    Namespace,
+  };
+
+  DeclSyntaxKind getDeclSyntaxKind() const {
+    return DSK;
+  }
+  void setDeclSyntaxKind(DeclSyntaxKind Kind) {
+    DSK = Kind;
+  }
   clang::SourceLocation getErrorLocation() const;
   clang::SourceLocation getEndOfDecl() const {
     const Declarator *D = Decl;
@@ -173,11 +199,18 @@ struct Declaration {
     }
     return D->getLocation();
   }
+
+  clang::AccessSpecifier getAccessSpecifier() const;
+
+  void dump();
 private:
   /// The corresponding C++ declaration.
   clang::Decl *Cxx = nullptr;
+  DeclSyntaxKind DSK = Unknown;
 };
 Phase phaseOf(Declaration *D);
+
+bool deduceDeclKindFromSyntax(Declaration *D);
 
 } // end namespace blue
 
