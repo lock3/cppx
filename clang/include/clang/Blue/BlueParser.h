@@ -226,6 +226,7 @@ namespace blue
     Syntax *parsePointerExpression(Syntax *E);
     Syntax *parsePointerExpression();
     Syntax *parsePrimaryExpression();
+    Syntax *parseBuiltinCompilerOp();
     Syntax *parseIdExpression();
     Syntax *parseTupleExpression();
     Syntax *parseArrayExpression();
@@ -275,6 +276,7 @@ namespace blue
     Syntax *parseLetExpression();
     Syntax *parseLambdaExpression();
     Syntax *parseCapture();
+    
 
     Syntax *parseTemplateConstructor();
     Syntax *parseArrayConstructor();

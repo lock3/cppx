@@ -157,6 +157,7 @@ public:
 
   clang::Expr *elaborateExpression(const Syntax *S);
   clang::Expr *elaborateConstantExpression(const Syntax *S);
+  clang::Expr *doElaborateConstantExpression(const Syntax *S);
   clang::Expr *doElaborateExpression(const Syntax *S);
 
   clang::Expr *elaborateLiteralExpression(const LiteralSyntax *S);
@@ -177,6 +178,12 @@ public:
   clang::Expr *elaborateNestedLookupAccess(clang::Expr *Previous,
                                            const Syntax *Op,
                                            const Syntax *RHS);
+
+  clang::Expr *elaborateCompilerOp(const BuiltinCompilerOpSyntax *S);
+  clang::Expr *elaborateTypeTraitsOp(Token Tok, const Syntax *Arg,
+                                    clang::UnaryExprOrTypeTrait Trait);
+  clang::Expr *elaborateNoExceptOp(Token AlignOfTok,const Syntax *Arg);
+  clang::Expr *elaborateTypeidOp(Token Tok,const Syntax *Arg);
   // clang::Expr *elaborateSeqExpression(const SeqSyntax *S);
   // clang::Expr *elaborateUnaryExpression(const UnarySyntax *S);
   // clang::Expr *elaborateBinaryExpression(const BinarySyntax *S);
@@ -241,6 +248,7 @@ public:
 
   // Diagnostics
   void Error(clang::SourceLocation Loc, llvm::StringRef Msg);
+  clang::DiagnosticBuilder error(clang::SourceLocation Loc);
 
 private:
   std::size_t ImplicitSemaDecls = 0;

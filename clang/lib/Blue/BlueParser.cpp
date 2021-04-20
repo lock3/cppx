@@ -1511,6 +1511,13 @@ Syntax *Parser::parsePointerExpression() {
 
 Syntax *Parser::parsePrimaryExpression() {
   switch (getLookahead()) {
+  case tok::DecltypeKeyword:
+  case tok::SizeOfKeyword:
+  case tok::AlignOfKeyword:
+  case tok::NoExceptKeyword:
+  case tok::TypeidKeyword: {
+    return parseBuiltinCompilerOp();
+  }
   case tok::BinaryInteger:
   case tok::DecimalInteger:
   case tok::HexadecimalInteger:
@@ -1574,6 +1581,27 @@ Syntax *Parser::parsePrimaryExpression() {
     getSpelling(getLookahead());
   consumeToken();
   return nullptr;
+}
+
+static bool isBuiltinCompilerOperator(tok::TokenKind K) {
+  switch(K) {
+    case tok::DecltypeKeyword:
+    case tok::SizeOfKeyword:
+    case tok::AlignOfKeyword:
+    case tok::NoExceptKeyword:
+    case tok::TypeidKeyword:
+      return true;
+    default:
+      return false;
+  }
+}
+
+Syntax *Parser::parseBuiltinCompilerOp() {
+  assert(nthTokenConformsTo(0, isBuiltinCompilerOperator));
+  Token Op = matchTokenIf(isBuiltinCompilerOperator);
+  assert(Op && "Invalid call to parseBuiltinCompilerOp");
+  Syntax *Args = parseParenEnclosed(&Parser::parseExpressionList);
+  return new BuiltinCompilerOpSyntax(Op, Args);
 }
 
 static inline bool isOperator(tok::TokenKind K) {

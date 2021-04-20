@@ -610,6 +610,30 @@ struct PrefixSyntax : UnarySyntax
   Token Op;
 };
 
+
+/// The reason that this exists and this isn't just a prefix expression,
+/// is that this requires different elaboration from other prefix expressions.
+/// I thought it would be easier to elaborate if these were handled as a
+/// separate group.
+struct BuiltinCompilerOpSyntax : public UnarySyntax {
+  Token Keyword;
+  static constexpr KindType Kind = BuiltinCompilerOp;
+
+  BuiltinCompilerOpSyntax(Token Kw, Syntax *S)
+    :UnarySyntax(Kind, S),
+    Keyword(Kw)
+  { }
+
+  clang::SourceLocation getLocation() const {
+    return Keyword.getLocation();
+  }
+
+  Token getOperator() const { return Keyword; }
+  static bool classof(const Syntax *S) {
+    return S->getKind() == Kind;
+  }
+};
+
 /// Compound type constructors for arrays, templates, and functions.
 struct ConstructorSyntax : BinarySyntax
 {

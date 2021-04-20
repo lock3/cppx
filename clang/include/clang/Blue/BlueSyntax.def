@@ -44,6 +44,7 @@ def_non_leaf_start(Unary, Enclosure)
   def_syntax(Enclosure, Unary)
   def_syntax(Prefix, Unary)
   def_syntax(Postfix, Unary)
+  def_syntax(BuiltinCompilerOp, Unary)
   def_syntax(File, Unary)
 def_non_leaf_end(Unary, File)
 

@@ -1186,6 +1186,8 @@ Declarator *Elaborator::getLeafDeclarator(const Syntax *S) {
   case Syntax::Prefix:
   case Syntax::Call:
     return new Declarator(Declarator::Type, S);
+  case Syntax::BuiltinCompilerOp:
+    return new Declarator(Declarator::Type, S);
   default:
     break;
   }
@@ -2690,6 +2692,10 @@ clang::Expr *Elaborator::elaborateExpression(const Syntax *S) {
 clang::Expr *Elaborator::elaborateConstantExpression(const Syntax *S) {
   clang::EnterExpressionEvaluationContext ConstantEvaluated(getCxxSema(),
                    clang::Sema::ExpressionEvaluationContext::ConstantEvaluated);
+  return doElaborateConstantExpression(S);
+}
+
+clang::Expr *Elaborator::doElaborateConstantExpression(const Syntax *S) {
   Sema::DeepElaborationModeRAII ElabMode(SemaRef, true);
   clang::Expr *Res = doElaborateExpression(S);
   if (!Res)
@@ -2740,6 +2746,8 @@ clang::Expr *Elaborator::doElaborateExpression(const Syntax *S) {
     return elaborateControlExpression(cast<ControlSyntax>(S));
   case Syntax::QualifiedMemberAccess:
     return elaborateQualifiedMemberAccess(cast<QualifiedMemberAccessSyntax>(S));
+  case Syntax::BuiltinCompilerOp:
+    return elaborateCompilerOp(cast<BuiltinCompilerOpSyntax>(S));
   default:
     break;
   }
@@ -4070,6 +4078,225 @@ clang::Expr *Elaborator::elaborateNestedLookupAccess(clang::Expr *Previous,
   if (!SemaRef.isExtendedQualifiedLookupContext())
     SemaRef.CurNNSContext.clear();
   return Ret;
+}
+
+static bool isBuiltinCompilerOperator(tok::TokenKind K) {
+  switch(K) {
+    case tok::DecltypeKeyword:
+    case tok::SizeOfKeyword:
+    case tok::AlignOfKeyword:
+    case tok::NoExceptKeyword:
+    case tok::TypeidKeyword:
+      return true;
+    default:
+      return false;
+  }
+}
+
+clang::Expr *Elaborator::elaborateCompilerOp(const BuiltinCompilerOpSyntax *S) {
+  assert(isBuiltinCompilerOperator(S->getOperator().getKind())
+         && "Invalid operator.");
+  const Syntax *Arg = nullptr;
+  if (auto Enc = dyn_cast_or_null<EnclosureSyntax>(S->getOperand())) {
+    if (auto BodyExpr = dyn_cast_or_null<ListSyntax>(Enc->getOperand())) {
+      if (BodyExpr->getNumChildren() != 1) {
+        SemaRef.getCxxSema().Diags.Report(S->getLocation(),
+                                 clang::diag::err_incorrect_number_of_arguments)
+                                 << S->getOperator().getSpelling();
+        return nullptr;
+      }
+      Arg = BodyExpr->getOperand(0);
+    } else {
+      Error(S->getLocation(), "invalid enclosure syntax");
+      return nullptr;
+    }
+  } else {
+    Error(S->getLocation(), "invalid enclosure syntax");
+    return nullptr;
+  }
+  switch(S->getOperator().getKind()) {
+  case tok::DecltypeKeyword:{
+    // Entering decltype context for evaluation of subexpression.
+    clang::EnterExpressionEvaluationContext Unevaluated(SemaRef.getCxxSema(),
+                  clang::Sema::ExpressionEvaluationContext::Unevaluated, nullptr,
+                  clang::Sema::ExpressionEvaluationContextRecord::EK_Decltype);
+    clang::Expr *ArgEval = doElaborateConstantExpression(Arg);
+    if (!ArgEval)
+      return nullptr;
+
+    // In order to do this correctly I need to check for a few things,
+    // I need to make sure that if the expression's result is actually a namespace
+    // or template that I handle things correctly because I can't pass them through
+    // the SemaRef.getCxxSema().ActOnDecltypeExpression because they wouldn't make
+    // any sense, it may be benifical to do the same for the kind type.
+    if (ArgEval->getType()->isTypeOfTypes()) {
+      clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(ArgEval,
+                                                            Arg->getLocation());
+      if (TInfo->getType() == CxxAST.getAutoDeductType()) {
+        error(S->getLocation())
+              << "decltype(auto) not supported";
+        return nullptr;
+      }
+
+      error(S->getLocation())
+            << "decltype(auto) of a type is not allowed";
+      return nullptr;
+    }
+
+    if (ArgEval->getType()->isNamespaceType()) {
+        error(S->getLocation())
+              << "decltype(namespace) of a namespace is not supported";
+        return nullptr;
+    }
+
+    if (ArgEval->getType()->isTemplateType()) {
+        error(S->getLocation())
+              << "decltype(template) of an incomplete template not supported";
+    }
+
+    // This does some semantic checking on the given expression.
+    auto ExprResult = SemaRef.getCxxSema().ActOnDecltypeExpression(ArgEval);
+    if (ExprResult.isInvalid())
+      return nullptr;
+
+    clang::QualType Ty = SemaRef.getCxxSema().BuildDecltypeType(
+                                          ExprResult.get(), Arg->getLocation());
+
+    return SemaRef.buildTypeExpr(Ty, Arg->getLocation());
+  }
+  case tok::SizeOfKeyword:
+    return elaborateTypeTraitsOp(S->getOperator(), Arg, clang::UETT_SizeOf);
+  case tok::AlignOfKeyword:
+    return elaborateTypeTraitsOp(S->getOperator(), Arg, clang::UETT_AlignOf);
+  case tok::NoExceptKeyword:
+    return elaborateNoExceptOp(S->getOperator(), Arg);
+  case tok::TypeidKeyword:
+    return elaborateTypeidOp(S->getOperator(), Arg);
+  default:
+    llvm_unreachable("unknown builtin keyword.");
+  }
+
+}
+
+clang::Expr *
+Elaborator::elaborateTypeTraitsOp(Token Tok, const Syntax *Arg,
+                                  clang::UnaryExprOrTypeTrait Trait) {
+  clang::EnterExpressionEvaluationContext Unevaluated(
+    SemaRef.getCxxSema(),
+    clang::Sema::ExpressionEvaluationContext::Unevaluated,
+    clang::Sema::ReuseLambdaContextDecl);
+
+  // Attempting to elaborate the given argument
+  clang::Expr *ResultExpr = doElaborateConstantExpression(Arg);
+  if (!ResultExpr)
+    return nullptr;
+
+  if (ResultExpr->getType()->isNamespaceType()) {
+    SemaRef.getCxxSema().Diags.Report(Tok.getLocation(),
+                         clang::diag::err_cannot_apply_operator_to_a_namespace)
+                         << Tok.getSpelling();
+    return nullptr;
+  }
+
+  if (ResultExpr->getType()->isTemplateType()) {
+    SemaRef.getCxxSema().Diags.Report(Tok.getLocation(),
+                             clang::diag::err_cannot_apply_operator_to_template)
+                                      << Tok.getSpelling();
+    return nullptr;
+  }
+
+  bool IsType = false;
+  void *ExprOrTySourceInfo = ResultExpr;
+  if (ResultExpr->getType()->isTypeOfTypes()) {
+    clang::ParsedType ParsedTy = SemaRef.getParsedTypeFromExpr(ResultExpr,
+                                                            Arg->getLocation());
+    if (!ParsedTy.getAsOpaquePtr())
+      return nullptr;
+    ExprOrTySourceInfo = ParsedTy.getAsOpaquePtr();
+    IsType = true;
+  }
+  clang::SourceLocation ArgLoc = Arg->getLocation();
+  auto Result = SemaRef.getCxxSema().ActOnUnaryExprOrTypeTraitExpr(
+                                              Arg->getLocation(), Trait, IsType,
+                                              ExprOrTySourceInfo,
+                                clang::SourceRange(Arg->getLocation(), ArgLoc));
+  return Result.get();
+}
+
+
+clang::Expr *
+Elaborator::elaborateNoExceptOp(Token AlignOfTok,
+                                    const Syntax *Arg) {
+  assert(AlignOfTok.getKind() == tok::NoExceptKeyword
+         && "Invalid elaboration of noexcept operator");
+  clang::EnterExpressionEvaluationContext Unevaluated(SemaRef.getCxxSema(),
+    clang::Sema::ExpressionEvaluationContext::Unevaluated);
+
+  clang::Expr *ArgEval = doElaborateConstantExpression(Arg);
+  if (!ArgEval)
+    return nullptr;
+
+  if (ArgEval->getType()->isTypeOfTypes()) {
+    SemaRef.getCxxSema().Diags.Report(Arg->getLocation(),
+                         clang::diag::err_cannot_appy_operator_to_type)
+                         << AlignOfTok.getSpelling();
+    return nullptr;
+  }
+
+  if (ArgEval->getType()->isNamespaceType()) {
+    SemaRef.getCxxSema().Diags.Report(Arg->getLocation(),
+                         clang::diag::err_cannot_apply_operator_to_a_namespace)
+                         << AlignOfTok.getSpelling();
+    return nullptr;
+  }
+
+  if (ArgEval->getType()->isTemplateType()) {
+    SemaRef.getCxxSema().Diags.Report(Arg->getLocation(),
+                         clang::diag::err_cannot_apply_operator_to_template)
+                         << AlignOfTok.getSpelling();
+    return nullptr;
+  }
+
+  auto Result = SemaRef.getCxxSema().ActOnNoexceptExpr(AlignOfTok.getLocation(),
+                                                       clang::SourceLocation(),
+                                                       ArgEval,
+                                                       clang::SourceLocation());
+  if (Result.isInvalid())
+    return nullptr;
+
+  return Result.get();
+}
+
+
+clang::Expr *Elaborator::elaborateTypeidOp(Token Tok, const Syntax *Arg) {
+  assert(Tok.hasKind(tok::TypeidKeyword) && "invalid typeid syntax");
+
+  // Entering decltype context for evaluation of subexpression.
+  clang::EnterExpressionEvaluationContext Unevaluated(SemaRef.getCxxSema(),
+                 clang::Sema::ExpressionEvaluationContext::Unevaluated, nullptr,
+                 clang::Sema::ExpressionEvaluationContextRecord::EK_Decltype);
+  clang::Expr *ArgEval = doElaborateConstantExpression(Arg);
+  if (!ArgEval)
+    return nullptr;
+
+  if (ArgEval->getType()->isNamespaceType() ||
+      ArgEval->getType()->isTemplateType()  ||
+      isa<clang::CppxDeclRefExpr>(ArgEval)) {
+    unsigned DiagID =
+      SemaRef.getCxxSema().Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                    "operand to 'typeid' must have type of "
+                                    "types or value type");
+    SemaRef.getCxxSema().Diags.Report(Tok.getLocation(), DiagID);
+    return nullptr;
+  }
+
+  clang::ExprResult Res =
+    SemaRef.getCxxSema().ActOnCXXTypeid(Tok.getLocation(), Arg->getLocation(),
+                                        ArgEval->getType()->isTypeOfTypes(),
+                                        ArgEval, Arg->getLocation());
+  if (Res.isInvalid())
+    return nullptr;
+  return Res.get();
 }
 
 clang::Expr *BuildReferenceToDecl(Sema &SemaRef,
@@ -5700,6 +5927,9 @@ void Elaborator::Error(clang::SourceLocation Loc, llvm::StringRef Msg) {
   CxxSema.Diags.Report(Loc, clang::diag::err_blue_elaboration) << Msg;
 }
 
+clang::DiagnosticBuilder Elaborator::error(clang::SourceLocation Loc) {
+  return CxxSema.Diags.Report(Loc, clang::diag::err_blue_elaboration);
+}
 
 
 bool Elaborator::delayElaborateDeclType(clang::CXXRecordDecl *RD,
