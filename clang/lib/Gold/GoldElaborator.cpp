@@ -4656,10 +4656,12 @@ clang::Decl *Elaborator::elaborateField(Declaration *D,
                                                 /*BitWidth=*/nullptr, InitStyle,
                                                 Loc, clang::AS_public, nullptr);
   }
-  Owner->addDecl(Field);
-  SemaRef.setDeclForDeclaration(D, Field);
   D->CurrentPhase = Phase::Typing;
   elaborateAttributes(D);
+  if (TemporaryElaboration)
+    return Field;
+  Owner->addDecl(Field);
+  SemaRef.setDeclForDeclaration(D, Field);
   return Field;
 }
 

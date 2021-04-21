@@ -35,6 +35,7 @@ class NamespaceDecl;
 class Sema;
 class TypeSourceInfo;
 class NestedNameSpecifier;
+class UnqualifiedId;
 
 } // namespace clang
 
@@ -117,10 +118,19 @@ public:
                                         const Syntax *LHS,
                                         const CallSyntax *Op,
                                         const Syntax *RHS);
+  clang::Expr *completeMemberAccessRHS(clang::Expr *ElaboratedLHS,
+                                       clang::UnqualifiedId &Id,
+                                       const Syntax *LHS,
+                                       const CallSyntax *Op,
+                                       const Syntax *RHS);
   clang::Expr *elaborateMemberAccessRHSAtom(clang::Expr *ElaboratedLHS,
                                             const Syntax *LHS,
                                             const CallSyntax *Op,
                                             const AtomSyntax *RHS);
+  clang::Expr *elaborateMemberAccessRHSElem(clang::Expr *ElaboratedLHS,
+                                            const Syntax *LHS,
+                                            const CallSyntax *Op,
+                                            const ElemSyntax *RHS);
 
   clang::Expr *elaborateDisambuationSyntax(clang::Expr *ElaboratedLHS,
                                            const Syntax *LHS,

@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/AST/ASTContext.h"
+#include "clang/AST/CXXInheritance.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExprCppx.h"
 #include "clang/AST/OperationKinds.h"
@@ -2313,6 +2314,19 @@ clang::Expr *ExprElaborator::elaborateMemberAccessRHS(clang::Expr *ElaboratedLHS
                                                       const Syntax *RHS) {
   if (auto RHSAtom = dyn_cast<AtomSyntax>(RHS))
     return elaborateMemberAccessRHSAtom(ElaboratedLHS, LHS, Op, RHSAtom);
+  if (auto RHSElem = dyn_cast<ElemSyntax>(RHS))
+    return elaborateMemberAccessRHSElem(ElaboratedLHS, LHS, Op, RHSElem);
+  if (auto RHSList = dyn_cast<ListSyntax>(RHS)) {
+    if (RHSList->getNumChildren() != 1) {
+      unsigned DiagID =
+        SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                      "expected entity");
+      SemaRef.Diags.Report(RHS->getLoc(), DiagID);
+      return nullptr;
+    }
+
+    return elaborateMemberAccessRHS(ElaboratedLHS, LHS, Op, RHSList->getChild(0));
+  }
 
   // A disambiguator of the form (a)b
   if (const CallSyntax *Disambig = dyn_cast<CallSyntax>(RHS)) {
@@ -2375,11 +2389,138 @@ ExprElaborator::elaborateMemberAccessRHSAtom(clang::Expr *ElaboratedLHS,
   } else {
     Id.setIdentifier(IdInfo, RHS->getLoc());
   }
-  // If this expression is a dependent expression, that is dependent on something
-  // then we need to make sure we generate the corrected generic expression
-  // for it.
+
+
+  return completeMemberAccessRHS(ElaboratedLHS, Id, LHS, Op, RHS);
+}
+
+static const AtomSyntax *getAtomicBase(const Syntax *S) {
+  if (const ElemSyntax *SS = dyn_cast<ElemSyntax>(S))
+    return getAtomicBase(SS->getObject());
+  if (const CallSyntax *SS = dyn_cast<CallSyntax>(S))
+    return getAtomicBase(SS->getCallee());
+  if (const ErrorSyntax *SS = dyn_cast<ErrorSyntax>(S))
+    return nullptr;
+  if (const AtomSyntax *SS = dyn_cast<AtomSyntax>(S))
+    return SS;
+
+  return nullptr;
+}
+
+  static bool isOrdinaryMember(const clang::NamedDecl *ND) {
+  return ND->isInIdentifierNamespace(clang::Decl::IDNS_Ordinary |
+                                     clang::Decl::IDNS_Tag |
+                                     clang::Decl::IDNS_Member);
+}
+
+clang::Expr *
+ExprElaborator::elaborateMemberAccessRHSElem(clang::Expr *ElaboratedLHS,
+                                             const Syntax *LHS,
+                                             const CallSyntax *Op,
+                                             const ElemSyntax *RHS) {
+  const AtomSyntax *Name = getAtomicBase(RHS);
+  if (!Name) {
+    unsigned DiagID =
+      SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                    "expected entity");
+    SemaRef.Diags.Report(RHS->getLoc(), DiagID);
+    return nullptr;
+  }
+
+  assert(isa<clang::DeclRefExpr>(ElaboratedLHS) && "unexpected member access");
+  clang::Decl *D = cast<clang::DeclRefExpr>(ElaboratedLHS)->getDecl();
+  assert(isa<clang::VarDecl>(D) &&
+         "should be elaborated by elaborateNestedAccess");
+  clang::CXXRecordDecl *RD =
+    cast<clang::VarDecl>(D)->getType()->getAsCXXRecordDecl();
+
+  if (!RD) {
+    unsigned DiagID =
+      SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                    "expected object of class type");
+    SemaRef.Diags.Report(RHS->getLoc(), DiagID);
+    return nullptr;
+  }
+
+  clang::CXXBasePath P;
+  bool IsArray = false;
+  clang::VarTemplateDecl *Template = nullptr;
+  clang::IdentifierInfo *II = &Context.CxxAST.Idents.get(Name->getSpelling());
+  P.Decls = RD->lookup({II});
+  for (clang::NamedDecl *ND : P.Decls) {
+    if (!isOrdinaryMember(ND))
+      continue;
+
+    // FIXME: what about an array template?
+    if (isa<clang::VarTemplateDecl>(ND)) {
+      Template = cast<clang::VarTemplateDecl>(ND);
+      break;
+    }
+
+    if (!isa<clang::ValueDecl>(ND))
+      continue;
+
+    if (cast<clang::ValueDecl>(ND)->getType()->isArrayType()) {
+      IsArray = true;
+      break;
+    }
+  }
+
+  if (IsArray)
+    llvm_unreachable("unimplemented");
+  if (!IsArray && !Template) {
+    unsigned DiagID =
+      SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                    "use of undeclared member");
+    SemaRef.Diags.Report(RHS->getLoc(), DiagID);
+  }
+
+  clang::SourceLocation Loc = RD->getBeginLoc();
+  clang::OpaquePtr<clang::TemplateName> TemplatePtr =
+    clang::OpaquePtr<clang::TemplateName>::make(clang::TemplateName(Template));
+  llvm::SmallVector<clang::TemplateIdAnnotation *, 16> TemplateIds;
+  llvm::SmallVector<clang::ParsedTemplateArgument, 4> Args;
+
+  // Elaborate the template arguments.
+  for (const Syntax *SS : RHS->getArguments()->children()) {
+    ExprElaborator ArgElab(Context, SemaRef);
+    clang::Expr *E = ArgElab.elaborateExpr(SS);
+    if (!E)
+      continue;
+
+    if (clang::CppxTypeLiteral *Ty = dyn_cast<clang::CppxTypeLiteral>(E)) {
+      clang::ParsedTemplateArgument NewArg(
+        clang::ParsedTemplateArgument::Type,
+        (void *)Ty->getValue()->getType().getTypePtr(), SS->getLoc());
+      Args.push_back(NewArg);
+      continue;
+    }
+
+    // FIXME: this might be classified as an expression because it is
+    // dependent, but is actually something else.
+    clang::ParsedTemplateArgument NewArg(
+      clang::ParsedTemplateArgument::NonType, (void *)E, SS->getLoc());
+    Args.push_back(NewArg);
+  }
+
+  auto *TempId =
+    clang::TemplateIdAnnotation::Create(
+      Op->getLoc(), Loc, II, false, clang::OO_None, TemplatePtr,
+      clang::TNK_Type_template, Loc, Loc, Args, false, TemplateIds);
+
+  clang::UnqualifiedId Id;
+  Id.setTemplateId(TempId);
+
+  return completeMemberAccessRHS(ElaboratedLHS, Id, LHS, Op, RHS);
+}
+
+clang::Expr *
+ExprElaborator::completeMemberAccessRHS(clang::Expr *ElaboratedLHS,
+                                        clang::UnqualifiedId &Id,
+                                        const Syntax *LHS,
+                                        const CallSyntax *Op,
+                                        const Syntax *RHS) {
   if (ElaboratedLHS->getDependence() != clang::ExprDependence::None)
-    // Checking to make sure this works as expected.
     return elaborateDependentExpr(ElaboratedLHS, LHS, Op, RHS);
 
   clang::CXXScopeSpec SS;
