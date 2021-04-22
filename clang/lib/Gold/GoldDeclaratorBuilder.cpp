@@ -198,6 +198,7 @@ void DeclaratorBuilder::VisitGoldCallSyntax(const CallSyntax *S) {
   END:
     if (IsPartialSpecialization) {
       buildPartialSpecialization(constructList(Context, S->getArgument(0)));
+      Result->recordAttributes(S);
       return VisitSyntax(S->getArgument(1));
     } else {
       buildArray(S->getArgument(0));
@@ -231,7 +232,7 @@ void DeclaratorBuilder::VisitGoldCallSyntax(const CallSyntax *S) {
 void DeclaratorBuilder::VisitGoldElemSyntax(const ElemSyntax *S) {
   if (isLeftOfRoot(NodeLabels, S) && isa<ElemSyntax>(S->getObject())) {
     Visit(S->getObject());
-    return buildPartialSpecialization(cast<ListSyntax>(S->getArguments()));
+    return buildPartialSpecialization(S);
   }
 
   // Check if we are more than one element deep and on the left,
@@ -477,7 +478,8 @@ void DeclaratorBuilder::buildTemplateParams(const ListSyntax *S) {
 
 void DeclaratorBuilder::buildTemplateParams(const ElemSyntax *S) {
   buildTemplateParams(cast<ListSyntax>(S->getArguments()));
-  Cur->recordAttributes(S);
+  Result->recordAttributes(S);
+  // Cur->recordAttributes(S);
 }
 
 void DeclaratorBuilder::buildSpecialization(const ElemSyntax *S) {
@@ -485,12 +487,19 @@ void DeclaratorBuilder::buildSpecialization(const ElemSyntax *S) {
     push(new ImplicitEmptyTemplateParamsDeclarator(S, nullptr));
   push(new SpecializationDeclarator(cast<ListSyntax>(S->getArguments()),
                                     nullptr));
+  // Attach these attributes to the name declarator!
+  Result->recordAttributes(S);
   Cur->recordAttributes(S);
 }
 
 void DeclaratorBuilder::buildPartialSpecialization(const ListSyntax *S) {
   push(new SpecializationDeclarator(S, nullptr));
-  Cur->recordAttributes(S);
+}
+
+void DeclaratorBuilder::buildPartialSpecialization(const ElemSyntax *S) {
+  push(new SpecializationDeclarator(cast<ListSyntax>(S->getArguments()),
+                                    nullptr));
+  Result->recordAttributes(S);
 }
 
 void DeclaratorBuilder::buildUsingDirectiveDeclarator(const MacroSyntax *S) {

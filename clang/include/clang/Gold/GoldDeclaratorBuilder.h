@@ -167,7 +167,7 @@ private:
 
   void buildSpecialization(const ElemSyntax *SpecializationOwner);
   void buildPartialSpecialization(const ListSyntax *SpecializationOwner);
-
+  void buildPartialSpecialization(const ElemSyntax *SpecializationOwner);
   void buildUsingDirectiveDeclarator(const MacroSyntax *S);
 
 public:
