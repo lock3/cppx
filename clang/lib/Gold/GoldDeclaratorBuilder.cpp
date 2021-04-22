@@ -108,14 +108,37 @@ static inline bool isTypeOperator(const FusedOpKind K) {
   }
 }
 
+static inline bool isBuiltinFunctionName(tok::TokenKind K) {
+  switch (K) {
+  case tok::StaticCastKeyword:
+  case tok::DynamicCastKeyword:
+  case tok::ReinterpretCastKeyword:
+  case tok::ConstCastKeyword:
+  case tok::ConstExprKeyword:
+  case tok::AlignOfKeyword:
+  case tok::SizeOfKeyword:
+  case tok::DeclTypeKeyword:
+  case tok::TypeidKeyword:
+  case tok::TypeIdKeyword:
+    return true;
+  default:
+    return false;
+  }
+
+}
+
 void DeclaratorBuilder::VisitGoldCallSyntax(const CallSyntax *S) {
   const AtomSyntax *Callee = dyn_cast<AtomSyntax>(S->getCallee());
   FusedOpKind Op = getFusedOpKind(SemaRef, S);
 
   // A normal function declaration.
   if (Op == FOK_Unknown && !isPostfixCaret(S)) {
-    if (Callee && Callee->getSpelling() == "...")
-      return buildType(S);
+    if (Callee) {
+      if (Callee->getSpelling() == "...")
+        return buildType(S);
+      if (isBuiltinFunctionName(Callee->getToken().getKind()))
+        return buildType(S);
+    }
 
     VisitSyntax(S->getCallee());
     return buildFunction(S);
