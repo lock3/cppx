@@ -12,6 +12,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "clang/Blue/BlueSema.h"
 
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/CXXInheritance.h"
@@ -27,10 +28,10 @@
 #include "clang/Sema/ParsedTemplate.h"
 #include "clang/Sema/TypeLocUtil.h"
 
-#include "clang/Blue/BlueSema.h"
+#include "clang/Blue/BlueElaborator.h"
+#include "clang/Blue/BluePartialExpr.h"
 #include "clang/Blue/BlueScope.h"
 #include "clang/Blue/BlueSyntax.h"
-#include "clang/Blue/BlueElaborator.h"
 
 namespace blue {
 
@@ -1155,6 +1156,20 @@ Declaration *Sema::getDeclaration(clang::Decl *Cxx) {
     return nullptr;
 
   return Iter->second;
+}
+
+
+clang::CppxPartialEvalExpr *Sema::createPartialExpr(clang::SourceLocation Loc,
+                                                    bool IsWithinClass,
+                                                    bool AllowImplicitThis,
+                                                    clang::Expr *BaseExpr) {
+  PartialNameAccessExprImpl *PartialImpl = new PartialNameAccessExprImpl(*this);
+  PartialImpl->BeginLocation = Loc;
+  PartialImpl->EndLocation = Loc;
+  PartialImpl->setIsWithinClass(IsWithinClass);
+  PartialImpl->allowUseOfImplicitThis(AllowImplicitThis);
+  PartialImpl->setBaseExpr(BaseExpr);
+  return clang::CppxPartialEvalExpr::Create(CxxAST, PartialImpl, Loc);
 }
 
 

@@ -28,6 +28,8 @@
 #include "clang/Blue/BlueLateElaboration.h"
 #include "clang/Blue/BlueSyntaxContext.h"
 #include "clang/Blue/BlueScope.h"
+
+
 #include <memory>
 #include <vector>
 #include <utility>
@@ -50,6 +52,7 @@ class CppxDeclRefExpr;
 class TypeSourceInfo;
 class DeclContext;
 class CppxDependentMemberAccessExpr;
+class CppxPartialEvalExpr;
 } // namespace clang
 
 
@@ -278,6 +281,15 @@ private:
 public:
   Declaration *getDeclaration(clang::Decl *Cxx);
 
+
+//===----------------------------------------------------------------------===//
+//                      Partial Expr Creation                                 //
+//===----------------------------------------------------------------------===//
+public:
+  clang::CppxPartialEvalExpr *createPartialExpr(clang::SourceLocation Loc,
+                                                bool IsWithinClass,
+                                                bool allowImplicitThis,
+                                                clang::Expr *BaseExpr);
 //===----------------------------------------------------------------------===//
 //                               RAII Objects                                 //
 //===----------------------------------------------------------------------===//

@@ -53,7 +53,7 @@ namespace gold {
   /// of AST expression naturally, because it was never meant to do this.
   /// So that being said we have to create a new way to collect and apply arguments
   /// to an incomplete expression, in some way, while hiding what that expression
-  /// actually is and perfoming actions when possible to actually create a
+  /// actually is and preforming actions when possible to actually create a
   /// partially evaluated expression.
   ///
   /// The draw back to using this is that we may have to create a hierarchy
@@ -97,6 +97,50 @@ namespace gold {
     /// This is always true.
     static bool classof(const CppxPartialExprBase *) { return true; }
   };
+}
+
+namespace blue {
+
+  class Syntax;
+  using ExprList = llvm::SmallVectorImpl<clang::Expr *>;
+
+  enum class PartialExprKind : std::size_t;
+  class CppxPartialNameAccessBase {
+    PartialExprKind Kind;
+  public:
+    CppxPartialNameAccessBase(PartialExprKind K)
+      :Kind(K)
+    { }
+    virtual ~CppxPartialNameAccessBase() = default;
+
+    clang::SourceLocation BeginLocation;
+    clang::SourceLocation EndLocation;
+
+    clang::SourceLocation beginLoc() const { return BeginLocation; }
+    clang::SourceLocation endLoc() const { return EndLocation; }
+
+    PartialExprKind getKind() const { return Kind; }
+
+    virtual clang::Expr *setIsWithinClass(bool IsInClassScope) = 0;
+    virtual clang::Expr *allowUseOfImplicitThis(bool AllowImplicitThis) = 0;
+    virtual clang::Expr *setBaseExpr(clang::Expr *) = 0;
+
+    /// Return true if the given arguments can be handled applied to the
+    /// partial expression, this could be template parameters or array access.
+    virtual clang::Expr *appendName(clang::SourceLocation L, clang::IdentifierInfo *Id) = 0;
+    virtual clang::Expr *appendElementExpr(clang::SourceLocation B, clang::SourceLocation E,
+                                          const ExprList &Args) = 0;
+    virtual clang::Expr *appendFunctionCall(clang::SourceLocation B,
+                                            clang::SourceLocation E,
+                                            const ExprList &Args) = 0;
+
+    /// This is used to generate the complete expression.
+    virtual clang::Expr *completeExpr() = 0;
+
+    static bool classof(const CppxPartialNameAccessBase *) { return true; }
+  private:
+  };
+
 }
 
 namespace clang {
@@ -204,7 +248,17 @@ public:
 class CppxPartialEvalExpr : public Expr {
   /// The location associated with the expression being constructed.
   // SourceLocation Loc;
-  gold::CppxPartialExprBase *Impl = nullptr;
+  union Partial {
+    gold::CppxPartialExprBase *GImpl;
+    blue::CppxPartialNameAccessBase *BImpl;
+  } PImpl;
+
+  enum class Tag {
+    NotSet,
+    BlueLang,
+    GoldLang
+  };
+  Tag PartialKind = Tag::NotSet;
   SourceLocation Loc;
 
   explicit CppxPartialEvalExpr(EmptyShell Empty)
@@ -215,57 +269,94 @@ public:
   CppxPartialEvalExpr(QualType ResultTy, gold::CppxPartialExprBase *E,
                       SourceLocation L)
     :Expr(CppxPartialEvalExprClass, ResultTy, VK_RValue, OK_Ordinary),
-    Impl(E), Loc(L)
-  { }
+    PImpl(), PartialKind(Tag::GoldLang), Loc(L)
+  {
+    PImpl.GImpl = E;
+  }
+
+  CppxPartialEvalExpr(QualType ResultTy, blue::CppxPartialNameAccessBase* E,
+                      SourceLocation L)
+    :Expr(CppxPartialEvalExprClass, ResultTy, VK_RValue, OK_Ordinary),
+    PImpl(), PartialKind(Tag::BlueLang), Loc(L)
+  {
+    PImpl.BImpl = E;
+  }
 
   SourceLocation getBeginLoc() const LLVM_READONLY {
-    assert(Impl && "Implementation not set.");
-    return Impl->beginLoc();
+    switch(PartialKind) {
+      case Tag::GoldLang:
+        return PImpl.GImpl->beginLoc();
+      case Tag::BlueLang:
+        return PImpl.BImpl->beginLoc();
+      default:
+        assert("Invalid partial expression not set.");
+    }
   }
 
   SourceLocation getEndLoc() const LLVM_READONLY {
-    assert(Impl && "Implementation not set.");
-    return Impl->endLoc();
+    switch(PartialKind) {
+      case Tag::GoldLang:
+        return PImpl.GImpl->endLoc();
+      case Tag::BlueLang:
+        return PImpl.BImpl->endLoc();
+      default:
+        assert("Invalid partial expression not set.");
+    }
   }
 
   /// Retrieve the location of the literal.
-  SourceLocation getLocation() const { return Loc;}
+  SourceLocation getLocation() const { return Loc ;}
   void setLocation(SourceLocation Location) { Loc = Location; }
 
-  gold::CppxPartialExprBase *getImpl() const { return Impl; }
-  void setImpl(gold::CppxPartialExprBase *Base) { Impl = Base; }
+  gold::CppxPartialExprBase *getImpl() const {
+    assert(PartialKind == Tag::GoldLang && "invalid language set");
+    return PImpl.GImpl;
+  }
+  void setImpl(gold::CppxPartialExprBase *Base) {
+    PartialKind = Tag::GoldLang;
+    PImpl.GImpl = Base;
+  }
+
+  blue::CppxPartialNameAccessBase *getBImpl() const {
+    assert(PartialKind == Tag::BlueLang && "invalid language set");
+    return PImpl.BImpl;
+  }
+  void setBImpl(blue::CppxPartialNameAccessBase *Base) {
+    PartialKind = Tag::BlueLang;
+    PImpl.BImpl = Base;
+  }
 
   bool canAcceptElementArgs(const gold::ExprList &Args) const {
-    assert(Impl && "Implementation not set.");
-    return Impl->canAcceptElementArgs(Args);
+    assert(PartialKind == Tag::GoldLang && "Implementation not set.");
+    return PImpl.GImpl->canAcceptElementArgs(Args);
   }
 
   bool canAcceptFunctionArgs(const gold::ExprList &Args) const {
-    assert(Impl && "Implementation not set.");
-    return Impl->canAcceptFunctionArgs(Args);
+    assert(PartialKind == Tag::GoldLang && "Implementation not set.");
+    return PImpl.GImpl->canAcceptFunctionArgs(Args);
   }
 
   // Application functions.
   void applyElementArgs(const gold::ExprList &Args) {
-    assert(Impl && "Implementation not set.");
-    Impl->applyElementArgs(Args);
+    assert(PartialKind == Tag::GoldLang && "Implementation not set.");
+    PImpl.GImpl->applyElementArgs(Args);
   }
 
   void applyFunctionArgs(const gold::ExprList &Args) {
-    assert(Impl && "Implementation not set.");
-    Impl->applyFunctionArgs(Args);
+    assert(PartialKind == Tag::GoldLang && "Implementation not set.");
+    PImpl.GImpl->applyFunctionArgs(Args);
   }
 
   bool isCompletable() {
-    assert(Impl && "Implementation not set.");
-    return Impl->isCompletable();
+    assert(PartialKind == Tag::GoldLang && "Implementation not set.");
+    return PImpl.GImpl->isCompletable();
   }
   clang::Expr *forceCompleteExpr() {
-    assert(Impl && "Implementation not set.");
-    if (Impl->isCompletable()){
-      return Impl->completeExpr();
+    assert(PartialKind == Tag::GoldLang && "Implementation not set.");
+    if (PImpl.GImpl->isCompletable()){
+      return PImpl.GImpl->completeExpr();
     }
-    Impl->diagnoseIncompleteReason();
+    PImpl.GImpl->diagnoseIncompleteReason();
     return nullptr;
   }
 
@@ -276,12 +367,63 @@ public:
     return const_child_range(const_child_iterator(), const_child_iterator());
   }
 
+
+  /// Return true if the given arguments can be handled applied to the
+  /// partial expression, this could be template parameters or array access.
+  clang::Expr *appendName(clang::SourceLocation L, IdentifierInfo *Id) {
+    assert(PartialKind == Tag::BlueLang && "Incorrect language.");
+    return PImpl.BImpl->appendName(L, Id);
+  }
+
+  clang::Expr *appendElementExpr(clang::SourceLocation Beginning,
+                         clang::SourceLocation EndingLoc,
+                         const blue::ExprList &Args) {
+    assert(PartialKind == Tag::BlueLang && "Incorrect language.");
+    return PImpl.BImpl->appendElementExpr(Beginning, EndingLoc, Args);
+  }
+
+  clang::Expr *appendFunctionCall(clang::SourceLocation Beginning,
+                          clang::SourceLocation EndingLoc,
+                          const blue::ExprList &Args) {
+    assert(PartialKind == Tag::BlueLang && "Incorrect language.");
+    return PImpl.BImpl->appendFunctionCall(Beginning, EndingLoc, Args);
+  }
+
+
+  /// This is used to generate the complete expression that is represented
+  /// by a derived version of this class.
+  clang::Expr *completeExpr() {
+    assert(PartialKind == Tag::BlueLang && "Incorrect language.");
+    return PImpl.BImpl->completeExpr();
+  }
+
+  /// This is true when we are both inside of a class and the initial expression
+  /// is not a CXXThisExpr.
+  clang::Expr *allowUseOfImplicitThis(bool AllowImplicitThis) {
+    assert(PartialKind == Tag::BlueLang && "Incorrect language.");
+    return PImpl.BImpl->allowUseOfImplicitThis(AllowImplicitThis);
+  }
+
+  clang::Expr *setIsWithinClass(bool IsInClassScope) {
+    assert(PartialKind == Tag::BlueLang && "Incorrect language.");
+    return PImpl.BImpl->setIsWithinClass(IsInClassScope);
+  }
+
+  clang::Expr *setBaseExpr(clang::Expr *E) {
+    assert(PartialKind == Tag::BlueLang && "Incorrect language.");
+    return PImpl.BImpl->setBaseExpr(E);
+  }
+
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == CppxPartialEvalExprClass;
   }
 
   static CppxPartialEvalExpr *Create(ASTContext &Ctx,
                                      gold::CppxPartialExprBase *E,
+                                     SourceLocation Loc);
+
+  static CppxPartialEvalExpr *Create(ASTContext &Ctx,
+                                     blue::CppxPartialNameAccessBase *E,
                                      SourceLocation Loc);
 };
 

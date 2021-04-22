@@ -52,6 +52,12 @@ CppxPartialEvalExpr *CppxPartialEvalExpr::Create(ASTContext &Ctx,
   return new (Ctx) CppxPartialEvalExpr(Ctx.VoidTy, E, Loc);
 }
 
+CppxPartialEvalExpr *CppxPartialEvalExpr::Create(ASTContext &Ctx,
+                                             blue::CppxPartialNameAccessBase *E,
+                                                 SourceLocation Loc) {
+  return new (Ctx) CppxPartialEvalExpr(Ctx.VoidTy, E, Loc);
+}
+
 CppxDependentMemberAccessExpr::CppxDependentMemberAccessExpr(
       const ASTContext &Ctx, Expr *Base, QualType BaseType,
       SourceLocation OperatorLoc, DeclarationNameInfo MemberNameInfo,

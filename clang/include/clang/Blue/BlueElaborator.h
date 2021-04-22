@@ -66,6 +66,9 @@ public:
   Declaration *createNamespaceDecl(const DeclarationSyntax *Def,
                                    Declarator *Dcl,
                                    const Syntax *Init);
+  Declaration *createNamespaceAliasDecl(const DeclarationSyntax *Def,
+                                        Declarator *Dcl,
+                                        const Syntax *Init);
   Declaration *createUsingDecl(const PrefixSyntax *Def,
                                Declarator *Dcl,
                                const Syntax *Init);
@@ -130,7 +133,10 @@ public:
   clang::Decl *makeTemplateDecl(Declaration *D);
   clang::Decl *makeFieldDecl(Declaration *D, clang::Expr *Ty);
   clang::Decl *makeNamespace(Declaration *D);
-
+  clang::Decl *makeNamespaceAlias(Declaration *D);
+private:
+  clang::Decl *completeNamespaceAlias(Declaration *D, clang::Expr *NSExpr);
+public:
 
   bool buildMethod(Declaration *Fn, clang::DeclarationName const &Name,
                    clang::FunctionDecl **FD, clang::TypeSourceInfo *Ty,
@@ -152,8 +158,6 @@ public:
                                                const EnclosureSyntax *ES);
   void elaborateFieldInit(Declaration *D);
   void elaborateFunctionDef(Declaration *D);
-
-  
 
   clang::Expr *elaborateExpression(const Syntax *S);
   clang::Expr *elaborateConstantExpression(const Syntax *S);
