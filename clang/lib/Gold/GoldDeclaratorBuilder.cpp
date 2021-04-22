@@ -202,6 +202,7 @@ void DeclaratorBuilder::VisitGoldCallSyntax(const CallSyntax *S) {
       return VisitSyntax(S->getArgument(1));
     } else {
       buildArray(S->getArgument(0));
+      return VisitSyntax(S->getArgument(1));
     }
   }
 
