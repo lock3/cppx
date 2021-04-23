@@ -2757,44 +2757,62 @@ clang::Expr *Elaborator::doElaborateConstantExpression(const Syntax *S) {
 
 clang::Expr *Elaborator::doElaborateExpression(const Syntax *S) {
   assert(S && "invalid expression");
+  clang::Expr *E = nullptr;
   switch (S->getKind()) {
   case Syntax::Literal:
-    return elaborateLiteralExpression(cast<LiteralSyntax>(S));
+    E = elaborateLiteralExpression(cast<LiteralSyntax>(S));
+    break;
   case Syntax::Identifier:
-    return elaborateIdentifierExpression(cast<IdentifierSyntax>(S));
+    E = elaborateIdentifierExpression(cast<IdentifierSyntax>(S));
+    break;
   case Syntax::Call:
-    return elaborateCallExpression(cast<CallSyntax>(S));
+    E = elaborateCallExpression(cast<CallSyntax>(S));
+    break;
   case Syntax::Prefix:
-    return elaboratePrefixExpression(cast<PrefixSyntax>(S));
+    E = elaboratePrefixExpression(cast<PrefixSyntax>(S));
+    break;
   case Syntax::Postfix:
-    return elaboratePostfixExpression(cast<PostfixSyntax>(S));
+    E = elaboratePostfixExpression(cast<PostfixSyntax>(S));
+    break;
   case Syntax::Infix:
-    return elaborateInfixExpression(cast<InfixSyntax>(S));
+    E = elaborateInfixExpression(cast<InfixSyntax>(S));
+    break;
   case Syntax::Index:
-    return elaborateIndexExpression(cast<IndexSyntax>(S));
+    E = elaborateIndexExpression(cast<IndexSyntax>(S));
+    break;
   case Syntax::Pair:
-    return elaboratePairExpression(cast<PairSyntax>(S));
+    E = elaboratePairExpression(cast<PairSyntax>(S));
+    break;
   case Syntax::Triple:
-    return elaborateTripleExpression(cast<TripleSyntax>(S));
+    E = elaborateTripleExpression(cast<TripleSyntax>(S));
+    break;
   case Syntax::Enclosure:
     S->dump();
     llvm_unreachable("Enclosure syntax is unavailable.");
   case Syntax::List:
-    return elaborateListExpression(cast<ListSyntax>(S));
+    E = elaborateListExpression(cast<ListSyntax>(S));
+    break;
   case Syntax::Sequence:
-    return elaborateSequenceExpression(cast<SequenceSyntax>(S));
+    E = elaborateSequenceExpression(cast<SequenceSyntax>(S));
+    break;
   case Syntax::Control:
-    return elaborateControlExpression(cast<ControlSyntax>(S));
+    E = elaborateControlExpression(cast<ControlSyntax>(S));
+    break;
   case Syntax::QualifiedMemberAccess:
-    return elaborateQualifiedMemberAccess(cast<QualifiedMemberAccessSyntax>(S));
+    E = elaborateQualifiedMemberAccess(cast<QualifiedMemberAccessSyntax>(S));
+    break;
   case Syntax::BuiltinCompilerOp:
-    return elaborateCompilerOp(cast<BuiltinCompilerOpSyntax>(S));
+    E = elaborateCompilerOp(cast<BuiltinCompilerOpSyntax>(S));
+    break;
   default:
     break;
   }
-
-  S->dump();
-  llvm_unreachable("Unexpected syntax tree");
+  if (auto Partial = dyn_cast_or_null<clang::CppxPartialEvalExpr>(E)) {
+    return Partial->completeExpr();
+  }
+  return E;
+  // S->dump();
+  // llvm_unreachable("Unexpected syntax tree");
 }
 
 
@@ -4923,9 +4941,13 @@ clang::Expr *Elaborator::elaborateFunctionCall(clang::Expr *Base,
 
       ArgExprs.push_back(Argument);
     }
-
   }
 
+  if (auto Callee = dyn_cast<clang::CppxPartialEvalExpr>(Base)) {
+    return Callee->appendFunctionCall(Enc->getOpen().getLocation(),
+                                     Enc->getClose().getLocation(),
+                                     ArgExprs);
+  }
 
   // try and make the call and see what happens.
   clang::ExprResult Call = CxxSema.ActOnCallExpr(
@@ -5028,6 +5050,10 @@ Elaborator::elabortateTemplateInstantiationWithArgs(const EnclosureSyntax *Enc,
   clang::TemplateArgumentListInfo TemplateArgs(LocStart, LocEnd);
   llvm::SmallVector<clang::TemplateArgument, 16> ActualArgs;
   elaborateTemplateArgs(Enc, ArgList, TemplateArgs, ActualArgs);
+
+  if (auto PartialExpr = dyn_cast<clang::CppxPartialEvalExpr>(E)) {
+    return PartialExpr->appendElementExpr(LocStart, LocEnd, TemplateArgs, ActualArgs);
+  }
   clang::TemplateArgumentList
     TemplateArgList(clang::TemplateArgumentList::OnStack, ActualArgs);
 
@@ -5276,13 +5302,39 @@ bool Elaborator::elaborateClassTemplateArguments(
 
 clang::Expr *Elaborator::elaborateMemberAccess(clang::Expr *LHS,
                                                const InfixSyntax *S) {
+  if (auto PartialExpr = dyn_cast<clang::CppxPartialEvalExpr>(LHS)) {
+    return elaboratePartialEvalMemberAccess(PartialExpr, S);
+  }
+
   clang::QualType Ty = LHS->getType();
-  if (Ty->isKindType())
-    return elaborateTypeNameAccess(LHS, S);
-  if (Ty->isCppxNamespaceType())
-    return elaborateNestedNamespaceAccess(LHS, S);
+  clang::Expr *NsOrTyExpr = nullptr;
+  if (SemaRef.isElaboratingClass()) {
+    if (Ty->isKindType() || Ty->isNamespaceType()) {
+      auto *E = SemaRef.createPartialExpr(S->getLocation(),
+                                          SemaRef.isElaboratingClass(),
+                                          true, NsOrTyExpr);
+      return elaboratePartialEvalMemberAccess(E, S);
+    }
+  } else {
+    if (Ty->isKindType())
+      return elaborateTypeNameAccess(LHS, S);
+    if (Ty->isCppxNamespaceType())
+      return elaborateNestedNamespaceAccess(LHS, S);
+  }
 
   return elaborateMemberAccessOp(LHS, S);
+}
+
+clang::Expr *
+Elaborator::elaboratePartialEvalMemberAccess(clang::CppxPartialEvalExpr *E,
+                                             const InfixSyntax *S) {
+  if (auto Atom = dyn_cast<AtomSyntax>(S->getOperand(1))) {
+    return E->appendName(Atom->getLocation(),
+                         &CxxAST.Idents.get(Atom->getSpelling()));
+  } else {
+    error(S->getLocation()) << "incorrect member access syntax";
+    return E->completeExpr();
+  }
 }
 
 clang::Expr *handleLookupInsideType(Sema &SemaRef,
@@ -5426,7 +5478,6 @@ clang::Expr *handleLookupInsideType(Sema &SemaRef,
   auto R = TD->lookup(DNI.getName());
   clang::NamedDecl *ND = nullptr;
   if (R.size() != 1u) {
-
     // This could be a template specialization of a member.
     if (!R.empty()) {
       clang::LookupResult Redecls(SemaRef.getCxxSema(), DNI,
@@ -5670,11 +5721,6 @@ clang::Expr *Elaborator::elaborateNNS(clang::NamedDecl *NS,
   ExprMarker(getCxxContext(), SemaRef).Visit(RHSExpr);
   return RHSExpr;
 }
-// clang::Expr *ExprElaborator::elaborateNNS(clang::NamedDecl *NS,
-//                                           const CallSyntax *Op,
-//                                           const Syntax *RHS) {
-
-// }
 
 clang::Expr *Elaborator::elaborateMemberAccessOp(clang::Expr *LHS,
                                                  const InfixSyntax *S) {
@@ -5705,10 +5751,26 @@ clang::Expr *Elaborator::elaborateMemberAccessOp(clang::Expr *LHS,
     Id.setIdentifier(IdInfo, IdSyntax->getLocation());
     // }
 
+    // if (LHS->getDependence() != clang::ExprDependence::None) {
+    //   llvm_unreachable("dependent access expression not implemented yet.");
+    // }
 
-    if (LHS->getDependence() != clang::ExprDependence::None) {
-      llvm_unreachable("dependent access expression not implemented yet.");
+    // static clang::Expr *handleLookupInsideType(Sema &SemaRef,
+    //                                        clang::ASTContext &CxxAST,
+    //                                        clang::Expr *Prev,
+    //                                        const Syntax *Op,
+    //                                        const Syntax *RHS, bool AddressOf);
+    // clang::Expr *Ret = handleLookupInsideType(SemaRef, CxxAST, Previous, Op,
+    //                                           RHS, /*IsAddrof=*/false);
+    if (SemaRef.memberAccessNeedsPartialExpr(LHS, IdInfo, IdSyntax->getLocation() )) {
+      auto *E = SemaRef.createPartialExpr(S->getLocation(),
+                                          SemaRef.isElaboratingClass(),
+                                          (LHS->getType()->isNamespaceType()
+                                          || LHS->getType()->isTypeOfTypes()),
+                                          LHS);
+      return elaboratePartialEvalMemberAccess(E, S);
     }
+
 
     clang::CXXScopeSpec SS;
     clang::SourceLocation Loc;

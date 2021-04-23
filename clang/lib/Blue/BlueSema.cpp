@@ -1172,6 +1172,73 @@ clang::CppxPartialEvalExpr *Sema::createPartialExpr(clang::SourceLocation Loc,
   return clang::CppxPartialEvalExpr::Create(CxxAST, PartialImpl, Loc);
 }
 
+bool Sema::memberAccessNeedsPartialExpr(clang::Expr *LHS,
+                                        clang::IdentifierInfo *Id,
+                                        clang::SourceLocation IdLoc) {
+
+  // Only go one level deep on pointers access.
+  clang::QualType LHSTy = LHS->getType();
+  // we will need to handled depenedent types differently.
+  // During instantiation we will need to make sure that we use the partial type
+  // in order to correctly build the member access/disambiguation expression.
+  if (LHSTy->isDependentType())
+    return false;
+
+  LHSTy = LHSTy.getUnqualifiedType();
+  if (LHSTy->isPointerType())
+    LHSTy = LHSTy->getPointeeType();
+
+  // This this may need to be dented as an error at some level.
+  if (LHSTy->isTemplateType())
+    return false;
+
+  // It may be necessary in the future to double check it's possible
+  // for a namespace to begin a look up for a base expression.
+  if (LHSTy->isTypeOfTypes() || LHSTy->isNamespaceType()) {
+    if (isElaboratingClass()) {
+      return true;
+    } else {
+      return false;
+    }
+  }
+
+  clang::SourceLocation LHSLoc = LHS->getExprLoc();
+  const auto *TST = LHSTy->getAs<clang::TemplateSpecializationType>();
+  if (!(LHSTy->isStructureOrClassType() || LHSTy->isUnionType()
+        || LHSTy->isEnumeralType()) && !TST) {
+    getCxxSema().Diags.Report(LHSLoc, clang::diag::err_invalid_type_for_name_spec)
+                              << LHSTy;
+    return false;
+  }
+
+  clang::TagDecl *TD = LHSTy->getAsTagDecl();
+  Declaration *DeclForTy = getDeclaration(TD);
+  if (!DeclForTy && isa<clang::ClassTemplateSpecializationDecl>(TD)) {
+    auto *CTSD = cast<clang::ClassTemplateSpecializationDecl>(TD);
+    auto *Primary = CTSD->getSpecializedTemplate();
+    DeclForTy = getDeclaration(Primary);
+  }
+  assert(DeclForTy && "Missing declaration for a type");
+
+  clang::DeclarationNameInfo DNI({Id}, IdLoc);
+  auto R = TD->lookup(DNI.getName());
+  clang::NamedDecl *ND = nullptr;
+  if (R.size() != 0) {
+    for (clang::NamedDecl *ND : R) {
+      if (isa<clang::TagDecl>(ND) || isa<clang::TypeAliasDecl>(ND)
+          || isa<clang::CXXRecordDecl>(ND)) {
+        return true;
+      }
+    }
+    return false;
+  }
+  clang::LookupResult Previous(CxxSema, DNI, clang::Sema::LookupOrdinaryName);
+  if (lookupUnqualifiedName(Previous, getCurrentScope())) {
+    return false;
+  }
+  return !Previous.empty();
+}
+
 
 bool Sema::isElaboratingClass() const {
   return !ClassStack.empty();
@@ -1181,7 +1248,7 @@ bool Sema::isElaboratingClass() const {
 Sema::ClassElaborationState
 Sema::pushElaboratingClass(Declaration *D, bool TopLevelClass) {
   assert((TopLevelClass || !ClassStack.empty())
-      && "Nestd class without outer class.");
+      && "Nested class without outer class.");
   ClassStack.push_back(new ElaboratingClass(D, TopLevelClass));
   return CxxSema.PushParsingClass();
 }

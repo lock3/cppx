@@ -42,8 +42,10 @@ public:
   /// partial expression, this could be template parameters or array access.
   virtual clang::Expr *appendName(clang::SourceLocation L,
                                   clang::IdentifierInfo *Id) override;
-  virtual clang::Expr *appendElementExpr(clang::SourceLocation B, clang::SourceLocation E,
-                                         const ExprList &Args) override;
+  virtual clang::Expr *appendElementExpr(clang::SourceLocation B,
+                                         clang::SourceLocation E,
+                                 clang::TemplateArgumentListInfo &TemplateArgs,
+           llvm::SmallVectorImpl<clang::TemplateArgument> &ActualArgs) override;
   virtual clang::Expr *appendFunctionCall(clang::SourceLocation B,
                                           clang::SourceLocation E,
                                           const ExprList &Args) override;

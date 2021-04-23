@@ -391,7 +391,7 @@ C : type = {
 
 foo:() = {
   v:C;
-  v.(B)i = 4;
+  v.B.i = 4;
 }
 )BLUE";
   auto ToMatch =
@@ -410,6 +410,215 @@ foo:() = {
 }
 
 
+TEST(BlueClass, ImplicitThisBaseClassMemberDisambiguationAccess) {
+  StringRef Code = R"BLUE(
+B : type = {
+  i:int;
+}
+
+C : type = {
+  :B;
+  i:int;
+  foo: () -> void = {
+    B.i = 4;
+  }
+}
+)BLUE";
+  auto ToMatch =
+    memberExpr(
+      hasDescendant(
+        cxxThisExpr()
+      )
+    );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+
+TEST(BlueClass, TemplateInstantiationInsideOfBaseDisambiguationExpr_ImplicitThis) {
+  StringRef Code = R"BLUE(
+B : [T:type] -> type = {
+  i:int;
+}
+
+C : type = {
+  :B[int];
+  i:int;
+  foo: () -> void = {
+    B[int].i = 4;
+  }
+}
+)BLUE";
+  auto ToMatch =
+    memberExpr(
+      hasDescendant(
+        cxxThisExpr()
+      )
+    );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(BlueClass, TemplateInstantiationInsideOfBaseDisambiguationExpr) {
+  StringRef Code = R"BLUE(
+B : [T:type] -> type = {
+  i:int;
+}
+
+C : type = {
+  :B[int];
+  i:int;
+  foo: () -> void = {
+    this.B[int].i = 4;
+  }
+}
+)BLUE";
+  auto ToMatch =
+    memberExpr(
+      hasDescendant(
+        cxxThisExpr()
+      )
+    );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+
+TEST(BlueClass, NamespaceSpecifierForAsPartOfNameDisambiguation) {
+  StringRef Code = R"BLUE(
+ns:namespace = {
+  B : type = {
+    i:int;
+  }
+}
+
+C : type = {
+  :ns.B;
+  i:int;
+  foo: () -> void = {
+    this.ns.Bi = 4;
+  }
+}
+)BLUE";
+  auto ToMatch =
+    memberExpr(
+      hasDescendant(
+        cxxThisExpr()
+      )
+    );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(BlueClass, NamespaceSpecifierForAsPartOfNameDisambiguation_ImplicitThis) {
+  StringRef Code = R"BLUE(
+ns:namespace = {
+  B : type = {
+    i:int;
+  }
+}
+
+C : type = {
+  :ns.B;
+  i:int;
+  foo: () -> void = {
+    ns.Bi = 4;
+  }
+}
+)BLUE";
+  auto ToMatch =
+    memberExpr(
+      hasDescendant(
+        cxxThisExpr()
+      )
+    );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(BlueClass, NamespaceSpecifierForAsPartOfNameDisambiguationNonMemberCall) {
+  StringRef Code = R"BLUE(
+ns:namespace = {
+  B : type = {
+    i:int;
+  }
+  bar:()->void= { }
+}
+
+C : type = {
+  :ns.B;
+  i:int;
+  foo: () -> void = {
+    ns.Bar();
+  }
+}
+)BLUE";
+  auto ToMatch = callExpr(callee(functionDecl(hasName("bar"))));
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(BlueClass, NameDisambiguationThroughTypeAlias) {
+  StringRef Code = R"BLUE(
+ns:namespace = {
+  B : type = {
+    i:int;
+  }
+  bar:()->void= { }
+}
+
+C : type = {
+  :ns.B;
+  A :type = ns.B;
+  i:int;
+  foo: () -> void = {
+    A.i = 4;
+  }
+}
+)BLUE";
+  auto ToMatch =
+    memberExpr(
+      hasDescendant(
+        cxxThisExpr()
+      )
+    );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(BlueClass, FunctionCallWithDisambiguationExprImplicitThis) {
+  StringRef Code = R"BLUE(
+B : type = {
+  i:int;
+  bar:() -> void = { }
+}
+
+C : type = {
+  :B;
+  i:int;
+  foo: () -> void = {
+    B.bar();
+  }
+}
+)BLUE";
+  auto ToMatch = cxxMemberCallExpr(callee(cxxMethodDecl(hasName("bar"))));
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(BlueClass, FunctionCallWithDisambiguationExpr) {
+  StringRef Code = R"BLUE(
+B : type = {
+  i:int;
+  bar:() -> void = { }
+}
+
+C : type = {
+  :B;
+  i:int;
+  foo: () -> void = {
+    this.B.bar();
+  }
+}
+)BLUE";
+  auto ToMatch = cxxMemberCallExpr(callee(cxxMethodDecl(hasName("bar"))));
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+
+
 
 TEST(BlueClass, DependentExpressionDisambiguation) {
   StringRef Code = R"BLUE(
@@ -422,7 +631,7 @@ C :[T:type] -> type = {
   i:int;
 
   foo:(this) -> void = {
-    this.(B)i = 4;
+    this.B.i = 4;
   }
 }
 
@@ -431,6 +640,28 @@ C :[T:type] -> type = {
   auto ToMatch =cppxDependentMemberAccessExpr();
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
+
+TEST(BlueClass, DependentExpressionDisambiguation_ImplicitThis) {
+  StringRef Code = R"BLUE(
+B : type = {
+  i:int;
+}
+
+C :[T:type] -> type = {
+  :B;
+  i:int;
+
+  foo:(this) -> void = {
+    B.i = 4;
+  }
+}
+
+
+)BLUE";
+  auto ToMatch =cppxDependentMemberAccessExpr();
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
 
 TEST(BlueClass, DependentDisambiguationExpression) {
   StringRef Code = R"BLUE(
@@ -442,7 +673,7 @@ C : [T:type] -> type = {
   :B[T];
   i:int;
   foo:(this) -> void = {
-    this.(B[T])i = 4;
+    this.B[T].i = 4;
   }
 }
 
@@ -461,7 +692,7 @@ C : [T:type] -> type = {
   :B[T];
   i:int;
   foo:(this) -> void = {
-    this.(B[T])foo() = 4;
+    this.B[T].foo() = 4;
   }
 }
 

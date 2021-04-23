@@ -286,10 +286,13 @@ public:
 //                      Partial Expr Creation                                 //
 //===----------------------------------------------------------------------===//
 public:
+
   clang::CppxPartialEvalExpr *createPartialExpr(clang::SourceLocation Loc,
                                                 bool IsWithinClass,
                                                 bool allowImplicitThis,
                                                 clang::Expr *BaseExpr);
+  bool memberAccessNeedsPartialExpr(clang::Expr *LHS, clang::IdentifierInfo *Id,
+                                    clang::SourceLocation IdLoc);
 //===----------------------------------------------------------------------===//
 //                               RAII Objects                                 //
 //===----------------------------------------------------------------------===//

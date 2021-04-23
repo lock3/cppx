@@ -21,7 +21,6 @@
 #include "clang/AST/TemplateBase.h"
 
 namespace clang {
-
 class CppxTypeLiteral;
 class Decl;
 class DiagnosticsEngine;
@@ -30,7 +29,7 @@ class QualType;
 class Sema;
 class Stmt;
 class NamedDecl;
-
+class CppxPartialEvalExpr;
 } // namespace clang
 
 namespace blue
@@ -216,7 +215,8 @@ public:
   /// Dispatching function, that determines based on the LHS's type how to
   /// process the RHS of the expression.
   clang::Expr *elaborateMemberAccess(clang::Expr *LHS, const InfixSyntax *S);
-
+  clang::Expr *elaboratePartialEvalMemberAccess(clang::CppxPartialEvalExpr *E,
+                                                const InfixSyntax *S);
   clang::Expr *elaborateTypeNameAccess(clang::Expr *LHS, const InfixSyntax *S);
   clang::Expr *elaborateNestedNamespaceAccess(clang::Expr *LHS, const InfixSyntax *S);
   clang::Expr *elaborateNNS(clang::NamedDecl *NS, const InfixSyntax *S);

@@ -37,7 +37,8 @@ clang::Expr *PartialNameAccessExprImpl::appendName(clang::SourceLocation L,
 clang::Expr *
 PartialNameAccessExprImpl::appendElementExpr(clang::SourceLocation B,
                                              clang::SourceLocation E,
-                                             const ExprList &Args)
+                                  clang::TemplateArgumentListInfo &TemplateArgs,
+                     llvm::SmallVectorImpl<clang::TemplateArgument> &ActualArgs)
 {
   return nullptr;
 }
