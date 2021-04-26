@@ -316,6 +316,10 @@ void DeclaratorBuilder::VisitGoldMacroSyntax(const MacroSyntax *S) {
   if (const AtomSyntax *Call = dyn_cast<AtomSyntax>(S->getCall()))
     if (Call->getToken().hasKind(tok::UsingKeyword))
       return buildUsingDirectiveDeclarator(S);
+
+  if (Owner.RequiresDeclOrError)
+    SemaRef.Diags.Report(S->getLoc(), clang::diag::err_invalid_declaration_kind)
+      << 1;
 }
 
 // True when Child is a node on the left hand side of Parent.
