@@ -685,20 +685,66 @@ Declarator *DeclaratorBuilder::makeDeclarator(const Syntax *S) {
     }
   }
 
+  if (isa<MacroSyntax>(S)) {
+    VisitSyntax(S);
+    return Result;
+  }
+
+  const auto *Call = dyn_cast<CallSyntax>(S);
+  if (!Call) {
+    if (Owner.RequiresDeclOrError)
+      SemaRef.Diags.Report(S->getLoc(),
+                           clang::diag::err_invalid_declaration_kind)
+                           << 2;
+    return nullptr;
+  }
+
+
+  // None of these operators can be the root of a declaration,
+  // with the exception of very specific contexts.
+  switch(getFusedOpKind(SemaRef, Call)) {
+  case FOK_Unknown:
+  case FOK_Arrow:
+  case FOK_If:
+  case FOK_Else:
+  case FOK_Return:
+  case FOK_For:
+  case FOK_While:
+  case FOK_DotDot:
+  case FOK_Const:
+  case FOK_Ref:
+  case FOK_RRef:
+  case FOK_Brackets:
+  case FOK_Throw:
+  case FOK_Parens:
+  case FOK_DotCaret: {
+    if (Owner.RequiresDeclOrError) {
+      if (const AtomSyntax *Callee = dyn_cast<AtomSyntax>(Call->getCallee())) {
+        if (Owner.AllowShortCtorAndDtorSyntax &&
+              (Callee->getSpelling() == "constructor"
+               || Callee->getSpelling() == "destructor"
+               || (Callee->isFused() &&
+                   Callee->getFusionBase() == tok::Conversion))) {
+          VisitSyntax(Call);
+          return Result;
+        }
+      }
+
+      SemaRef.Diags.Report(Call->getCallee()->getLoc(),
+                           clang::diag::err_invalid_declaration_kind)
+                           << 2;
+    }
+
+    return nullptr;
+  }
+
+  default:
+    break;
+  } // switch (getFusedOpKind(SemaRef, Call)
+
+
   VisitSyntax(S);
   return Result;
-
-  // if (const auto *Macro = dyn_cast<MacroSyntax>(S))
-  //   return makeTopLevelDeclarator(Macro, nullptr);
-
-  // const auto *Call = dyn_cast<CallSyntax>(S);
-  // if (!Call) {
-  //   if (Owner.RequiresDeclOrError)
-  //     SemaRef.Diags.Report(S->getLoc(),
-  //                          clang::diag::err_invalid_declaration_kind)
-  //                          << 2;
-  //   return nullptr;
-  // }
 }
 
 void DeclaratorBuilder::buildIdentifier(const AtomSyntax *S) {
