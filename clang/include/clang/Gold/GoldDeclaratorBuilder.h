@@ -34,6 +34,9 @@ class DeclaratorBuilder :
 
   // The most recently created declarator chunk.
   Declarator *End = nullptr;
+
+  // The main identifier for the declaration.
+  Declarator *Name = nullptr;
 public:
   DeclaratorBuilder(SyntaxContext &Context, Sema &SemaRef,
                     DeclarationBuilder &Owner)
@@ -54,7 +57,7 @@ public:
 private:
   void push(Declarator *D) {
     if (!Result) {
-      End = Cur = Result = D;
+      Name = End = Cur = Result = D;
     } else {
       End->Next = D;
       Cur = End;

@@ -14,57 +14,30 @@ using ParentMapTy = DeclaratorBuilder::ParentMapTy;
 Declarator *DeclaratorBuilder::operator()(const Syntax *S) {
   NodeLabeler LabelNodes(SemaRef, NodeLabels, NodeParents);
   LabelNodes(S);
-  // for (auto Each : NodeLabels) {
-  //   const Syntax *P = nullptr;
-  //   auto It = NodeParents.find(Each.first);
-  //   if (It != NodeParents.end())
-  //     P = It->second;
-
-  //   llvm::outs() << "NODE: " << Each.second << " - " << Each.first
-  //                << ": PARENT: " << P << '\n';
-  //   Each.first->dump();
-  //   llvm::outs() << "===------------------===\n";
-  // }
 
   gold::Scope *CurrentScope = SemaRef.getCurrentScope();
   gold::Declarator *Dcl = nullptr;
   switch(CurrentScope->getKind()) {
   case SK_Namespace:
-    Dcl = handleNamespaceScope(S);
-    break;
+    return handleNamespaceScope(S);
   case SK_Parameter:
-    Dcl = handleParameterScope(S);
-    break;
+    return handleParameterScope(S);
   case SK_Template:
-    Dcl = handleTemplateScope(S);
-    break;
+    return handleTemplateScope(S);
   case SK_Function:
-    Dcl = handleFunctionScope(S);
-    break;
+    return handleFunctionScope(S);
   case SK_Block:
-    Dcl = handleBlockScope(S);
-    break;
+    return handleBlockScope(S);
   case SK_Class:
-    Dcl = handleClassScope(S);
-    break;
+    return handleClassScope(S);
   case SK_Control:
-    Dcl = handleControlScope(S);
-    break;
+    return handleControlScope(S);
   case SK_Catch:
-    Dcl = handleCatchScope(S);
-    break;
+    return handleCatchScope(S);
   case SK_Enum:
-    Dcl = handleEnumScope(S);
-    break;
+    return handleEnumScope(S);
   }
 
-  // Declarator *D = Result;
-  // while (D) {
-  //   llvm::outs() << D->getString() << " -> ";
-  //   D = D->Next;
-  // }
-  // llvm::outs() << "\nEND CHAIN\n";
-  // Dcl->printSequence(llvm::errs());
   return Dcl;
 }
 
@@ -142,13 +115,11 @@ void DeclaratorBuilder::VisitGoldCallSyntax(const CallSyntax *S) {
         return buildType(S);
       if (Tok.isFused() && Callee->getFusionBase() == tok::Conversion) {
         Owner.ConversionTypeSyntax = Callee->getFusionArg();
-        VisitSyntax(Callee);
-        buildFunction(S);
-        return buildType(Callee->getFusionArg());
       }
     }
 
     VisitSyntax(S->getCallee());
+    Name->recordAttributes(S);
     buildFunction(S);
     // This might be a conversion function.
     if (Owner.ConversionTypeSyntax)
@@ -176,10 +147,12 @@ void DeclaratorBuilder::VisitGoldCallSyntax(const CallSyntax *S) {
         VisitSyntax(S->getArgument(0));
       }
       Cur->recordAttributes(S);
-      return VisitSyntax(S->getArgument(1));
+      // return VisitSyntax(S->getArgument(1));
     }
 
-    return VisitSyntax(S->getArgument(1));
+    VisitSyntax(S->getArgument(1));
+    Name = End;
+    return;
   }
 
   if (Op == FOK_Equals) {
@@ -501,12 +474,11 @@ void DeclaratorBuilder::buildType(const Syntax *S) {
 
 void DeclaratorBuilder::buildFunction(const CallSyntax *S) {
   push(new FunctionDeclarator(S->getArguments(), nullptr));
-  Cur->recordAttributes(S);
+  // Cur->recordAttributes(S);
 }
 
 void DeclaratorBuilder::buildFunction(const ListSyntax *S) {
   push(new FunctionDeclarator(S, nullptr));
-  Cur->recordAttributes(S);
 }
 
 void DeclaratorBuilder::buildTemplateParams(const ListSyntax *S) {
