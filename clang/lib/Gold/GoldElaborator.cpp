@@ -3408,11 +3408,11 @@ BASIC_VARIABLE:
 
     if (TemporaryElaboration) {
       D->Cxx = NewVD;
+      D->CurrentPhase = Phase::Typing;
+      elaborateAttributes(D);
       return D->Cxx;
     }
   }
-
-
 
   // If this is supposed to be a variable template, create it as such.
   if (IsVariableTemplate) {
@@ -4656,10 +4656,14 @@ clang::Decl *Elaborator::elaborateField(Declaration *D,
                                                 /*BitWidth=*/nullptr, InitStyle,
                                                 Loc, clang::AS_public, nullptr);
   }
-  Owner->addDecl(Field);
-  SemaRef.setDeclForDeclaration(D, Field);
+
+  D->Cxx = Field;
   D->CurrentPhase = Phase::Typing;
   elaborateAttributes(D);
+  if (TemporaryElaboration)
+    return Field;
+  Owner->addDecl(Field);
+  SemaRef.setDeclForDeclaration(D, Field);
   return Field;
 }
 

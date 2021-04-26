@@ -239,8 +239,8 @@ bool DeclarationBuilder::verifyDeclaratorChain(const Syntax *DeclExpr,
     }
   }
 
-  // This is the last thing so after cur == nullptr if not then we have an
-  // invalid declarator
+  // Every declaration will end with an optional type. If there is another
+  // declarator chunk after this, the declaration is ill-formed.
   if (Cur->isType()) {
     TheDecl->TypeDcl = Cur->getAsType();
     Cur = Cur->Next;
