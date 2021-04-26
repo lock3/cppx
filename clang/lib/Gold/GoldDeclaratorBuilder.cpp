@@ -136,12 +136,24 @@ void DeclaratorBuilder::VisitGoldCallSyntax(const CallSyntax *S) {
     if (Callee) {
       if (Callee->getSpelling() == "...")
         return buildType(S);
-      if (isBuiltinFunctionName(Callee->getToken().getKind()))
+
+      Token Tok = Callee->getToken();
+      if (isBuiltinFunctionName(Tok.getKind()))
         return buildType(S);
+      if (Tok.isFused() && Callee->getFusionBase() == tok::Conversion) {
+        Owner.ConversionTypeSyntax = Callee->getFusionArg();
+        VisitSyntax(Callee);
+        buildFunction(S);
+        return buildType(Callee->getFusionArg());
+      }
     }
 
     VisitSyntax(S->getCallee());
-    return buildFunction(S);
+    buildFunction(S);
+    // This might be a conversion function.
+    if (Owner.ConversionTypeSyntax)
+      buildType(Owner.ConversionTypeSyntax);
+    return;
   }
 
   if (Op == FOK_MemberAccess) {
@@ -193,6 +205,8 @@ void DeclaratorBuilder::VisitGoldCallSyntax(const CallSyntax *S) {
     return VisitSyntax(S->getArgument(0));
   } else if (Op == FOK_In) {
     return VisitSyntax(S->getArgument(0));
+  } else if (Op == FOK_Colon) {
+    Owner.RequiresDeclOrError = true;
   }
 
   if (isTypeOperator(Op))
@@ -703,6 +717,9 @@ Declarator *DeclaratorBuilder::makeDeclarator(const Syntax *S) {
   // None of these operators can be the root of a declaration,
   // with the exception of very specific contexts.
   switch(getFusedOpKind(SemaRef, Call)) {
+  case FOK_Colon:
+    Owner.RequiresDeclOrError = true;
+    break;
   case FOK_Unknown:
   case FOK_Arrow:
   case FOK_If:
