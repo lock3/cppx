@@ -261,7 +261,7 @@ public:
       for (const gold::Syntax *SubSyntax : S->children())
         Visit(SubSyntax);
       if (!S->getAttributes().empty()) {
-        for (const gold::Attribute *Attr :  S->getAttributes()) {
+        for (const gold::Syntax *Attr :  S->getAttributes()) {
           Visit(Attr);
         }
       }

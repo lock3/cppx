@@ -366,37 +366,46 @@ static void processBaseSpecifiers(Elaborator& Elab, Sema& SemaRef,
   Attributes Attrs;
   bool IsVirtualBase = false;
   for (const Syntax *Base : Bases->children()) {
-    clang::Expr *BaseExpr = TypeElab.elaborateExpr(Base);
+    Attrs.clear();
+    const Syntax *TrueBase = Base;
+    while (const CallSyntax *BaseCall = dyn_cast<CallSyntax>(TrueBase)) {
+      FusedOpKind Op = getFusedOpKind(SemaRef, BaseCall);
+      if (Op == FOK_Postattr) {
+        TrueBase = BaseCall->getArgument(0);
+        Attrs.push_back(BaseCall->getArgument(1));
+      } else if (Op == FOK_Preattr) {
+        TrueBase = BaseCall->getArgument(1);
+        Attrs.push_back(BaseCall->getArgument(0));
+      } else {
+        break;
+      }
+    }
 
+    clang::Expr *BaseExpr = TypeElab.elaborateExpr(TrueBase);
     if (!BaseExpr) {
       SemaRef.Diags.Report(Base->getLoc(),
                            clang::diag::err_failed_to_translate_expr);
       continue;
     }
 
-    Attrs.clear();
     clang::AccessSpecifier AS = clang::AS_public;
     IsVirtualBase = false;
-    if (!Base->getAttributes().empty()) {
-      // Gathering all of the attributes from the root node of the expression
-      // (Which is technically)
-      for (const Attribute *Attr : Base->getAttributes())
-        Attrs.emplace_back(Attr->getArg());
-
+    if (!Attrs.empty()) {
       if (computeAccessSpecifier(SemaRef, Attrs, AS))
         return;
 
       if (isVirtualBase(SemaRef, Attrs, IsVirtualBase))
         return;
 
-      // TODO: Create an error message in the event that the attributes
-      // associated with the current type are wrong.
       if (!Attrs.empty()) {
-        // TODO: Create an error message for here.
-        llvm::errs() << "Invalid base class attribute\n";
+        unsigned DiagID =
+          SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                        "unknown base class attribute");
+        SemaRef.Diags.Report(Attrs.front()->getLoc(), DiagID);
         return;
       }
     }
+
     if ((BaseExpr->isTypeDependent() || BaseExpr->isValueDependent()
         || BaseExpr->getType()->isDependentType())
         && !isa<clang::CppxTypeLiteral>(BaseExpr)) {
@@ -6172,6 +6181,10 @@ FusedOpKind getFusedOpKind(Sema &SemaRef, llvm::StringRef Spelling) {
     return FOK_Ampersand;
   if (Tokenization == SemaRef.OperatorMapII)
     return FOK_Map;
+  if (Tokenization == SemaRef.OperatorPostattributeII)
+    return FOK_Postattr;
+  if (Tokenization == SemaRef.OperatorPreattributeII)
+    return FOK_Preattr;
   return FOK_Unknown;
 }
 

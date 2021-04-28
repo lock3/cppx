@@ -104,6 +104,16 @@ void DeclaratorBuilder::VisitGoldCallSyntax(const CallSyntax *S) {
   const AtomSyntax *Callee = dyn_cast<AtomSyntax>(S->getCallee());
   FusedOpKind Op = getFusedOpKind(SemaRef, S);
 
+  if (Op == FOK_Preattr) {
+    Owner.Attrs.insert(S->getArgument(0));
+    return VisitSyntax(S->getArgument(1));
+  }
+
+  if (Op == FOK_Postattr) {
+    Owner.Attrs.insert(S->getArgument(1));
+    return VisitSyntax(S->getArgument(0));
+  }
+
   // A normal function declaration.
   if (Op == FOK_Unknown && !isPostfixCaret(S)) {
     if (Callee) {
@@ -119,7 +129,7 @@ void DeclaratorBuilder::VisitGoldCallSyntax(const CallSyntax *S) {
     }
 
     VisitSyntax(S->getCallee());
-    Name->recordAttributes(S);
+    // Name->recordAttributes(S);
     buildFunction(S);
     // This might be a conversion function.
     if (Owner.ConversionTypeSyntax)
@@ -146,8 +156,7 @@ void DeclaratorBuilder::VisitGoldCallSyntax(const CallSyntax *S) {
         ExprElaborator::BooleanRAII B(NestedTemplateName, true);
         VisitSyntax(S->getArgument(0));
       }
-      Cur->recordAttributes(S);
-      // return VisitSyntax(S->getArgument(1));
+      // Cur->recordAttributes(S);
     }
 
     VisitSyntax(S->getArgument(1));
@@ -208,7 +217,7 @@ void DeclaratorBuilder::VisitGoldCallSyntax(const CallSyntax *S) {
   END:
     if (IsPartialSpecialization) {
       buildPartialSpecialization(constructList(Context, S->getArgument(0)));
-      Result->recordAttributes(S);
+      // Result->recordAttributes(S);
       return VisitSyntax(S->getArgument(1));
     } else {
       buildArray(S->getArgument(0));
@@ -309,7 +318,6 @@ void DeclaratorBuilder::VisitGoldElemSyntax(const ElemSyntax *S) {
   }
 
   buildArray(S->getArguments());
-  // buildTemplateParams(cast<ListSyntax>(S->getArguments()));
 }
 
 void DeclaratorBuilder::VisitGoldMacroSyntax(const MacroSyntax *S) {
@@ -454,13 +462,13 @@ void DeclaratorBuilder::buildError(const ErrorSyntax *S) {
 
 void DeclaratorBuilder::buildGlobalNameSpecifier(const CallSyntax *S) {
   auto Result = new GlobalNameSpecifierDeclarator(S, nullptr);
-  Result->recordAttributes(S);
+  // Result->recordAttributes(S);
   push(Result);
 }
 
 void DeclaratorBuilder::buildNestedNameSpecifier(const AtomSyntax *S) {
   auto Result = new NestedNameSpecifierDeclarator(S, nullptr);
-  Result->recordAttributes(S);
+  // Result->recordAttributes(S);
   push(Result);
 }
 
@@ -478,7 +486,6 @@ void DeclaratorBuilder::buildType(const Syntax *S) {
 
 void DeclaratorBuilder::buildFunction(const CallSyntax *S) {
   push(new FunctionDeclarator(S->getArguments(), nullptr));
-  // Cur->recordAttributes(S);
 }
 
 void DeclaratorBuilder::buildFunction(const ListSyntax *S) {
@@ -487,13 +494,12 @@ void DeclaratorBuilder::buildFunction(const ListSyntax *S) {
 
 void DeclaratorBuilder::buildTemplateParams(const ListSyntax *S) {
   push(new TemplateParamsDeclarator(S, nullptr));
-  Cur->recordAttributes(S);
+  // Cur->recordAttributes(S);
 }
 
 void DeclaratorBuilder::buildTemplateParams(const ElemSyntax *S) {
   buildTemplateParams(cast<ListSyntax>(S->getArguments()));
-  Result->recordAttributes(S);
-  // Cur->recordAttributes(S);
+  // Result->recordAttributes(S);
 }
 
 void DeclaratorBuilder::buildSpecialization(const ElemSyntax *S) {
@@ -502,8 +508,8 @@ void DeclaratorBuilder::buildSpecialization(const ElemSyntax *S) {
   push(new SpecializationDeclarator(cast<ListSyntax>(S->getArguments()),
                                     nullptr));
   // Attach these attributes to the name declarator!
-  Result->recordAttributes(S);
-  Cur->recordAttributes(S);
+  // Result->recordAttributes(S);
+  // Cur->recordAttributes(S);
 }
 
 void DeclaratorBuilder::buildPartialSpecialization(const ListSyntax *S) {
@@ -513,7 +519,7 @@ void DeclaratorBuilder::buildPartialSpecialization(const ListSyntax *S) {
 void DeclaratorBuilder::buildPartialSpecialization(const ElemSyntax *S) {
   push(new SpecializationDeclarator(cast<ListSyntax>(S->getArguments()),
                                     nullptr));
-  Result->recordAttributes(S);
+  // Result->recordAttributes(S);
 }
 
 void DeclaratorBuilder::buildUsingDirectiveDeclarator(const MacroSyntax *S) {
@@ -696,6 +702,11 @@ Declarator *DeclaratorBuilder::makeDeclarator(const Syntax *S) {
   case FOK_Colon:
     Owner.RequiresDeclOrError = true;
     break;
+  case FOK_Postattr:
+  case FOK_Preattr:
+    if (Owner.IsInsideEnum)
+      break;
+    LLVM_FALLTHROUGH;
   case FOK_Unknown:
   case FOK_Arrow:
   case FOK_If:
@@ -744,7 +755,7 @@ void DeclaratorBuilder::buildIdentifier(const AtomSyntax *S) {
   // Don't bother with the unnamed name ("_")
   if (S->getToken().hasKind(tok::AnonymousKeyword)) {
     auto *D = new IdentifierDeclarator(S, nullptr);
-    D->recordAttributes(S);
+    // D->recordAttributes(S);
     push(D);
     return;
   }
@@ -780,7 +791,7 @@ void DeclaratorBuilder::buildIdentifier(const AtomSyntax *S) {
   }
 
   auto *D = new IdentifierDeclarator(S, nullptr);
-  D->recordAttributes(S);
+  // D->recordAttributes(S);
   D->setUserDefinedLiteralSuffix(UDLSuffix);
   push(D);
 }

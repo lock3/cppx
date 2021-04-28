@@ -108,6 +108,8 @@ static const char *getFusionBaseSpelling(tok::FusionKind K) {
     return "conversion";
   case tok::Literal:
     return "literal";
+  case tok::Attribute:
+    return "attribute";
   }
 }
 

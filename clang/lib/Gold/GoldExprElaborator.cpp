@@ -3678,9 +3678,9 @@ static inline void buildLambdaCaptures(SyntaxContext &Context, Sema &SemaRef,
     buildLambdaCaptureInternal(Context, SemaRef, Intro, SS, Range);
 }
 
-static inline bool isMutable(Sema &SemaRef, Attribute *A) {
+static inline bool isMutable(Sema &SemaRef, const Syntax *A) {
   std::string Name;
-  switch (checkAttrFormatAndName(A->getArg(), Name)) {
+  switch (checkAttrFormatAndName(A, Name)) {
   case AF_Name:
   case AF_Call:
     return Name == "mutable";
@@ -3707,9 +3707,9 @@ static clang::Expr *handleLambdaMacro(SyntaxContext &Context, Sema &SemaRef,
   clang::Sema &CxxSema = SemaRef.getCxxSema();
   const CallSyntax *Call = cast<CallSyntax>(S->getCall());
 
-  Syntax::AttrVec Attributes = Call->getAttributes();
+  Syntax::AttrList Attributes = Call->getAttributes();
   bool Mutable = false;
-  for (Attribute *A : Attributes) {
+  for (const Syntax *A : Attributes) {
     if (isMutable(SemaRef, A)) {
       Mutable = true;
     } else {
@@ -3717,7 +3717,7 @@ static clang::Expr *handleLambdaMacro(SyntaxContext &Context, Sema &SemaRef,
         SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
                                       "lambdas may only have the "
                                       "'mutable' attribute");
-      SemaRef.Diags.Report(A->getArg()->getLoc(), DiagID);
+      SemaRef.Diags.Report(A->getLoc(), DiagID);
     }
   }
 
@@ -4605,12 +4605,12 @@ clang::Expr *ExprElaborator::handleFunctionType(const CallSyntax *S) {
   }
 
   // Manually elaborate any attributes here.
-  for (const Attribute *Attr : ParamBegin->getAttributes()) {
+  for (const Syntax *Attr : ParamBegin->getAttributes()) {
     std::string AttrName;
-    if (checkAttrFormatAndName(Attr->getArg(), AttrName) == AF_Name) {
+    if (checkAttrFormatAndName(Attr, AttrName) == AF_Name) {
       if (AttrName == "const") {
         if (!ClassType) {
-          SemaRef.Diags.Report(Attr->getArg()->getLoc(),
+          SemaRef.Diags.Report(Attr->getLoc(),
                                clang::diag::err_invalid_attribute_for_decl)
             << "const" << "member function";
         }

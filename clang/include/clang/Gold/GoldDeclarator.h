@@ -228,7 +228,7 @@ public:
 
   /// This sets the attribute node and records all attributes into the
   /// UnprocessedAttributes member.
-  void recordAttributes(const Syntax* AttributeNode);
+  void recordAttribute(const Syntax *Attribute);
 
 private:
   /// The kind of declarator.
@@ -240,8 +240,8 @@ public:
   static bool classof(const Declarator *Dcl) {
     return Dcl->getKind() == DK_DeclaratorBase;
   }
+
   /// This is optionally set for each piece of the declarator
-  const Syntax* AttributeNode = nullptr;
   llvm::Optional<Attributes> UnprocessedAttributes;
 };
 

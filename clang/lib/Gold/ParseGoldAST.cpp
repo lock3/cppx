@@ -44,6 +44,7 @@ void ParseGoldAST(clang::ASTContext &ClangContext, clang::Preprocessor &PP,
   // file was empty
   if (!CST)
     return;
+
   // FIXME: There's a -fdump-syntax flag that we should tie this too.
   // FIXME: We should handle -fsyntax-only here -- or maybe make a separate
   // front-end action that stops after parsing. Unfortunately, the flag

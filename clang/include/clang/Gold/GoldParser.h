@@ -259,7 +259,7 @@ namespace gold
     void parseList(llvm::SmallVectorImpl<Syntax *> &Vec);
 
     Syntax *parseExpr();
-    bool parsePreattr();
+    Syntax *parsePreattr();
     Syntax *parseDef();
     Syntax *parseDefFold(Syntax *E1);
     Syntax *parseExpansion();
@@ -327,7 +327,8 @@ namespace gold
     Syntax *parseExpansionOperator(Syntax *Obj);
 
   private:
-    Attribute *parsePostAttr();
+    Syntax *parsePostAttr();
+    Syntax *parsePostattribute(Syntax *Operand);
   public:
     Syntax *parsePrimary();
     Syntax *parseId();
@@ -368,6 +369,8 @@ namespace gold
     Syntax *onUserDefinedLiteral(Syntax *Base, const Token &Lit);
     Syntax *onArray(ArraySemantic S, const llvm::SmallVectorImpl<Syntax*>& Vec);
     Syntax *onList(ArraySemantic S, const llvm::SmallVectorImpl<Syntax*>& Vec);
+    Syntax *onPreattribute(Syntax *E1, Syntax *E2);
+    Syntax *onPostattribute(Syntax *E1, Syntax *E2);
     Syntax *onBinary(const Token& tok, Syntax *e1, Syntax *e2);
     Syntax *onUnary(const Token& tok, Syntax *e1);
     Syntax *onPostfix(Token const &Tok, Syntax *E1);
@@ -423,15 +426,9 @@ namespace gold
     // The last identifier we parsed.
     Syntax *LastIdentifier = nullptr;
 
-    /// Tracker for '<' tokens that might have been intended to be treated as an
-    /// angle bracket instead of a less-than comparison.
-    ///
-    /// This happens when the user intends to form a attribute.
-    ///
-    /// We track these locations from the point where we see a '<' with a
-    /// name-like expression on its left until we see a '>' that might
-    /// match it.
-    struct AngleBracketTracker {
+    /// A structure that tracks the depth of enclosures. Used to disambiguate
+    /// attributes.
+    struct EnclosureTracker {
       enum EnclosureKind : unsigned {
         Parens, Brackets, Braces, Indents, EnclosureSize
       };
@@ -473,37 +470,62 @@ namespace gold
         }
       };
 
-      // True when we are "inside" a potential angle bracket.
-      inline bool isOpen() const {
-        return !Angles.empty();
+      inline virtual bool isOpen() const {
+        return !Enclosures.empty();
       }
 
-      void clear() {
-        Angles.clear();
+      inline virtual void clear() {
         Enclosures.clear();
         for (auto &I : EnclosureCounts)
           I = 0;
       }
 
+      virtual ~EnclosureTracker() {}
+
+      // The amount of open, non-angle enclosure tokens we have encountered.
+      llvm::SmallVector<Loc, 4> Enclosures;
+    };
+
+    /// Tracker for '<' tokens that might have been intended to be treated as an
+    /// angle bracket instead of a less-than comparison.
+    ///
+    /// This happens when the user intends to form a attribute.
+    ///
+    /// We track these locations from the point where we see a '<' with a
+    /// name-like expression on its left until we see a '>' that might
+    /// match it.
+    struct AngleBracketTracker : EnclosureTracker {
+      // True when we are "inside" a potential angle bracket.
+      inline virtual bool isOpen() const override {
+        return !Angles.empty();
+      }
+
+      inline virtual void clear() override {
+        EnclosureTracker::clear();
+        Angles.clear();
+      }
+
       // The amount of open angle tokens we have encountered.
       llvm::SmallVector<Loc, 4> Angles;
-
-      // The amount of other open enclosure tokens we have encountered.
-      llvm::SmallVector<Loc, 4> Enclosures;
     };
 
   private:
     bool scanNNSPrefix();
+    bool scanBrackets();
 
   private:
-    AngleBracketTracker Angles;
+    std::unique_ptr<AngleBracketTracker> AnglesOwner =
+      std::make_unique<AngleBracketTracker>();
+    AngleBracketTracker &Angles = *AnglesOwner;
 
     bool scanAngles(Syntax *Base);
     void startPotentialAngleBracket(const Token &OpToken);
     void finishPotentialAngleBracket(const Token &OpToken);
 
   private:
-    AngleBracketTracker Folds;
+    std::unique_ptr<AngleBracketTracker> FoldsOwner =
+      std::make_unique<AngleBracketTracker>();
+    AngleBracketTracker &Folds = *FoldsOwner;
 
     FoldKind scanForFoldExpr();
     bool InsideKnownFoldExpr = false;
@@ -544,7 +566,7 @@ namespace gold
 
   private:
     /// Holds onto each pre-attribute we parse until finishing the declaration.
-    llvm::SmallVector<Attribute *, 4> Preattributes;
+    llvm::SmallVector<Syntax *, 4> Preattributes;
 
     /// Attach the current stack of preattrs to a Syntax.
     void attachPreattrs(Syntax *S);

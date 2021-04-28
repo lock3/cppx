@@ -39,6 +39,12 @@ Declaration *DeclarationBuilder::build(const Syntax *S) {
   if (!Dcl)
     return nullptr;
 
+  // Recording additional attributes associated with the name.
+  // This is to handle the special case of the . member access operator
+  // picking up the attributes from a nested name declaration with attributes.
+  for(const Syntax *Attr : Attrs)
+    BuildDeclarator.Name->recordAttribute(Attr);
+
   Declaration *ParentDecl = SemaRef.getCurrentDecl();
   // FIXME: manage memory
   Declaration *TheDecl = new Declaration(ParentDecl, S, Dcl, InitExpr);
@@ -183,12 +189,6 @@ bool DeclarationBuilder::verifyDeclaratorChain(const Syntax *DeclExpr,
                           clang::diag::err_expected_declarator_chain_sequence)
                           << 2;
     return true;
-  }
-  // Recording additional attributes associated with the name.
-  // This is to handle the special case of the . member access operator
-  // picking up the attributes from a nested name declaration with attributes.
-  for(const Syntax *NodeWithAttr : AdditionalNodesWithAttrs) {
-    TheDecl->IdDcl->recordAttributes(NodeWithAttr);
   }
 
   // Jump to the very end and make sure that we can properly do deduction.
@@ -429,7 +429,10 @@ bool DeclarationBuilder::checkEnumDeclaration(const Syntax *DeclExpr,
   // TODO: It may be necessary to specifically include a test for TheDecl->Init
   if (TheDecl->Op)
     if (const auto *Call = dyn_cast<CallSyntax>(TheDecl->Op))
-      if (InitOperatorUsed != IK_Equals) {
+      FusedOpKind Op = getFusedOpKind(SemaRef, Call);
+      bool AttributeOp = Op == FOK_Postattr || Op == FOK_Preattr;
+
+      if ((InitOperatorUsed != IK_Equals) && !AttributeOp) {
         // This means we are not using the assignment operator, but we are using
         // something else like operator'!'. Indicating we cannot be an
         // enumeration declaration, and we are for some reason using function
