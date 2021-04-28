@@ -4270,11 +4270,40 @@ ExprElaborator::elaborateFunctionType(Declarator *D, clang::Expr *Ty) {
       break;
     const Syntax *P = Args->getChild(I);
 
+    // This might be a raw type rather than a full parameter declaration,
+    // in which case we need to fabricate something.
+    {
+      SuppressDiagnosticsRAII Suppressor(SemaRef.getCxxSema());
+      ExprElaborator TempTypeElab(Context, SemaRef);
+      TempTypeElab.TemporaryElaboration = true;
+      clang::Expr *E = ExprElaborator(Context, SemaRef).elaborateExpr(P);
+      if (E && E->getType()->isTypeOfTypes()) {
+        std::string InventedName;
+        llvm::raw_string_ostream OS(InventedName);
+        OS << "__auto-param-" << I;
+        auto *II = &Context.CxxAST.Idents.get(OS.str());
+        clang::SourceLocation Loc = E->getExprLoc();
+        clang::QualType T =
+          cast<clang::CppxTypeLiteral>(E)->getValue()->getType();
+        clang::TypeSourceInfo *TInfo = BuildAnyTypeLoc(Context.CxxAST, T, Loc);
+        clang::ParmVarDecl *Temp =
+          clang::ParmVarDecl::Create(Context.CxxAST,
+                                     SemaRef.getCurClangDeclContext(), Loc, Loc,
+                                     {II}, T, TInfo, clang::SC_None, nullptr);
+
+        Params.push_back(Temp);
+        Types.push_back(T);
+        continue;
+      }
+    }
+
+    // Otherwise, check if it's a full parameter declaration.
     Elaborator Elab(Context, SemaRef);
     clang::ValueDecl *VD =
       cast_or_null<clang::ValueDecl>(Elab.elaborateParmDeclSyntax(P));
     if (!VD)
       continue;
+
     if (VD->getType()->isVariadicType()) {
       if (I < Args->getNumChildren() - 1) {
         SemaRef.Diags.Report(Args->getChild(I)->getLoc(),
@@ -4313,6 +4342,7 @@ ExprElaborator::elaborateFunctionType(Declarator *D, clang::Expr *Ty) {
   if (RetTy.isNull())
     return nullptr;
   clang::QualType FnTy = CxxAST.getFunctionType(RetTy, Types, EPI);
+
   return SemaRef.buildFunctionTypeExpr(FnTy, SourceLocation(), SourceLocation(),
                                        SourceLocation(), SourceRange(),
                                        SourceLocation(), Params);
@@ -4471,7 +4501,7 @@ clang::Expr *ExprElaborator::elaboratePointerType(Declarator *D,
       TL.getParams());
     clang::TypeSourceInfo *FnPtrTSI =
       BuildFunctionPtrTypeLoc(CxxAST, TLB, FnTSI, Ty->getExprLoc());
-    return SemaRef.buildTypeExpr(FnPtrTSI);
+    return SemaRef.buildAnyTypeExpr(Context.CxxAST.CppxKindTy, FnPtrTSI);
   }
 
   return SemaRef.buildTypeExpr(Result, OpLoc);

@@ -688,6 +688,9 @@ Declarator *DeclaratorBuilder::makeDeclarator(const Syntax *S) {
 
   const auto *Call = dyn_cast<CallSyntax>(S);
   if (!Call) {
+    // if (SemaRef.getCurrentScope()->getKind() == SK_Parameter)
+    //   Owner.RequiresDeclOrError = false;
+
     if (Owner.RequiresDeclOrError)
       SemaRef.Diags.Report(S->getLoc(),
                            clang::diag::err_invalid_declaration_kind)
