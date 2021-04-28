@@ -565,12 +565,6 @@ namespace gold
     void decrementEnclosureCount(unsigned Enclosure);
 
   private:
-    /// Holds onto each pre-attribute we parse until finishing the declaration.
-    llvm::SmallVector<Syntax *, 4> Preattributes;
-
-    /// Attach the current stack of preattrs to a Syntax.
-    void attachPreattrs(Syntax *S);
-
     /// True when we are parsing an attribute
     bool InAttribute = false;
 

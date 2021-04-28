@@ -3001,18 +3001,12 @@ Syntax *Parser::onPostattribute(Syntax *Op, Syntax *Arg) {
 }
 
 Syntax *Parser::onAtom(const Token &Tok) {
-  Syntax *Ret = new (Context) AtomSyntax(Tok);
-  if (!InAttribute)
-    attachPreattrs(Ret);
-  return Ret;
+  return new (Context) AtomSyntax(Tok);
 }
 
 Syntax *Parser::onAtom(const Token &Tok, const tok::FusionKind K,
                        Syntax *Data) {
-  Syntax *Ret = new (Context) AtomSyntax(Tok, K, Data);
-  if (!InAttribute)
-    attachPreattrs(Ret);
-  return Ret;
+  return new (Context) AtomSyntax(Tok, K, Data);
 }
 
 Syntax *Parser::onDocAttr(const llvm::SmallVectorImpl<Syntax*>& Vec) {
@@ -3455,17 +3449,6 @@ void Parser::finishPotentialAngleBracket(const Token &OpToken) {
   if (Angles.Angles.back() == CloseLoc)
     Angles.Angles.pop_back();
 }
-
-void Parser::attachPreattrs(Syntax *S) {
-  if (!Preattributes.size())
-    return;
-
-  for (auto *Attr : Preattributes)
-    S->addAttribute(Attr);
-
-  Preattributes.clear();
-}
-
 
 Token Parser::matchSeparator(Token const& Tok) {
   return Token(tok::Separator, Tok.getLocation(), Tok.getSymbol());
