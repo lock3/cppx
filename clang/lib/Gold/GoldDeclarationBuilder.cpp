@@ -221,6 +221,27 @@ bool DeclarationBuilder::verifyDeclaratorChain(const Syntax *DeclExpr,
     }
   }
 
+  // Checking for Nested Name Specifier
+  while(Cur->isNestedNameSpecifier()) {
+    TheDecl->NNSInfo.emplace_back();
+    TheDecl->NNSInfo.back().Name = Cur->getAsNestedNameSpecifier();
+    Cur = Cur->Next;
+    if (ReportMissing(2))
+      return true;
+    if (Cur->isTemplateParameters()) {
+      TheDecl->NNSInfo.back().Template = Cur->getAsTemplateParams();
+      Cur = Cur->Next;
+      if (ReportMissing(2))
+        return true;
+    }
+    if (Cur->isSpecialization()) {
+      TheDecl->NNSInfo.back().SpecializationArgs = Cur->getAsSpecialization();
+      Cur = Cur->Next;
+      if (ReportMissing(2))
+        return true;
+    }
+  }
+
   if (Cur->isFunction()) {
     TheDecl->FunctionDcl = Cur->getAsFunction();
     Cur = Cur->Next;

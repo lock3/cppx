@@ -129,7 +129,6 @@ void DeclaratorBuilder::VisitGoldCallSyntax(const CallSyntax *S) {
     }
 
     VisitSyntax(S->getCallee());
-    // Name->recordAttributes(S);
     buildFunction(S);
     // This might be a conversion function.
     if (Owner.ConversionTypeSyntax)
@@ -138,10 +137,15 @@ void DeclaratorBuilder::VisitGoldCallSyntax(const CallSyntax *S) {
   }
 
   if (Op == FOK_MemberAccess) {
-    Owner.AdditionalNodesWithAttrs.insert(S);
+    bool MethodType = false;
+    const Syntax *AccessParent = getParent(S);
+    if (AccessParent && !isLeftOfRoot(NodeLabels, S)) {
+      if (const CallSyntax *ParentCall = dyn_cast<CallSyntax>(AccessParent))
+        MethodType = getFusedOpKind(SemaRef, ParentCall) == FOK_Arrow;
 
-    if (getParent(S) && !isLeftOfRoot(NodeLabels, S))
-      return buildType(S);
+      if (!MethodType)
+        return buildType(S);
+    }
 
     if (S->getNumArguments() == 1) {
       buildGlobalNameSpecifier(S);
@@ -156,7 +160,18 @@ void DeclaratorBuilder::VisitGoldCallSyntax(const CallSyntax *S) {
         ExprElaborator::BooleanRAII B(NestedTemplateName, true);
         VisitSyntax(S->getArgument(0));
       }
-      // Cur->recordAttributes(S);
+    }
+
+    if (MethodType) {
+      if (!isa<ListSyntax>(S->getArgument(1))) {
+        unsigned DiagID =
+          SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                        "expected parameter list");
+        SemaRef.Diags.Report(S->getArgument(1)->getLoc(), DiagID);
+        return;
+      }
+
+      return buildFunction(cast<ListSyntax>(S->getArgument(1)));
     }
 
     VisitSyntax(S->getArgument(1));
@@ -688,9 +703,6 @@ Declarator *DeclaratorBuilder::makeDeclarator(const Syntax *S) {
 
   const auto *Call = dyn_cast<CallSyntax>(S);
   if (!Call) {
-    // if (SemaRef.getCurrentScope()->getKind() == SK_Parameter)
-    //   Owner.RequiresDeclOrError = false;
-
     if (Owner.RequiresDeclOrError)
       SemaRef.Diags.Report(S->getLoc(),
                            clang::diag::err_invalid_declaration_kind)
