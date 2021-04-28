@@ -155,11 +155,8 @@ void DeclaratorBuilder::VisitGoldCallSyntax(const CallSyntax *S) {
     if (isa<AtomSyntax>(S->getArgument(0))) {
       buildNestedNameSpecifier(cast<AtomSyntax>(S->getArgument(0)));
     } else {
-      Owner.AdditionalNodesWithAttrs.insert(S);
-      {
-        ExprElaborator::BooleanRAII B(NestedTemplateName, true);
-        VisitSyntax(S->getArgument(0));
-      }
+      ExprElaborator::BooleanRAII B(NestedTemplateName, true);
+      VisitSyntax(S->getArgument(0));
     }
 
     if (MethodType) {
@@ -444,12 +441,8 @@ void DeclaratorBuilder::buildName(const Syntax *S) {
     FusedOpKind OpKind = getFusedOpKind(SemaRef, dyn_cast<CallSyntax>(S));
     switch(OpKind) {
       case FOK_MemberAccess:{
-        if (const auto *IdName = dyn_cast<AtomSyntax>(Call->getArgument(1))){
-          Owner.AdditionalNodesWithAttrs.insert(Call);
+        if (const auto *IdName = dyn_cast<AtomSyntax>(Call->getArgument(1)))
           return;
-          // return buildNestedTemplateSpecializationOrName(Call->getArgument(0),
-          //                                       buildIdentifier(IdName));
-        }
 
         if (const auto *E = dyn_cast<ErrorSyntax>(Call->getArgument(1)))
           return buildError(E);
