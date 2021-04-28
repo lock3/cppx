@@ -427,10 +427,10 @@ bool DeclarationBuilder::checkEnumDeclaration(const Syntax *DeclExpr,
   }
 
   // TODO: It may be necessary to specifically include a test for TheDecl->Init
-  if (TheDecl->Op)
-    if (const auto *Call = dyn_cast<CallSyntax>(TheDecl->Op))
+  if (TheDecl->Op) {
+    if (const auto *Call = dyn_cast<CallSyntax>(TheDecl->Op)) {
       FusedOpKind Op = getFusedOpKind(SemaRef, Call);
-      bool AttributeOp = Op == FOK_Postattr || Op == FOK_Preattr;
+      bool AttributeOp = (Op == FOK_Postattr || Op == FOK_Preattr);
 
       if ((InitOperatorUsed != IK_Equals) && !AttributeOp) {
         // This means we are not using the assignment operator, but we are using
@@ -442,8 +442,12 @@ bool DeclarationBuilder::checkEnumDeclaration(const Syntax *DeclExpr,
                              << 0;
         return true;
       }
+    }
+  }
+
   return false;
 }
+
 
 bool DeclarationBuilder::checkNestedNameSpecifiers(const Syntax *DeclExpr,
                                                    Declaration *TheDecl) {
