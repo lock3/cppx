@@ -38,8 +38,6 @@ using clang::cast_or_null;
 using clang::dyn_cast;
 using clang::dyn_cast_or_null;
 
-struct Attribute;
-
 struct Syntax
 {
 
@@ -498,21 +496,6 @@ struct FileSyntax : Syntax, VectorNode<Syntax>
     return S->getKind() == SK_File;
   }
 };
-
-struct Attribute
-{
-  Attribute(Syntax *Arg)
-    : Arg(Arg)
-  {}
-
-  const Syntax *getArg() const {
-    return Arg;
-  }
-
-private:
-  Syntax *Arg;
-};
-
 
 enum MarkupStyle {
   MS_MarkdownStyle,

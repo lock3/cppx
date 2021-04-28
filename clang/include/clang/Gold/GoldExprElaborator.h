@@ -87,6 +87,8 @@ public:
 
   clang::Expr *elaborateCall(const CallSyntax *S);
 
+  clang::Expr *elaborateExprWithAttrs(const Syntax *S);
+
   /// This elaborates sizeof, alignof, noexcept used as an operator, constexpr
   /// as an operator, and decltype.
   /// This function also tests if the call is one of these operators, and returns
@@ -256,6 +258,8 @@ private:
   // True when we want to elaborate an expression without side effects. Used by
   // the declarator builder.
   bool TemporaryElaboration = false;
+
+  llvm::SmallVector<const Syntax *, 4> ExprAttributes;
 
 public:
   /// ---------------------------------------------------------------------- ///

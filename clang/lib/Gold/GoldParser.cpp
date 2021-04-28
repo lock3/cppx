@@ -1205,13 +1205,6 @@ Syntax *Parser::parseIf()
 {
   Token if_tok = expectToken("if");
 
-  llvm::SmallVector<Syntax *, 4> Attrs;
-  if (!Preattributes.empty()) {
-    std::copy(Preattributes.begin(), Preattributes.end(),
-              std::back_inserter(Attrs));
-    Preattributes.clear();
-  }
-
   // FIXME: only allow attributes here for `if:` style syntax.
   llvm::SmallVector<Syntax *, 4> Postattrs;
   while (nextTokenIs(tok::Less) || nextTokenIs(tok::LessBar))
@@ -1220,7 +1213,7 @@ Syntax *Parser::parseIf()
   Syntax *cond = nextTokenIs(tok::Colon) ? parseBlock() : parseParen();
 
   while (nextTokenIs(tok::Less) || nextTokenIs(tok::LessBar))
-    Attrs.push_back(parsePostAttr());
+    Postattrs.push_back(parsePostAttr());
 
   Syntax *then_block;
   if (matchToken("then")) {
@@ -1245,10 +1238,6 @@ Syntax *Parser::parseIf()
   {
     else_macro = nullptr;
   }
-
-  // Abuse the preattribute vector to attach these to the operator'if' atom.
-  std::copy_if(Attrs.begin(), Attrs.end(), std::back_inserter(Preattributes),
-               [](Syntax *Attr) -> bool { return Attr; });
 
   Syntax *If = onIf(if_tok, cond, then_block, else_macro);
   for (auto It = Postattrs.rbegin(); It != Postattrs.rend(); ++It)
@@ -1336,9 +1325,9 @@ Syntax *Parser::parseLambda() {
   Token Tok = expectToken(tok::LambdaKeyword);
   Syntax *Capture = nullptr, *Parms = nullptr, *Block = nullptr;
 
-  llvm::SmallVector<Syntax *, 4> Attrs;
+  llvm::SmallVector<Syntax *, 4> Postattrs;
   while (nextTokenIs(tok::Less) || nextTokenIs(tok::LessBar))
-    Attrs.push_back(parsePostAttr());
+    Postattrs.push_back(parsePostAttr());
 
   Syntax *Templ = nullptr;
   if (nextTokenIs(tok::LeftBracket))
@@ -1371,9 +1360,10 @@ Syntax *Parser::parseLambda() {
   }
 
   Syntax *Call = onCall(Templ ? Templ : onAtom(Tok), Parms);
-  std::for_each(Attrs.begin(), Attrs.end(),
-                [Call](Syntax *A) { Call->addAttribute(A); });
-  return onLambdaMacro(Call, Block, Capture, Default);
+  Syntax *Lam = onLambdaMacro(Call, Block, Capture, Default);
+  for (auto It = Postattrs.rbegin(); It != Postattrs.rend(); ++It)
+    Lam = onPostattribute(Lam, *It);
+  return Lam;
 }
 
 Syntax *Parser::parseBlockLoop(Token KWTok)

@@ -45,7 +45,6 @@ public:
 
   RetTy VisitGoldSyntax(PTR(Syntax) S) { return RetTy(); }
 
-  RetTy VisitGoldAttribute(PTR(Attribute) Attr) { return RetTy(); }
   #undef PTR
   #undef DISPATCH
 };

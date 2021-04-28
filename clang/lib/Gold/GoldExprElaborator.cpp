@@ -73,6 +73,7 @@ static const llvm::StringMap<unsigned> BuiltinFnMap = {
 };
 
 using TypeInfo = ExprElaborator::TypeInfo;
+using SyntaxVec = llvm::SmallVectorImpl<const Syntax *>;
 
 ExprElaborator::ExprElaborator(SyntaxContext &Context, Sema &SemaRef,
       clang::DeclContext *DC, gold::Scope *GoldScope)
@@ -1521,14 +1522,16 @@ clang::Expr *ExprElaborator::elaborateCall(const CallSyntax *S) {
     return handleRefType(S);
   case FOK_RRef:
     return handleRRefType(S);
-  case FOK_Arrow:
-    return handleFunctionType(S);
   case FOK_Brackets:
     return handleArrayType(S);
   case FOK_Parens:
     return handleRawBaseSpecifier(S);
   case FOK_Throw:
     return elaborateThrowExpr(S);
+
+  case FOK_Postattr:
+  case FOK_Preattr:
+    return elaborateExprWithAttrs(S);
 
   default:
     break;
@@ -1574,6 +1577,27 @@ clang::Expr *ExprElaborator::elaborateCall(const CallSyntax *S) {
   }
   return handleExpressionResultCall(SemaRef, *this, S, CalleeExpr, Args);
 }
+
+clang::Expr *ExprElaborator::elaborateExprWithAttrs(const Syntax *S) {
+  if (!isa<CallSyntax>(S))
+    return elaborateExpr(S);
+
+  const CallSyntax *Call = cast<CallSyntax>(S);
+  FusedOpKind Op = getFusedOpKind(SemaRef, Call);
+
+  if (Op == FOK_Postattr) {
+    ExprAttributes.push_back(Call->getArgument(1));
+    return elaborateExprWithAttrs(Call->getArgument(0));
+  }
+
+  if (Op == FOK_Preattr) {
+    ExprAttributes.push_back(Call->getArgument(0));
+    return elaborateExprWithAttrs(Call->getArgument(1));
+  }
+
+  return elaborateExpr(S);
+}
+
 
 /// This returns true if the keyword is a builtin function.
 static bool isBuiltinOperator(const CallSyntax *S) {
@@ -3474,7 +3498,7 @@ ExprElaborator::elaborateBlockCondition(const ArraySyntax *Conditions,
 }
 
 static clang::Expr *handleArrayMacro(SyntaxContext &Context, Sema &SemaRef,
-                                     const MacroSyntax *S) {
+                                     SyntaxVec &Attrs, const MacroSyntax *S) {
   assert(isa<ArraySyntax>(S->getBlock()) && "invalid array macro");
 
   unsigned DiagID =
@@ -3512,7 +3536,7 @@ static clang::Expr *handleArrayMacro(SyntaxContext &Context, Sema &SemaRef,
     }
 
     else if (const MacroSyntax *MInit = dyn_cast<MacroSyntax>(SS)) {
-      clang::Expr *Sublist = handleArrayMacro(Context, SemaRef, MInit);
+      clang::Expr *Sublist = handleArrayMacro(Context, SemaRef, Attrs, MInit);
       Elements.push_back(Sublist);
     }
 
@@ -3544,7 +3568,7 @@ static clang::Expr *handleArrayMacro(SyntaxContext &Context, Sema &SemaRef,
 }
 
 static clang::Expr *handleOfMacro(SyntaxContext &Context, Sema &SemaRef,
-                                  const MacroSyntax *S) {
+                                  SyntaxVec &Attrs, const MacroSyntax *S) {
   const ArraySyntax *Block = cast<ArraySyntax>(S->getBlock());
 
   llvm::SmallVector<clang::Expr *, 4> Args;
@@ -3702,14 +3726,13 @@ static inline std::size_t computeGenericLambdaDepth(Scope *S) {
 }
 
 static clang::Expr *handleLambdaMacro(SyntaxContext &Context, Sema &SemaRef,
-                                      const MacroSyntax *S) {
+                                      SyntaxVec &Attrs, const MacroSyntax *S) {
   assert(isa<CallSyntax>(S->getCall()) && "invalid lambda");
   clang::Sema &CxxSema = SemaRef.getCxxSema();
   const CallSyntax *Call = cast<CallSyntax>(S->getCall());
 
-  Syntax::AttrList Attributes = Call->getAttributes();
   bool Mutable = false;
-  for (const Syntax *A : Attributes) {
+  for (const Syntax *A : Attrs) {
     if (isMutable(SemaRef, A)) {
       Mutable = true;
     } else {
@@ -3825,7 +3848,7 @@ static bool isOpNewCall(const MacroSyntax *S) {
 }
 
 using SyntaxHandler =
-  clang::Expr *(*)(SyntaxContext &, Sema &, const MacroSyntax *);
+  clang::Expr *(*)(SyntaxContext &, Sema &, SyntaxVec &, const MacroSyntax *);
 static const llvm::StringMap<SyntaxHandler> SyntaxHandlers = {
   {"array",  &handleArrayMacro},
   {"of",     &handleOfMacro},
@@ -3849,7 +3872,7 @@ clang::Expr *ExprElaborator::elaborateMacro(const MacroSyntax *S) {
       Call = cast<AtomSyntax>(C->getCallee());
     // The other case mentioned above; generic lambdas may have an element call.
     else if (isa<ElemSyntax>(C->getCallee()))
-      return handleLambdaMacro(Context, SemaRef, S);
+      return handleLambdaMacro(Context, SemaRef, ExprAttributes, S);
     // Not a lambda
     else
       return elaborateInitListCall(S);
@@ -3863,7 +3886,7 @@ clang::Expr *ExprElaborator::elaborateMacro(const MacroSyntax *S) {
   // Handle any builtin macros
   auto HandlerIt = SyntaxHandlers.find(Call->getSpelling());
   if (HandlerIt != SyntaxHandlers.end())
-    return (HandlerIt->second)(Context, SemaRef, S);
+    return (HandlerIt->second)(Context, SemaRef, ExprAttributes, S);
 
   return elaborateInitListCall(S);
 }
@@ -4487,162 +4510,6 @@ clang::Expr *ExprElaborator::handleRRefType(const CallSyntax *S) {
       "rref operator");
   clang::Expr *innerTypeExpr = doElaborateExpr(S->getArgument(0));
   return makeRRefType(innerTypeExpr, S);
-}
-
-static bool isVarArgs(Sema &SemaRef, const Syntax *S) {
-  const CallSyntax *ColonOp = dyn_cast<CallSyntax>(S);
-  if (!ColonOp)
-    return false;
-  FusedOpKind OpKind = getFusedOpKind(SemaRef, ColonOp);
-  if (OpKind != FOK_Colon)
-    return false;
-
-  // We might have something like `varargs : args` or just `:args`
-  std::size_t N = ColonOp->getNumArguments() - 1;
-  if (N > 1)
-    return false;
-
-  if (const AtomSyntax *Ty = dyn_cast<AtomSyntax>(ColonOp->getArgument(N)))
-    return Ty->Tok.hasKind(tok::ArgsKeyword);
-
-  return false;
-}
-
-// Handle a function type of the form `() -> type`
-clang::Expr *ExprElaborator::handleFunctionType(const CallSyntax *S) {
-  assert(S->getNumArguments() == 2 && "invalid operator'->' call");
-
-  llvm::SmallVector<clang::ParmVarDecl *, 4> Params;
-  llvm::SmallVector<clang::QualType, 4> Types;
-  bool IsVariadic = false;
-
-  const Syntax *ParamBegin = S->getArgument(0);
-
-  // This might be a member function type.
-  clang::TypeSourceInfo *ClassType = nullptr;
-  if (const CallSyntax *MemPtr = dyn_cast<CallSyntax>(ParamBegin)) {
-    if (getFusedOpKind(SemaRef, MemPtr) != FOK_MemberAccess) {
-      SemaRef.Diags.Report(ParamBegin->getLoc(),
-                           clang::diag::err_invalid_param_list);
-      return nullptr;
-    }
-
-    clang::Expr *ClassTypeExpr =
-      ExprElaborator(Context, SemaRef).elaborateExpr(MemPtr->getArgument(0));
-    if (!ClassTypeExpr)
-      return nullptr;
-    if (!ClassTypeExpr->getType()->isTypeOfTypes()) {
-      SemaRef.Diags.Report(ClassTypeExpr->getExprLoc(),
-                           clang::diag::err_invalid_type_for_name_spec)
-        << ClassTypeExpr->getType();
-      return nullptr;
-    }
-
-    ClassType = cast<clang::CppxTypeLiteral>(ClassTypeExpr)->getValue();
-    ParamBegin = MemPtr->getArgument(1);
-  }
-
-  clang::SourceLocation EndLoc;
-  if (const ListSyntax *ParamSyntaxes = dyn_cast<ListSyntax>(ParamBegin)) {
-    Sema::ScopeRAII ParamScopeRAII(SemaRef, SK_Parameter, ParamBegin);
-
-    for (unsigned I = 0; I < ParamSyntaxes->getNumChildren(); ++I) {
-      const Syntax *ParamSyntax = ParamSyntaxes->getChild(I);
-
-      if (I == ParamSyntaxes->getNumChildren() - 1) {
-        EndLoc = ParamSyntax->getLoc();
-
-        IsVariadic = isVarArgs(SemaRef, ParamSyntax);
-        if (IsVariadic)
-          break;
-      }
-
-      ExprElaborator ParamElaborator(Context, SemaRef);
-      clang::Expr *Param = ParamElaborator.doElaborateExpr(ParamSyntax);
-
-      if (!Param || !Param->getType()->isTypeOfTypes())
-        continue;
-
-      clang::SourceLocation Loc = ParamSyntax->getLoc();
-      auto *ParmTInfo = SemaRef.getTypeSourceInfoFromExpr(Param, Loc);
-      Types.push_back(ParmTInfo->getType());
-
-      clang::IdentifierInfo *II = nullptr;
-      II = SemaRef.getCxxSema().InventAbbreviatedTemplateParameterTypeName(II, I);
-      clang::DeclarationName Name(II);
-      clang::DeclContext *DC = SemaRef.getCurrentCxxDeclContext();
-      clang::ParmVarDecl *PVD = clang::ParmVarDecl::Create(CxxAST, DC, Loc, Loc,
-        Name, ParmTInfo->getType(), ParmTInfo, clang::SC_Auto, /*def=*/nullptr);
-      Params.push_back(PVD);
-    }
-  } else {
-    SemaRef.Diags.Report(ParamBegin->getLoc(),
-                         clang::diag::err_invalid_param_list);
-    return nullptr;
-  }
-
-  if (!EndLoc.isValid())
-    EndLoc = S->getLoc();
-
-  const Syntax *ReturnSyntax = S->getArgument(1);
-  ExprElaborator ReturnElaborator(Context, SemaRef);
-  clang::Expr *Return = ReturnElaborator.doElaborateExpr(ReturnSyntax);
-
-  if (!Return->getType()->isTypeOfTypes()) {
-    SemaRef.Diags.Report(ReturnSyntax->getLoc(),
-                         clang::diag::err_failed_to_translate_type);
-    return nullptr;
-  }
-
-  clang::TypeSourceInfo *ReturnType =
-    SemaRef.getTypeSourceInfoFromExpr(Return, S->getLoc());
-
-  // Create the clang type
-  clang::FunctionProtoType::ExtProtoInfo EPI;
-  if (IsVariadic) {
-    EPI.ExtInfo = Context.CxxAST.getDefaultCallingConvention(true, false);
-    EPI.Variadic = true;
-  }
-
-  // Manually elaborate any attributes here.
-  for (const Syntax *Attr : ParamBegin->getAttributes()) {
-    std::string AttrName;
-    if (checkAttrFormatAndName(Attr, AttrName) == AF_Name) {
-      if (AttrName == "const") {
-        if (!ClassType) {
-          SemaRef.Diags.Report(Attr->getLoc(),
-                               clang::diag::err_invalid_attribute_for_decl)
-            << "const" << "member function";
-        }
-
-        EPI.TypeQuals.addConst();
-      }
-    }
-  }
-
-  clang::QualType FnTy =
-    CxxAST.getFunctionType(ReturnType->getType(), Types, EPI);
-  clang::QualType FnPtrTy = CxxAST.getPointerType(FnTy);
-  FnPtrTy.addConst();
-
-  if (ClassType) {
-    clang::DeclarationName Name;
-    clang::QualType MemberTy =
-      SemaRef.getCxxSema().BuildMemberPointerType(FnTy, ClassType->getType(),
-                                                  S->getLoc(), Name);
-    clang::TypeSourceInfo *Ret =
-      BuildMemberPtrTypeLoc(CxxAST, MemberTy, Params, S->getLoc());
-    return SemaRef.buildTypeExpr(Ret);
-  }
-
-  clang::TypeLocBuilder TLB;
-  clang::TypeSourceInfo *FnTSI = BuildFunctionTypeLoc(Context.CxxAST, TLB, FnTy,
-    ParamBegin->getLoc(), ParamBegin->getLoc(), EndLoc,
-    clang::SourceRange(), ReturnSyntax->getLoc(), Params);
-  clang::TypeSourceInfo *FnPtrTSI =
-    BuildFunctionPtrTypeLoc(CxxAST, TLB, FnTSI, S->getLoc());
-
-  return SemaRef.buildTypeExpr(FnPtrTSI);
 }
 
 clang::Expr *ExprElaborator::handleArrayType(const CallSyntax *S) {

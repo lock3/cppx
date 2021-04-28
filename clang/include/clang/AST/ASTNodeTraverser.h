@@ -268,16 +268,6 @@ public:
     });
   }
 
-  void Visit(const gold::Attribute *Attr) {
-    getNodeDelegate().AddChild([=] {
-      getNodeDelegate().Visit(Attr);
-      if (!Attr) 
-        return;
-      // gold::ConstSyntaxVisitor<Derived>::Visit(Attr);
-      Visit(Attr->getArg());
-    });
-  }
-
   void Visit(const blue::Syntax *S) {
     getNodeDelegate().AddChild([=] {
       getNodeDelegate().Visit(S);

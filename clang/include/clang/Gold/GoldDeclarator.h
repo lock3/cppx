@@ -40,7 +40,6 @@ struct Syntax;
 class OpInfoBase;
 struct CallSyntax;
 struct AtomSyntax;
-struct Attribute;
 struct ListSyntax;
 struct ElemSyntax;
 
