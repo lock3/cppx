@@ -4235,6 +4235,20 @@ clang::Expr *ExprElaborator::elaborateTypeExpr(Declarator *D) {
     case DK_TemplateParams:
       break;
 
+    case DK_NestedNameSpecifier: {
+      auto PrevIter = Iter + 1;
+      Declarator *Prev = *PrevIter;
+      if (Prev->isPointer()) {
+        TyExpr = elaborateNNSForFunctionType(D, TyExpr);
+        ++Iter;
+      } else {
+        // elaborate normal method def
+        // just return?
+      }
+
+      break;
+    }
+
     default:
       llvm_unreachable("unhandled declarator.");
     }
@@ -4346,6 +4360,69 @@ ExprElaborator::elaborateFunctionType(Declarator *D, clang::Expr *Ty) {
   return SemaRef.buildFunctionTypeExpr(FnTy, SourceLocation(), SourceLocation(),
                                        SourceLocation(), SourceRange(),
                                        SourceLocation(), Params);
+}
+
+clang::Expr *
+ExprElaborator::elaborateNNSForFunctionType(Declarator *D, clang::Expr *Ty) {
+  assert(D->isNestedNameSpecifier());
+
+  if (!Ty->getType()->isTypeOfTypes()) {
+    SemaRef.Diags.Report(Ty->getExprLoc(),
+                         clang::diag::err_expected_type);
+    return nullptr;
+  }
+
+  clang::QualType FnTy = cast<clang::CppxTypeLiteral>(Ty)->getValue()->getType();
+  if (!FnTy->isFunctionType()) {
+    unsigned DiagID =
+      SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                    "expected function type");
+    SemaRef.Diags.Report(Ty->getExprLoc(), DiagID);
+    return nullptr;
+  }
+
+  clang::TypeSourceInfo *ClassType = nullptr;
+  const AtomSyntax *ClassName = D->getAsNestedNameSpecifier()->getNestedName();
+  clang::Expr *ClassTypeExpr =
+    ExprElaborator(Context, SemaRef).elaborateExpr(ClassName);
+  if (!ClassTypeExpr)
+    return nullptr;
+  if (!ClassTypeExpr->getType()->isTypeOfTypes()) {
+    SemaRef.Diags.Report(ClassTypeExpr->getExprLoc(),
+                         clang::diag::err_invalid_type_for_name_spec)
+      << ClassTypeExpr->getType();
+    return nullptr;
+  }
+
+  ClassType = cast<clang::CppxTypeLiteral>(ClassTypeExpr)->getValue();
+
+  // Construct fake parameters.
+  llvm::SmallVector<clang::ParmVarDecl *, 4> Params;
+  const clang::FunctionProtoType *FPT = FnTy->getAs<clang::FunctionProtoType>();
+  for (unsigned I = 0; I < FPT->getNumParams(); ++I) {
+    std::string InventedName;
+    llvm::raw_string_ostream OS(InventedName);
+    OS << "__auto-param-" << I;
+    auto *II = &Context.CxxAST.Idents.get(OS.str());
+    clang::SourceLocation Loc = Ty->getExprLoc();
+    clang::QualType T = FPT->getParamType(I);
+    clang::TypeSourceInfo *TInfo = BuildAnyTypeLoc(Context.CxxAST, T, Loc);
+    clang::ParmVarDecl *Temp =
+      clang::ParmVarDecl::Create(Context.CxxAST,
+                                 SemaRef.getCurClangDeclContext(), Loc, Loc,
+                                 {II}, T, TInfo, clang::SC_None, nullptr);
+
+    Params.push_back(Temp);
+  }
+
+
+  clang::DeclarationName Name;
+  clang::QualType MemberTy =
+    SemaRef.getCxxSema().BuildMemberPointerType(FnTy, ClassType->getType(),
+                                                ClassName->getLoc(), Name);
+  clang::TypeSourceInfo *Ret =
+    BuildMemberPtrTypeLoc(CxxAST, MemberTy, Params, ClassName->getLoc());
+  return SemaRef.buildTypeExpr(Ret);
 }
 
 clang::Expr *ExprElaborator::handleArrayTypeInternal(clang::Expr *IdExpr,

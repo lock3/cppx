@@ -740,7 +740,8 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S,
         }
 
         // Skip early elaboration of declarations with nested name specifiers.
-        if (FoundDecl->hasNestedNameSpecifier())
+        if (FoundDecl->hasNestedNameSpecifier() &&
+            !FoundDecl->declaresMethodPointer())
           continue;
 
         if (!FoundDecl->Cxx) {

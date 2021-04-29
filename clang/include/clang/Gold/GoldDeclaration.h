@@ -206,6 +206,9 @@ public:
   /// function pointers.
   bool declaresFunctionPointerOrArray() const;
 
+  /// True if this declares a pointer to a method.
+  bool declaresMethodPointer() const;
+
   /// Declares variable with in body initialization.
   bool declaresInitializedVariable() const;
 

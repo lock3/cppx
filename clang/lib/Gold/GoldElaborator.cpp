@@ -1681,7 +1681,8 @@ clang::Decl *Elaborator::elaborateDecl(Declaration *D) {
   // This might be useful for elaborating parameters with default values that
   // are being assigned as a default value.
   Sema::NewNameSpecifierRAII NestedNameStack(SemaRef);
-  if (!D->NNSInfo.empty() || D->GlobalNsSpecifier) {
+  if ((!D->declaresMethodPointer() && !D->NNSInfo.empty())
+      || D->GlobalNsSpecifier) {
     if (elaborateNestedNameForDecl(D)) {
       exitToCorrectScope(SemaRef, Sc, D, LinkageAttr);
       return nullptr;

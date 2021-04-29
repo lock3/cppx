@@ -209,6 +209,7 @@ public:
   clang::Expr *elaboratePointerType(Declarator *D, clang::Expr *Ty);
 
 private:
+  clang::Expr *elaborateNNSForFunctionType(Declarator *D, clang::Expr *Ty);
   clang::Expr *handleOperatorConst(const CallSyntax *S);
   clang::Expr *handleRefType(const CallSyntax *S);
   clang::Expr *handleRRefType(const CallSyntax *S);

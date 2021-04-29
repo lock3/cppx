@@ -176,6 +176,22 @@ bool Declaration::declaresFunctionPointerOrArray() const {
   return false;
 }
 
+bool Declaration::declaresMethodPointer() const {
+  Declarator *D = Decl;
+  bool SeenPointer = false;
+  while (D) {
+    if (D->isPointer())
+      SeenPointer = true;
+
+    if (D->isNestedNameSpecifier())
+      return SeenPointer;
+
+    D = D->Next;
+  }
+
+  return false;
+}
+
 bool Declaration::templateHasDefaultParameters() const {
   // TODO: This is necessary for figuring out if a template parameter has
   // delayed evaluation or not.
@@ -223,7 +239,7 @@ bool Declaration::declaresTemplateType() const {
 }
 
 bool Declaration::declaresFunction() const {
-  return FunctionDcl;
+  return !declaresMethodPointer() && FunctionDcl;
 }
 
 bool Declaration::declaresFunctionWithImplicitReturn() const {
