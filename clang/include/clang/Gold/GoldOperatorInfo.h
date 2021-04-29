@@ -173,9 +173,9 @@ public:
     UnaryOpKind(Kind)
   { }
 
-  virtual bool HasGoldUseName() const;
-  virtual clang::IdentifierInfo *getGoldUseName() const;
-  virtual clang::UnaryOperatorKind getUnaryOperatorKind() const;
+  virtual bool HasGoldUseName() const override;
+  virtual clang::IdentifierInfo *getGoldUseName() const override;
+  virtual clang::UnaryOperatorKind getUnaryOperatorKind() const override;
 };
 
 class UnaryOpWith2ndName : public UnaryOpInfo {
@@ -196,9 +196,9 @@ public:
     GoldDecl2ndName(GUseName2),
     GoldUse2ndName(GDName2)
   { }
-  virtual bool HasSecondName() const;
-  virtual clang::IdentifierInfo *getGoldDeclSecondName() const;
-  virtual clang::IdentifierInfo *getGoldUseSecondName() const;
+  virtual bool HasSecondName() const override;
+  virtual clang::IdentifierInfo *getGoldDeclSecondName() const override;
+  virtual clang::IdentifierInfo *getGoldUseSecondName() const override;
 };
 
 class BinOpInfo : public OpInfoBase {
@@ -215,9 +215,9 @@ public:
     BinOpKind(Kind)
   { }
 
-  virtual bool HasGoldUseName() const;
-  virtual clang::IdentifierInfo *getGoldUseName() const;
-  virtual clang::BinaryOperatorKind getBinaryOperatorKind() const;
+  virtual bool HasGoldUseName() const override;
+  virtual clang::IdentifierInfo *getGoldUseName() const override;
+  virtual clang::BinaryOperatorKind getBinaryOperatorKind() const override;
 };
 
 class BinOpInfoWith2ndName : public BinOpInfo {
@@ -235,9 +235,9 @@ public:
     GoldUse2ndName(GUseName2)
   { }
 
-  virtual bool HasSecondName() const;
-  virtual clang::IdentifierInfo *getGoldDeclSecondName() const;
-  virtual clang::IdentifierInfo *getGoldUseSecondName() const;
+  virtual bool HasSecondName() const override;
+  virtual clang::IdentifierInfo *getGoldDeclSecondName() const override;
+  virtual clang::IdentifierInfo *getGoldUseSecondName() const override;
 };
 
 class NAryOpInfo :public OpInfoBase {
@@ -279,10 +279,10 @@ public:
     BinOpKind(BinaryKind)
   { }
 
-  virtual bool HasGoldUseName() const;
-  virtual clang::IdentifierInfo *getGoldUseName() const;
-  virtual clang::UnaryOperatorKind getUnaryOperatorKind() const;
-  virtual clang::BinaryOperatorKind getBinaryOperatorKind() const;
+  virtual bool HasGoldUseName() const override;
+  virtual clang::IdentifierInfo *getGoldUseName() const override;
+  virtual clang::UnaryOperatorKind getUnaryOperatorKind() const override;
+  virtual clang::BinaryOperatorKind getBinaryOperatorKind() const override;
 };
 
 class DerefAndXOrComboOp : public OpInfoBase {
@@ -307,11 +307,11 @@ public:
     BinOOKind(BinOOKind)
   { }
 
-  virtual bool HasGoldUseName() const;
-  virtual clang::IdentifierInfo *getGoldUseName() const;
-  virtual clang::UnaryOperatorKind getUnaryOperatorKind() const;
-  virtual clang::BinaryOperatorKind getBinaryOperatorKind() const;
-  virtual clang::OverloadedOperatorKind getBinaryOverloadKind() const;
+  virtual bool HasGoldUseName() const override;
+  virtual clang::IdentifierInfo *getGoldUseName() const override;
+  virtual clang::UnaryOperatorKind getUnaryOperatorKind() const override;
+  virtual clang::BinaryOperatorKind getBinaryOperatorKind() const override;
+  virtual clang::OverloadedOperatorKind getBinaryOverloadKind() const override;
 };
 
 ///
