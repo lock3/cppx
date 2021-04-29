@@ -162,17 +162,22 @@ bool DeclarationBuilder::verifyDeclaratorChain(const Syntax *DeclExpr,
   while(Cur->isNestedNameSpecifier()) {
     TheDecl->NNSInfo.emplace_back();
     TheDecl->NNSInfo.back().Name = Cur->getAsNestedNameSpecifier();
+
+    NestedNameSpecifierDeclarator *NNS = Cur->getAsNestedNameSpecifier();
+    NNS->NNSInfo.Name = NNS;
     Cur = Cur->Next;
     if (ReportMissing(2))
       return true;
     if (Cur->isTemplateParameters()) {
       TheDecl->NNSInfo.back().Template = Cur->getAsTemplateParams();
+      NNS->NNSInfo.Template = Cur->getAsTemplateParams();
       Cur = Cur->Next;
       if (ReportMissing(2))
         return true;
     }
     if (Cur->isSpecialization()) {
       TheDecl->NNSInfo.back().SpecializationArgs = Cur->getAsSpecialization();
+      NNS->NNSInfo.SpecializationArgs = Cur->getAsSpecialization();
       Cur = Cur->Next;
       if (ReportMissing(2))
         return true;
@@ -225,22 +230,30 @@ bool DeclarationBuilder::verifyDeclaratorChain(const Syntax *DeclExpr,
   while(Cur->isNestedNameSpecifier()) {
     TheDecl->NNSInfo.emplace_back();
     TheDecl->NNSInfo.back().Name = Cur->getAsNestedNameSpecifier();
+
+    NestedNameSpecifierDeclarator *NNS = Cur->getAsNestedNameSpecifier();
+    NNS->NNSInfo.Name = NNS;
     Cur = Cur->Next;
     if (ReportMissing(2))
       return true;
     if (Cur->isTemplateParameters()) {
       TheDecl->NNSInfo.back().Template = Cur->getAsTemplateParams();
+      NNS->NNSInfo.Template = Cur->getAsTemplateParams();
       Cur = Cur->Next;
       if (ReportMissing(2))
         return true;
     }
     if (Cur->isSpecialization()) {
       TheDecl->NNSInfo.back().SpecializationArgs = Cur->getAsSpecialization();
+      NNS->NNSInfo.SpecializationArgs = Cur->getAsSpecialization();
       Cur = Cur->Next;
       if (ReportMissing(2))
         return true;
     }
   }
+
+  if (Cur == nullptr)
+    return false;
 
   if (Cur->isFunction()) {
     TheDecl->FunctionDcl = Cur->getAsFunction();
@@ -473,7 +486,7 @@ bool DeclarationBuilder::checkEnumDeclaration(const Syntax *DeclExpr,
 bool DeclarationBuilder::checkNestedNameSpecifiers(const Syntax *DeclExpr,
                                                    Declaration *TheDecl) {
   if (!EnableNestedNameSpecifiers) {
-    if (!TheDecl->NNSInfo.empty()) {
+    if (!TheDecl->NNSInfo.empty() && !TheDecl->declaresMethodPointer()) {
       if (RequiresDeclOrError)
         SemaRef.Diags.Report(TheDecl->IdDcl->getLoc(),
                             clang::diag::err_invalid_declarator_sequence)

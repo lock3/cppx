@@ -153,12 +153,6 @@ enum class Phase : std::size_t
 
 llvm::StringRef phaseToStr(Phase p);
 
-struct NNSDeclaratorInfo {
-  NestedNameSpecifierDeclarator *Name = nullptr;
-  TemplateParamsDeclarator *Template = nullptr;
-  SpecializationDeclarator *SpecializationArgs = nullptr;
-};
-
 enum InitKind {
   IK_None,
   IK_Exclaim,

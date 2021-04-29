@@ -186,6 +186,10 @@ bool Declaration::declaresMethodPointer() const {
     if (D->isNestedNameSpecifier())
       return SeenPointer;
 
+    if (D->isSpecialization())
+      if (SeenPointer && FunctionDcl)
+        return true;
+
     D = D->Next;
   }
 

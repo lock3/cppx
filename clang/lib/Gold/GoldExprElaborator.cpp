@@ -4233,6 +4233,8 @@ clang::Expr *ExprElaborator::elaborateTypeExpr(Declarator *D) {
     }
 
     case DK_TemplateParams:
+    case DK_Specialization:
+    case DK_ImplicitEmptyTemplateParams:
       break;
 
     case DK_NestedNameSpecifier: {
@@ -4382,7 +4384,14 @@ ExprElaborator::elaborateNNSForFunctionType(Declarator *D, clang::Expr *Ty) {
   }
 
   clang::TypeSourceInfo *ClassType = nullptr;
-  const AtomSyntax *ClassName = D->getAsNestedNameSpecifier()->getNestedName();
+  NestedNameSpecifierDeclarator *NNS = D->getAsNestedNameSpecifier();
+  Syntax *ClassName =
+    new (Context) AtomSyntax(NNS->getNestedName()->getToken());
+  if (SpecializationDeclarator *SD = NNS->NNSInfo.SpecializationArgs){
+    ClassName = new (Context) ElemSyntax(ClassName,
+      const_cast<ListSyntax *>(SD->getArgs()));
+  }
+
   clang::Expr *ClassTypeExpr =
     ExprElaborator(Context, SemaRef).elaborateExpr(ClassName);
   if (!ClassTypeExpr)

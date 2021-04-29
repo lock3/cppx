@@ -57,6 +57,12 @@ class ImplicitEmptyTemplateParamsDeclarator;
 class SpecializationDeclarator;
 class UsingDirectiveDeclarator;
 
+struct NNSDeclaratorInfo {
+  NestedNameSpecifierDeclarator *Name = nullptr;
+  TemplateParamsDeclarator *Template = nullptr;
+  SpecializationDeclarator *SpecializationArgs = nullptr;
+};
+
 /// Kinds of declarations.
 enum DeclaratorKind {
   /// This is the base class of the declarator hierarchy
@@ -338,6 +344,7 @@ public:
   virtual std::string getString(bool IncludeKind = false) const override;
 
   const AtomSyntax *getNestedName() const { return Name; }
+  NNSDeclaratorInfo NNSInfo;
 
   Scope *getScope() const { return ReenteredScope; }
   void setScope(Scope *S) { ReenteredScope = S; }

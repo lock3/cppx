@@ -283,8 +283,13 @@ void DeclaratorBuilder::VisitGoldElemSyntax(const ElemSyntax *S) {
     // We know this is a specialization if the base of the element is a type.
     // A specialization is just a type.
     if (E &&
-        (isa<clang::CppxDeclRefExpr>(E) || E->getType()->isTypeOfTypes()))
+        (isa<clang::CppxDeclRefExpr>(E) || E->getType()->isTypeOfTypes())) {
+      if (NestedTemplateName) {
+        VisitSyntax(S->getObject());
+        return buildSpecialization(S);
+      }
       return buildType(S);
+    }
   }
 
   VisitSyntax(S->getObject());
@@ -384,6 +389,8 @@ void DeclaratorBuilder::VisitGoldAtomSyntax(const AtomSyntax *S) {
     return buildIdentifier(S);
   }
 
+  if (NestedTemplateName)
+    return buildNestedNameSpecifier(S);
   buildType(S);
 }
 
@@ -470,13 +477,11 @@ void DeclaratorBuilder::buildError(const ErrorSyntax *S) {
 
 void DeclaratorBuilder::buildGlobalNameSpecifier(const CallSyntax *S) {
   auto Result = new GlobalNameSpecifierDeclarator(S, nullptr);
-  // Result->recordAttributes(S);
   push(Result);
 }
 
 void DeclaratorBuilder::buildNestedNameSpecifier(const AtomSyntax *S) {
   auto Result = new NestedNameSpecifierDeclarator(S, nullptr);
-  // Result->recordAttributes(S);
   push(Result);
 }
 
