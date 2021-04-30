@@ -5768,6 +5768,21 @@ void Elaborator::elaborateConstAttr(Declaration *D, const Syntax *S,
                                 EPI, FPT->getExceptionSpecInfo());
     return;
   }
+
+  if (clang::VarDecl *VD = dyn_cast<clang::VarDecl>(D->Cxx)) {
+    if (auto *MPT = VD->getType()->getAs<clang::MemberPointerType>()) {
+      if (MPT->isMemberFunctionPointer()) {
+        clang::QualType MemberFuncTy = MPT->getPointeeType();
+        const clang::FunctionProtoType *FPT = MemberFuncTy
+          ->getAs<clang::FunctionProtoType>();
+        auto EPI = FPT->getExtProtoInfo();
+        EPI.TypeQuals.addConst();
+        SemaRef.rebuildMemberPointerType(VD, VD->getBeginLoc(), MPT, FPT, EPI);
+        return;
+      }
+    }
+  }
+
   SemaRef.Diags.Report(S->getLoc(),
                       clang::diag::err_invalid_attribute_for_decl)
                       << "const" << "member function";

@@ -160,15 +160,34 @@ void DeclaratorBuilder::VisitGoldCallSyntax(const CallSyntax *S) {
     }
 
     if (MethodType) {
-      if (!isa<ListSyntax>(S->getArgument(1))) {
+      const Syntax *Args =  S->getArgument(1);
+      while (isa<CallSyntax>(Args)) {
+        const CallSyntax *MethodCall = cast<CallSyntax>(S->getArgument(1));
+        FusedOpKind Op = getFusedOpKind(SemaRef, MethodCall);
+        if (Op == FOK_Preattr) {
+          Owner.Attrs.insert(MethodCall->getArgument(0));
+          Args = MethodCall->getArgument(1);
+        } else if (Op == FOK_Postattr) {
+          Owner.Attrs.insert(MethodCall->getArgument(1));
+          Args = MethodCall->getArgument(0);
+        } else {
+          unsigned DiagID =
+            SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                          "expected parameter list or attribute");
+          SemaRef.Diags.Report(Args->getLoc(), DiagID);
+          return;
+        }
+      }
+
+      if (!isa<ListSyntax>(Args)) {
         unsigned DiagID =
           SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
                                         "expected parameter list");
-        SemaRef.Diags.Report(S->getArgument(1)->getLoc(), DiagID);
+        SemaRef.Diags.Report(Args->getLoc(), DiagID);
         return;
       }
 
-      return buildFunction(cast<ListSyntax>(S->getArgument(1)));
+      return buildFunction(cast<ListSyntax>(Args));
     }
 
     VisitSyntax(S->getArgument(1));
