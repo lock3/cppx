@@ -107,6 +107,7 @@ namespace blue {
   enum class PartialExprKind : std::size_t;
   class CppxPartialNameAccessBase {
     PartialExprKind Kind;
+    clang::Expr *IncompleteExprValue = nullptr;
   public:
     CppxPartialNameAccessBase(PartialExprKind K)
       :Kind(K)
@@ -115,6 +116,12 @@ namespace blue {
 
     clang::SourceLocation BeginLocation;
     clang::SourceLocation EndLocation;
+
+    void setIncompleteExpr(clang::Expr *E) {
+      IncompleteExprValue = E;
+    }
+
+    clang::Expr *getIncompleteExpr() const { return IncompleteExprValue; }
 
     clang::SourceLocation beginLoc() const { return BeginLocation; }
     clang::SourceLocation endLoc() const { return EndLocation; }
@@ -131,12 +138,8 @@ namespace blue {
     virtual clang::Expr *appendElementExpr(clang::SourceLocation B,
                                            clang::SourceLocation E,
                               clang::TemplateArgumentListInfo &TemplateArgs,
-                llvm::SmallVectorImpl<clang::TemplateArgument> &ActualArgs) = 0;
-    // clang::TemplateArgumentListInfo &TemplateArgs,
-    // 
-    virtual clang::Expr *appendFunctionCall(clang::SourceLocation B,
-                                            clang::SourceLocation E,
-                                            const ExprList &Args) = 0;
+                llvm::SmallVectorImpl<clang::ParsedTemplateArgument> &ActualArgs) = 0;
+
 
     /// This is used to generate the complete expression.
     virtual clang::Expr *completeExpr() = 0;
@@ -293,7 +296,7 @@ public:
       case Tag::BlueLang:
         return PImpl.BImpl->beginLoc();
       default:
-        assert("Invalid partial expression not set.");
+        llvm_unreachable("Invalid partial expression not set.");
     }
   }
 
@@ -304,7 +307,7 @@ public:
       case Tag::BlueLang:
         return PImpl.BImpl->endLoc();
       default:
-        assert("Invalid partial expression not set.");
+        llvm_unreachable("Invalid partial expression not set.");
     }
   }
 
@@ -376,34 +379,17 @@ public:
   /// partial expression, this could be template parameters or array access.
   clang::Expr *appendName(clang::SourceLocation L, IdentifierInfo *Id) {
     assert(PartialKind == Tag::BlueLang && "Incorrect language.");
-    auto E = PImpl.BImpl->appendName(L, Id);
-    if (!E)
-      return this;
-    return E;
+    return PImpl.BImpl->appendName(L, Id);
   }
 
   clang::Expr *appendElementExpr(clang::SourceLocation Beginning,
                                  clang::SourceLocation EndingLoc,
                                  clang::TemplateArgumentListInfo &TemplateArgs,
-                   llvm::SmallVectorImpl<clang::TemplateArgument> &ActualArgs) {
+                   llvm::SmallVectorImpl<clang::ParsedTemplateArgument> &ActualArgs) {
     assert(PartialKind == Tag::BlueLang && "Incorrect language.");
-    auto E = PImpl.BImpl->appendElementExpr(Beginning, EndingLoc, TemplateArgs,
+    return PImpl.BImpl->appendElementExpr(Beginning, EndingLoc, TemplateArgs,
                                           ActualArgs);
-    if (!E)
-      return this;
-    return E;
   }
-
-  clang::Expr *appendFunctionCall(clang::SourceLocation Beginning,
-                          clang::SourceLocation EndingLoc,
-                          const blue::ExprList &Args) {
-    assert(PartialKind == Tag::BlueLang && "Incorrect language.");
-    auto E = PImpl.BImpl->appendFunctionCall(Beginning, EndingLoc, Args);
-    if (!E)
-      return this;
-    return E;
-  }
-
 
   /// This is used to generate the complete expression that is represented
   /// by a derived version of this class.
@@ -416,26 +402,17 @@ public:
   /// is not a CXXThisExpr.
   clang::Expr *allowUseOfImplicitThis(bool AllowImplicitThis) {
     assert(PartialKind == Tag::BlueLang && "Incorrect language.");
-    auto E = PImpl.BImpl->allowUseOfImplicitThis(AllowImplicitThis);
-    if (!E)
-      return this;
-    return E;
+    return PImpl.BImpl->allowUseOfImplicitThis(AllowImplicitThis);
   }
 
   clang::Expr *setIsWithinClass(bool IsInClassScope) {
     assert(PartialKind == Tag::BlueLang && "Incorrect language.");
-    auto E = PImpl.BImpl->setIsWithinClass(IsInClassScope);
-    if (!E)
-      return this;
-    return E;
+    return PImpl.BImpl->setIsWithinClass(IsInClassScope);
   }
 
   clang::Expr *setBaseExpr(clang::Expr *E) {
     assert(PartialKind == Tag::BlueLang && "Incorrect language.");
-    auto X = PImpl.BImpl->setBaseExpr(E);
-    if (!X)
-      return this;
-    return X;
+    return PImpl.BImpl->setBaseExpr(E);
   }
 
   static bool classof(const Stmt *T) {

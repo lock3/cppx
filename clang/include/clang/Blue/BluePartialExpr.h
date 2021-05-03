@@ -17,6 +17,10 @@
 #include "clang/AST/ExprCppx.h"
 #include "clang/Blue/BlueSyntax.h"
 
+namespace clang {
+class LookupResult;
+}
+
 namespace blue {
 class Sema;
 
@@ -24,8 +28,22 @@ enum class PartialExprKind : std::size_t {
   PEK_PartialNameAccessExprImpl
 };
 
+enum NameExprState {
+  AwaitingBaseExpr,
+  BuildingNormalNameAccessExpr,
+  BuildingNamespaceExpr,
+  BuildingBaseQualifiedExpr,
+  BuildingTemplateQualifiedExpr
+};
+
 class PartialNameAccessExprImpl : public CppxPartialNameAccessBase {
   Sema &SemaRef;
+  NameExprState State = AwaitingBaseExpr;
+  bool InsideClass = false;
+  bool AllowImplicitThisExpr = false;
+  clang::Expr *CurExpr = nullptr;
+  clang::Expr *NonNameLHS = nullptr;
+  clang::CXXScopeSpec SS;
 public:
   PartialNameAccessExprImpl(Sema &S)
     :CppxPartialNameAccessBase(PartialExprKind::PEK_PartialNameAccessExprImpl),
@@ -33,6 +51,23 @@ public:
   { }
 
   virtual ~PartialNameAccessExprImpl() = default;
+
+private:
+  clang::Expr *normalAccess_appendName_updateTransition(
+                             clang::SourceLocation Loc, clang::LookupResult &R);
+  // bool isBaseOfCurrentInstance(clang::SourceLocation Loc, clang::QualType ThisTy);
+  clang::Expr *baseQualified_appendName_updateTransition(clang::SourceLocation Loc,
+                                                    clang::LookupResult &R);
+
+  clang::Expr *NamespaceQualified_appendName_updateTransition(clang::SourceLocation Loc,
+                                                    clang::LookupResult &R);
+  clang::CXXRecordDecl *getCXXRecordFromLHS();
+  void extenedSSFromExpr(clang::Expr *E);
+  clang::Expr *buildNoMemberError(clang::SourceLocation Loc,
+                                  clang::IdentifierInfo *Name);
+  clang::Expr *buildKnownMemberExpr(clang::SourceLocation IdLoc,
+                                    clang::IdentifierInfo *MemberId);
+public:
 
   virtual clang::Expr *setIsWithinClass(bool IsInClassScope) override;
   virtual clang::Expr *allowUseOfImplicitThis(bool AllowImplicitThis) override;
@@ -45,10 +80,7 @@ public:
   virtual clang::Expr *appendElementExpr(clang::SourceLocation B,
                                          clang::SourceLocation E,
                                  clang::TemplateArgumentListInfo &TemplateArgs,
-           llvm::SmallVectorImpl<clang::TemplateArgument> &ActualArgs) override;
-  virtual clang::Expr *appendFunctionCall(clang::SourceLocation B,
-                                          clang::SourceLocation E,
-                                          const ExprList &Args) override;
+           llvm::SmallVectorImpl<clang::ParsedTemplateArgument> &ActualArgs) override;
 
   /// This is used to generate the complete expression.
   virtual clang::Expr *completeExpr() override;
@@ -56,6 +88,8 @@ public:
   static bool classof(const CppxPartialNameAccessBase *S) {
     return S->getKind() == PartialExprKind::PEK_PartialNameAccessExprImpl;
   }
+
+  clang::DiagnosticBuilder error(clang::SourceLocation Loc);
 private:
 };
 

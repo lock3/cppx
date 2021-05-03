@@ -710,7 +710,6 @@ processCXXRecordDecl(Elaborator &Elab, SyntaxContext &Context, Sema &SemaRef,
     D->CurrentPhase = Phase::Initialization;
     if (!WithinClass) {
       ElaboratingClass &LateElabClass = SemaRef.getCurrentElaboratingClass();
-      // Elab.finishDelayedElaboration(LateElabClass);
       Elab.lateElaborateMethodDecls(LateElabClass);
       Elab.lateElaborateAttributes(LateElabClass);
       Elab.lateElaborateDefaultParams(LateElabClass);

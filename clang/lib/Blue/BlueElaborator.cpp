@@ -48,6 +48,12 @@
 
 #include <iostream>
 
+#ifndef _NDEBUG
+#define BALANCE_DBG() ElabBalanceChecker Checker(SemaRef)
+#else
+#define BALANCE_DBG()
+#endif
+
 namespace blue {
 
 #define VALUE 0
@@ -118,6 +124,7 @@ bool decomposeNNS(Sema &SemaRef, llvm::SmallVectorImpl<const Syntax *> &NNSChain
 Declaration *Elaborator::createDeclaration(const Syntax *Def,
                                            Declarator *Dcl,
                                            const Syntax *Init) {
+  BALANCE_DBG();
   if (const DeclarationSyntax *DS = dyn_cast<DeclarationSyntax>(Def)) {
     if (declaratorChainIsForNamespace(Dcl))
       return createNamespaceDecl(DS, Dcl, Init);
@@ -175,6 +182,7 @@ static DeclarationSyntax *buildDummyNNSSyntax(Iterator Start,
 Declaration *Elaborator::createNamespaceDecl(const DeclarationSyntax *Def,
                                              Declarator *Dcl,
                                              const Syntax *Init) {
+  BALANCE_DBG();
   // This is a namespace alias, treat accordingly.
   if (!isa<EnclosureSyntax>(Init))
     return createNamespaceAliasDecl(Def, Dcl, Init);
@@ -229,6 +237,7 @@ Declaration *Elaborator::createNamespaceDecl(const DeclarationSyntax *Def,
 Declaration *Elaborator::createNamespaceAliasDecl(const DeclarationSyntax *Def,
                                                   Declarator *Dcl,
                                                   const Syntax *Init) {
+  BALANCE_DBG();
   auto TheDecl = new Declaration(SemaRef.getCurrentDecl(), Def, Dcl, Init);
   const DeclarationSyntax *ToGetNameFrom = Def;
   if (const IdentifierSyntax *Id
@@ -251,6 +260,7 @@ Declaration *Elaborator::createNamespaceAliasDecl(const DeclarationSyntax *Def,
 Declaration *Elaborator::createUsingDecl(const PrefixSyntax *Def,
                                          Declarator *Dcl,
                                          const Syntax *Init) {
+  BALANCE_DBG();
   Declaration *TheDecl =
     new Declaration(SemaRef.getCurrentDecl(), Def, Dcl, Init);
   if (auto Bin = dyn_cast<InfixSyntax>(Def->getOperand())) {
@@ -315,17 +325,20 @@ clang::Decl *Elaborator::elaborateFile(const Syntax *S) {
 }
 
 Declaration *Elaborator::buildDeclaration(const DeclarationSyntax *S) {
+  BALANCE_DBG();
   Declarator *Dcl = getDeclarator(S->getType());
   return createDeclaration(S, Dcl, S->getInitializer());
 }
 
 Declaration *Elaborator::buildDeclaration(const PrefixSyntax *S) {
+  BALANCE_DBG();
   Declarator *Dcl = new Declarator(Declarator::Using, S,
                                    getDeclarator(S->getOperand()));
   return createDeclaration(S, Dcl, S->getOperand());
 }
 
 Declaration *Elaborator::identifyDeclaration(const Syntax *S) {
+  BALANCE_DBG();
   if(!S)
     return nullptr;
   switch (S->getKind()) {
@@ -341,6 +354,7 @@ Declaration *Elaborator::identifyDeclaration(const Syntax *S) {
 }
 
 clang::Decl *Elaborator::elaborateDecl(const Syntax *S) {
+  BALANCE_DBG();
   switch (S->getKind()) {
   case Syntax::Declaration:
     return elaborateDefDecl(cast<DeclarationSyntax>(S));
@@ -359,6 +373,7 @@ clang::Decl *Elaborator::elaborateDecl(const Syntax *S) {
 
 
 clang::Decl *Elaborator::elaborateDefDecl(const DeclarationSyntax *S) {
+  BALANCE_DBG();
   Declaration *D = SemaRef.getCurrentScope()->findDecl(S);
   if (!D)
     return nullptr;
@@ -372,6 +387,7 @@ static clang::Decl *handleUsing(Sema &SemaRef,
                                 Declaration *D,
                                 const Syntax *Arg,
                                 clang::SourceLocation UsingLoc) {
+  BALANCE_DBG();
   Sema::ExtendQualifiedLookupRAII ExQual(SemaRef);
   clang::SourceLocation ArgLoc = Arg->getLocation();
   clang::DiagnosticsEngine &Diags = SemaRef.getCxxSema().Diags;
@@ -498,6 +514,7 @@ static clang::Decl *handleUsing(Sema &SemaRef,
 }
 
 clang::Decl *Elaborator::elaboratePrefixDecl(const PrefixSyntax *S) {
+  BALANCE_DBG();
   Declaration *D = SemaRef.getCurrentScope()->findDecl(S);
   if (S->getOperation().hasKind(tok::UsingKeyword)) {
     clang::Decl *Ret = handleUsing(SemaRef, D, S->getOperand(),
@@ -511,12 +528,13 @@ clang::Decl *Elaborator::elaboratePrefixDecl(const PrefixSyntax *S) {
 }
 
 clang::Decl *Elaborator::elaborateDeclarationTyping(Declaration *D) {
+  BALANCE_DBG();
   if (phaseOf(D) >= Phase::Typing)
     return D->getCxx();
 
   // This are optionally created for template parameters.
   OptionalScopeRAII TemplateParamScope(SemaRef);
-  OptioanlClangScopeRAII ClangTemplateScope(SemaRef);
+  OptionalClangScopeRAII ClangTemplateScope(SemaRef);
 
   // Handling template declarations.
   if (D->Decl->declaresTemplate())
@@ -528,9 +546,8 @@ clang::Decl *Elaborator::elaborateDeclarationTyping(Declaration *D) {
 
 
 void Elaborator::elaborateTemplateParameters(OptionalScopeRAII &TemplateScope,
-                                             OptioanlClangScopeRAII &ClangTemplateScope,
+                                             OptionalClangScopeRAII &ClangTemplateScope,
                                              Declaration *D, Declarator *Dcl) {
-
   clang::TemplateParameterList *ParamList = nullptr;
 
   // Initializing the scopes we have to deal with.
@@ -571,6 +588,7 @@ void Elaborator::elaborateTemplateParameters(OptionalScopeRAII &TemplateScope,
 
 void Elaborator::buildTemplateParams(const ListSyntax *Params,
                                llvm::SmallVectorImpl<clang::NamedDecl *> &Res) {
+  BALANCE_DBG();
   std::size_t I = 0;
   for (const Syntax *P : Params->children()) {
     // Elaborator Elab(Context, SemaRef);
@@ -611,6 +629,7 @@ void Elaborator::buildTemplateParams(const ListSyntax *Params,
 
 
 clang::Decl *Elaborator::doElaborateDeclarationTyping(Declaration *D) {
+  BALANCE_DBG();
   if (!D)
     return nullptr;
   if (deduceDeclKindFromSyntax(D)) {
@@ -653,6 +672,7 @@ clang::Decl *Elaborator::doElaborateDeclarationTyping(Declaration *D) {
 
 
 clang::Decl *Elaborator::elaborateTypeAliasOrVariableTemplate(Declaration *D) {
+  BALANCE_DBG();
   bool InClass = D->isDeclaredInClass();
 
   // Checking if we are a nested template decl/class.
@@ -788,6 +808,7 @@ clang::Decl *Elaborator::elaborateTypeAliasOrVariableTemplate(Declaration *D) {
 }
 
 Declaration *Elaborator::elaborateTemplateParameter(const Syntax *Parm) {
+  BALANCE_DBG();
   Declaration *D = identifyDeclaration(Parm);
   if (!D) {
     // TODO: Create an error message for this.
@@ -862,10 +883,12 @@ Declaration *Elaborator::elaborateTemplateParameter(const Syntax *Parm) {
 }
 
 void Elaborator::elaborateParameters(const ListSyntax *S) {
+  BALANCE_DBG();
   return elaborateParameterList(S);
 }
 
 void Elaborator::elaborateDefaultParameterInit(Declaration *D) {
+  BALANCE_DBG();
   if (phaseOf(D) != Phase::Typing) return;
   if (!D->hasInitializer()) return;
   clang::ParmVarDecl *PVD = dyn_cast_or_null<clang::ParmVarDecl>(D->getCxx());
@@ -876,6 +899,7 @@ void Elaborator::elaborateDefaultParameterInit(Declaration *D) {
 void Elaborator::getParameters(Declaration *D,
                                Declarator *FuncDeclarator,
                           llvm::SmallVectorImpl<clang::ParmVarDecl *> &Params) {
+  BALANCE_DBG();
   const auto *Enc = dyn_cast<EnclosureSyntax>(FuncDeclarator->getInfo());
   if (!Enc)
     return;
@@ -901,6 +925,7 @@ void Elaborator::getParameters(Declaration *D,
 }
 
 void Elaborator::elaborateParameterList(const ListSyntax *S) {
+  BALANCE_DBG();
   if (!S)
     return;
   for (const Syntax *SS : S->children()) {
@@ -925,6 +950,7 @@ void Elaborator::elaborateParameterList(const ListSyntax *S) {
 }
 
 clang::Decl *Elaborator::elaborateParameter(const Syntax *S, bool CtrlParam) {
+  BALANCE_DBG();
   if (!isa<DeclarationSyntax>(S) && !isa<IdentifierSyntax>(S)) {
     Error(S->getLocation(), "invalid parameter syntax");
     return nullptr;
@@ -1080,6 +1106,7 @@ clang::Decl *Elaborator::elaborateParameter(const Syntax *S, bool CtrlParam) {
 // The first term in the list is always an identifier, which is established
 // by the function above.
 Declarator *Elaborator::getDeclarator(const Syntax *S) {
+  BALANCE_DBG();
   if (!S)
     return getImplicitAutoDeclarator();
 
@@ -1118,6 +1145,7 @@ Declarator *Elaborator::getDeclarator(const Syntax *S) {
 }
 
 Declarator *Elaborator::getArrayDeclarator(const ArraySyntax *AS) {
+  BALANCE_DBG();
   if (!AS->getResult()){
     AS->dump();
     llvm_unreachable("Invalid AST structure");
@@ -1126,16 +1154,19 @@ Declarator *Elaborator::getArrayDeclarator(const ArraySyntax *AS) {
 }
 
 Declarator *Elaborator::getPointerDeclarator(const PrefixSyntax *PS) {
+  BALANCE_DBG();
   assert(PS->getOperation().hasKind(tok::Caret) && "Invalid pointer declarator.");
   return new Declarator(Declarator::Pointer, PS, getDeclarator(PS->getOperand()));
 }
 
 Declarator *Elaborator::getTemplateDeclarator(const TemplateSyntax *TS) {
+  BALANCE_DBG();
   return new Declarator(Declarator::Template, TS,
                         getDeclarator(TS->getResult()));
 }
 
 Declarator *Elaborator::getLeafDeclarator(const Syntax *S) {
+  BALANCE_DBG();
   switch (S->getKind()) {
   case Syntax::Literal:
     // auto Lit = dyn_cast<LiteralSyntax>(S);
@@ -1161,11 +1192,15 @@ Declarator *Elaborator::getLeafDeclarator(const Syntax *S) {
 }
 
 Declarator *Elaborator::getImplicitAutoDeclarator() {
+  BALANCE_DBG();
   return new Declarator(Declarator::ImplicitType, nullptr);
 }
 
 
 clang::Decl *Elaborator::elaborateDeclEarly(Declaration *D) {
+  BALANCE_DBG();
+
+  EnterNonNestedClassEarlyElaboration ENNCEE(SemaRef, D);
   auto *Ret = elaborateDeclarationTyping(D);
   if (SemaRef.DeepElaborationMode)
     elaborateDefinitionInitialization(D);
@@ -1175,6 +1210,7 @@ clang::Decl *Elaborator::elaborateDeclEarly(Declaration *D) {
 // Declaration construction
 
 clang::Decl *Elaborator::makeValueDecl(Declaration *D) {
+  BALANCE_DBG();
   // Elaborate the declarator.
   // if (D->declaratorContainsFunction()) {
   //   Error(D->getErrorLocation(), "Function declaration missing introducer.");
@@ -1230,6 +1266,7 @@ static inline clang::StorageClass getDefaultVariableStorageClass(Sema &SemaRef) 
 }
 
 clang::Decl *Elaborator::makeObjectDecl(Declaration *D, clang::Expr *Ty) {
+  BALANCE_DBG();
   auto *Def = cast<DeclarationSyntax>(D->Def);
   if (!Def)
     return nullptr;
@@ -1260,6 +1297,7 @@ clang::Decl *Elaborator::makeObjectDecl(Declaration *D, clang::Expr *Ty) {
 }
 
 clang::Decl *Elaborator::makeTypeDecl(Declaration *D, clang::QualType T) {
+  BALANCE_DBG();
   if (!D->hasInitializer()) {
     SemaRef.getCxxSema().Diags.Report(D->Def->getLocation(),
                                       clang::diag::err_expected_type);
@@ -1301,6 +1339,7 @@ clang::Decl *Elaborator::makeTypeDecl(Declaration *D, clang::QualType T) {
 
 clang::CppxTypeLiteral *Elaborator::createFunctionType(Declaration *D,
                                                        Declarator *Dcl) {
+  BALANCE_DBG();
   const EnclosureSyntax *ParamTerm = dyn_cast<EnclosureSyntax>(Dcl->getInfo());
   if (!ParamTerm)
     return nullptr;
@@ -1397,6 +1436,7 @@ clang::CppxTypeLiteral *Elaborator::createFunctionType(Declaration *D,
 
 static void deduceDependentAutoReturn(Sema &SemaRef,
                                       clang::FunctionDecl *FD) {
+  BALANCE_DBG();
   if (FD->getReturnType()->isUndeducedAutoType()) {
     clang::QualType OldTy = FD->getType();
     const clang::FunctionProtoType *FPT =
@@ -1418,6 +1458,7 @@ static void deduceDependentAutoReturn(Sema &SemaRef,
 bool Elaborator::buildMethod(Declaration *Fn, clang::DeclarationName const &Name,
                              clang::FunctionDecl **FD, clang::TypeSourceInfo *Ty,
                              clang::CXXRecordDecl *RD) {
+  BALANCE_DBG();
   clang::SourceLocation ExLoc = Fn->Def->getLocation();
   clang::SourceLocation FnLoc = ExLoc;
   clang::SourceLocation NameLoc = Fn->Def->getLocation();
@@ -1685,6 +1726,7 @@ static clang::DeclarationName getFunctionName(Sema &SemaRef,
                                               clang::TypeSourceInfo *FnTInfo,
                                               bool InClass,
                                               const clang::RecordDecl *RD) {
+  BALANCE_DBG();
   clang::SourceLocation Loc = D->asDef()->getLocation();
   // This may cause issues if someone uses this without being inside
   // of a class.
@@ -1771,6 +1813,7 @@ static void lookupFunctionRedecls(Sema &SemaRef, clang::Scope *FoundScope,
 }
 
 clang::Decl *Elaborator::makeFunctionDecl(Declaration *D) {
+  BALANCE_DBG();
   bool InClass = D->ScopeForDecl->isClassScope();
   // bool InClass = isa<clang::TagDecl>(ResolvedCtx);
   clang::CXXRecordDecl *RD = nullptr;
@@ -1999,7 +2042,7 @@ clang::Decl *Elaborator::makeFunctionDecl(Declaration *D) {
                                CxxScope, !InClass, !InClass);
   CxxSema.CheckFunctionDeclaration(CxxScope, FD, Previous, false);
 
-  bool IsMethod = false;
+  // bool IsMethod = false;
   if (clang::CXXMethodDecl *MD = dyn_cast<clang::CXXMethodDecl>(FD)) {
     checkCXXMethodDecl(MD);
     CxxSema.CheckOverrideControl(MD);
@@ -2007,7 +2050,7 @@ clang::Decl *Elaborator::makeFunctionDecl(Declaration *D) {
       Error(MD->getBeginLoc(),
             "any method that override a method must be marked 'override'" );
     }
-    IsMethod = true;
+    // IsMethod = true;
   }
 
   // Handle function template specialization.
@@ -2026,6 +2069,7 @@ clang::Decl *Elaborator::makeFunctionDecl(Declaration *D) {
 }
 
 void Elaborator::checkCXXMethodDecl(clang::CXXMethodDecl *MD) {
+  BALANCE_DBG();
   // We can't check dependent instance methods.
   if (MD && MD->isInstance() &&
       (MD->getParent()->hasAnyDependentBases() ||
@@ -2094,6 +2138,7 @@ void Elaborator::checkCXXMethodDecl(clang::CXXMethodDecl *MD) {
 
 
 clang::Decl *Elaborator::makeClass(Declaration *D) {
+  BALANCE_DBG();
   using namespace clang;
   D->CurrentPhase = Phase::Typing;
 
@@ -2231,9 +2276,8 @@ clang::Decl *Elaborator::makeClass(Declaration *D) {
     D->CurrentPhase = Phase::Initialization;
     if (!WithinClass) {
       ElaboratingClass &LateElabClass = SemaRef.getCurrentElaboratingClass();
-      // Elab.finishDelayedElaboration(LateElabClass);
-      lateElaborateAttributes(LateElabClass);
       lateElaborateMethodDecls(LateElabClass);
+      lateElaborateAttributes(LateElabClass);
       lateElaborateDefaultParams(LateElabClass);
       // We call this because no new declarations can be added after this point.
       // This is only called for the top level class.
@@ -2262,7 +2306,7 @@ clang::Decl *Elaborator::makeClass(Declaration *D) {
 bool Elaborator::makeBases(unsigned &DeclIndex,
                            llvm::SmallVectorImpl<Declaration *> & DeclBodyList,
                            clang::CXXRecordDecl *R) {
-
+  BALANCE_DBG();
   // Evaluating each individual child expression. Some could be template names.
   // It's also worth noting that these type of bases could have attributes
   // associated with each expression.
@@ -2332,6 +2376,7 @@ clang::Decl *Elaborator::makeTemplateDecl(Declaration *D) {
 }
 
 clang::Decl *Elaborator::makeFieldDecl(Declaration *D, clang::Expr *Ty) {
+  BALANCE_DBG();
   auto TInfo = SemaRef.getTypeSourceInfoFromExpr(Ty, Ty->getExprLoc());
   if (!TInfo)
     return nullptr;
@@ -2392,7 +2437,6 @@ clang::Decl *Elaborator::makeFieldDecl(Declaration *D, clang::Expr *Ty) {
 }
 
 clang::Decl *Elaborator::makeNamespace(Declaration *D) {
-  llvm::outs() << "Creating namespace?\n";
   if (!isa<EnclosureSyntax>(D->Init)) {
     return makeNamespaceAlias(D);
   }
@@ -2473,6 +2517,7 @@ clang::Decl *Elaborator::makeNamespace(Declaration *D) {
 
 
 clang::Decl *Elaborator::makeNamespaceAlias(Declaration *D) {
+  BALANCE_DBG();
   clang::Expr *E = elaborateExpression(D->Init);
   if (!E) {
     error(D->getErrorLocation()) << "invalid namespace alias";
@@ -2489,6 +2534,7 @@ clang::Decl *Elaborator::makeNamespaceAlias(Declaration *D) {
 
 clang::Decl *
 Elaborator::completeNamespaceAlias(Declaration *D, clang::Expr *NSExpr) {
+  BALANCE_DBG();
   D->CurrentPhase = Phase::Initialization;
 // Not sure if we need this or not.
   Sema::ExtendQualifiedLookupRAII ExQual(SemaRef);
@@ -2552,6 +2598,7 @@ Elaborator::completeNamespaceAlias(Declaration *D, clang::Expr *NSExpr) {
 /// Return the type of entity declared by Dcl and establish any semantic
 /// state needed to process the declaration and its initializer.
 clang::Expr *Elaborator::elaborateDeclarator(const Declarator *Dcl) {
+  BALANCE_DBG();
   switch (Dcl->getKind()) {
   case Declarator::Type:
     return elaborateTypeDeclarator(Dcl);
@@ -2575,10 +2622,16 @@ clang::Expr *Elaborator::elaborateDeclarator(const Declarator *Dcl) {
 
 /// Elaborate declarations of the form 'T' as an expression.
 clang::Expr *Elaborator::elaborateTypeDeclarator(const Declarator *Dcl) {
+  BALANCE_DBG();
   clang::Expr *E = elaborateExpression(Dcl->getInfo());
   if (!E)
     return nullptr;
 
+  if (auto PartialExpr = dyn_cast<clang::CppxPartialEvalExpr>(E)) {
+    E = PartialExpr->completeExpr();
+    if (!E)
+      return nullptr;
+  }
   clang::QualType T = E->getType();
   if (!T->isKindType()) {
     Error(Dcl->getLocation(), "invalid type");
@@ -2589,6 +2642,7 @@ clang::Expr *Elaborator::elaborateTypeDeclarator(const Declarator *Dcl) {
 
 /// Elaborate declarations of the form '^E'.
 clang::Expr *Elaborator::elaboratePointerDeclarator(const Declarator *Dcl) {
+  BALANCE_DBG();
   clang::Expr *E = elaborateDeclarator(Dcl->getNext());
   if (!E)
     return nullptr;
@@ -2603,6 +2657,7 @@ clang::Expr *Elaborator::elaboratePointerDeclarator(const Declarator *Dcl) {
 
 /// Elaborate declarations of the form "[E]+ T".
 clang::Expr *Elaborator::elaborateArrayDeclarator(const Declarator *Dcl) {
+  BALANCE_DBG();
   assert(Dcl->getKind() == Declarator::Array
          && isa<ArraySyntax>(Dcl->getInfo()));
 
@@ -2683,6 +2738,7 @@ clang::Expr *Elaborator::elaborateTemplateDeclarator(const Declarator *Dcl) {
 }
 
 clang::Expr *Elaborator::elaborateImplicitTypeDeclarator(const Declarator *Dcl) {
+  BALANCE_DBG();
   clang::QualType Ty = getCxxContext().getAutoDeductType();
   return SemaRef.buildTypeExpr(Ty, clang::SourceLocation());
 }
@@ -2691,6 +2747,7 @@ clang::Decl *Elaborator::identifyDeclsInClassBody(Declaration *D,
                                                   const ListSyntax *L,
                                                   clang::CXXRecordDecl *R,
                                llvm::SmallVectorImpl<Declaration *> &DeclList) {
+  BALANCE_DBG();
   if(!D->hasInitializer()) {
     // FIXME: Handle forward declarations here? I think.
     llvm_unreachable("Type forward declarations are not implemented yet.");
@@ -2724,6 +2781,7 @@ clang::Decl *Elaborator::identifyDeclsInClassBody(Declaration *D,
 
 // Expression elaboration
 clang::Expr *Elaborator::elaborateExpression(const Syntax *S) {
+  BALANCE_DBG();
   if (!S)
     return nullptr;
 
@@ -2807,12 +2865,7 @@ clang::Expr *Elaborator::doElaborateExpression(const Syntax *S) {
   default:
     break;
   }
-  if (auto Partial = dyn_cast_or_null<clang::CppxPartialEvalExpr>(E)) {
-    return Partial->completeExpr();
-  }
   return E;
-  // S->dump();
-  // llvm_unreachable("Unexpected syntax tree");
 }
 
 
@@ -3388,6 +3441,7 @@ clang::Expr *Elaborator::elaborateLiteralExpression(const LiteralSyntax *S) {
 }
 
 void Elaborator::elaborateDefinition(const Syntax *S) {
+  BALANCE_DBG();
   auto Decl = SemaRef.getCurrentScope()->findDecl(S);
   if (!Decl)
     return;
@@ -3397,6 +3451,7 @@ void Elaborator::elaborateDefinition(const Syntax *S) {
 }
 
 void Elaborator::elaborateDefinitionInitialization(Declaration *D) {
+  BALANCE_DBG();
   // If the current phase isn't typing then bail.
   if (phaseOf(D) != Phase::Typing)
     return;
@@ -3412,6 +3467,7 @@ void Elaborator::elaborateDefinitionInitialization(Declaration *D) {
 }
 
 void Elaborator::elaborateVarDef(Declaration *D) {
+  BALANCE_DBG();
   D->CurrentPhase = Phase::Initialization;
   if (!D->getCxx())
     return;
@@ -3497,6 +3553,7 @@ void Elaborator::elaborateVarDef(Declaration *D) {
 
 clang::Expr *Elaborator::elaborateExplicitDefaultCtorCall(clang::VarDecl *D,
                                                     const EnclosureSyntax *ES) {
+  BALANCE_DBG();
   llvm::SmallVector<clang::Expr *, 8> Args;
   auto TInfo = D->getTypeSourceInfo();
   clang::ParsedType PTy;
@@ -3515,6 +3572,7 @@ clang::Expr *Elaborator::elaborateExplicitDefaultCtorCall(clang::VarDecl *D,
 }
 
 void Elaborator::elaborateFieldInit(Declaration *D) {
+  BALANCE_DBG();
   assert(D && "Missing Declaration.");
   if (!D->hasInitializer())
     return;
@@ -3536,6 +3594,7 @@ void Elaborator::elaborateFieldInit(Declaration *D) {
 }
 
 void Elaborator::elaborateFunctionDef(Declaration *D) {
+  BALANCE_DBG();
   D->CurrentPhase = Phase::Initialization;
 
   if (!D->getCxx())
@@ -3571,11 +3630,14 @@ void Elaborator::elaborateFunctionDef(Declaration *D) {
   }
 
   ResumeScopeRAII FnDclScope(SemaRef, ParamScope, ParamScope->getTerm());
-
+  clang::DeclContext *CurClangDC = SemaRef.getCurClangDeclContext();
   Declaration *CurrentDeclaration = SemaRef.getCurrentDecl();
   // Entering clang scope. for function definition.
-  SemaRef.enterClangScope(clang::Scope::FnScope |clang::Scope::DeclScope |
-                          clang::Scope::CompoundStmtScope);
+  Sema::ClangScopeRAII CSTracker(SemaRef,
+                                 clang::Scope::FnScope |
+                                 clang::Scope::DeclScope |
+                                 clang::Scope::CompoundStmtScope,
+                                 clang::SourceLocation());
   clang::Decl *FuncDecl =
     SemaRef.getCxxSema().ActOnStartOfFunctionDef(SemaRef.getCurClangScope(),
                                                  D->getCxx());
@@ -3611,6 +3673,7 @@ void Elaborator::elaborateFunctionDef(Declaration *D) {
 
   // Return the current decl to whatever it was before.
   SemaRef.setCurrentDecl(CurrentDeclaration);
+  SemaRef.setClangDeclContext(CurClangDC);
 }
 
 /// This creates the correct expression in order to correctly reference
@@ -3726,15 +3789,34 @@ clang::Expr *Elaborator::elaborateCallExpression(const CallSyntax *S) {
     if (!ArgEnclosure->getOperand())
       // I'm not really sure this can happen.
       llvm_unreachable("Invalid empty template instantiation.");
-
     auto LS = cast<ListSyntax>(ArgEnclosure->getOperand());
     if (IdExpr->getType()->isTemplateType())
         return elaborateClassTemplateSelection(IdExpr, ArgEnclosure, LS);
-    if (!isa<clang::OverloadExpr>(IdExpr))
+
+    if (auto PartialExpr = dyn_cast<clang::CppxPartialEvalExpr>(IdExpr)) {
+      // Handling partial expression instantiation.
+      clang::SourceLocation LocStart = ArgEnclosure->getOpen().getLocation();
+      clang::SourceLocation LocEnd = ArgEnclosure->getClose().getLocation();
+      clang::TemplateArgumentListInfo TemplateArgs(LocEnd, LocStart);
+      llvm::SmallVector<clang::ParsedTemplateArgument, 16> ParsedArguments;
+      if (elaborateClassTemplateArguments(ArgEnclosure, LS,
+                                          TemplateArgs, ParsedArguments))
+        return nullptr;
+
+      return PartialExpr->appendElementExpr(LocStart, LocEnd, TemplateArgs,
+                                            ParsedArguments);
+    }
+
+    if (!isa<clang::OverloadExpr>(IdExpr)){
+      if (IdExpr->getType()->isTypeOfTypes()) {
+        error(IdExpr->getExprLoc()) << "not a template";
+        return nullptr;
+      }
       return elaborateArraySubscriptExpr(IdExpr, LS);
+    }
 
 
-    return elabortateTemplateInstantiationWithArgs(ArgEnclosure, IdExpr, LS);
+    return elaborateTemplateInstantiationWithArgs(ArgEnclosure, IdExpr, LS);
 
 
   } else if (ArgEnclosure->isBraceEnclosure()) {
@@ -3755,7 +3837,7 @@ clang::Expr *Elaborator::elaborateCallExpression(const CallSyntax *S) {
 //   if (auto *ULE = dyn_cast<clang::UnresolvedLookupExpr>(LHS)) {
 //     if (auto LS = dyn_cast<ListSyntax>(S->getRightOperand())) {
 //       if (LS->isBracketList())
-//         return elabortateTemplateInstantiationWithArgs(ULE, LS);
+//         return elaborateTemplateInstantiationWithArgs(ULE, LS);
 //       return elaborateFunctionCall(ULE, S);
 //     } else {
 //       llvm_unreachable("This is a VERY strange kind of function call!");
@@ -3932,7 +4014,7 @@ handleDependentTypeNameLookup(Sema &SemaRef,
   // Make sure the name exists in the class.
   // FIXME: what if this is an implicit this?
   // FIXME: what if the name is in a dependent base class?
-  if (clang::CXXThisExpr *This = dyn_cast<clang::CXXThisExpr>(ElaboratedLHS)) {
+  if (isa<clang::CXXThisExpr>(ElaboratedLHS)) {
     const clang::PointerType *ThisPtr =
       SemaRef.getCxxSema().getCurrentThisType().getTypePtr()->
       getAs<clang::PointerType>();
@@ -4943,12 +5025,6 @@ clang::Expr *Elaborator::elaborateFunctionCall(clang::Expr *Base,
     }
   }
 
-  if (auto Callee = dyn_cast<clang::CppxPartialEvalExpr>(Base)) {
-    return Callee->appendFunctionCall(Enc->getOpen().getLocation(),
-                                     Enc->getClose().getLocation(),
-                                     ArgExprs);
-  }
-
   // try and make the call and see what happens.
   clang::ExprResult Call = CxxSema.ActOnCallExpr(
     CxxSema.getCurScope(), Base, Enc->getOpen().getLocation(),
@@ -4985,10 +5061,9 @@ void Elaborator::elaborateTemplateArgs(const EnclosureSyntax *Enc,
 }
 
 clang::Expr *
-Elaborator::elabortateTemplateInstantiationWithArgs(const EnclosureSyntax *Enc,
+Elaborator::elaborateTemplateInstantiationWithArgs(const EnclosureSyntax *Enc,
                                                    clang::Expr *E,
                                                    const ListSyntax *ArgList) {
-
 //   // This could be an attemped lambda instantiation.
 //   if (clang::DeclRefExpr *DRE = dyn_cast<clang::DeclRefExpr>(E)) {
 //     if (clang::VarDecl *VD = dyn_cast<clang::VarDecl>(DRE->getDecl())) {
@@ -5051,9 +5126,7 @@ Elaborator::elabortateTemplateInstantiationWithArgs(const EnclosureSyntax *Enc,
   llvm::SmallVector<clang::TemplateArgument, 16> ActualArgs;
   elaborateTemplateArgs(Enc, ArgList, TemplateArgs, ActualArgs);
 
-  if (auto PartialExpr = dyn_cast<clang::CppxPartialEvalExpr>(E)) {
-    return PartialExpr->appendElementExpr(LocStart, LocEnd, TemplateArgs, ActualArgs);
-  }
+
   clang::TemplateArgumentList
     TemplateArgList(clang::TemplateArgumentList::OnStack, ActualArgs);
 
@@ -5255,6 +5328,18 @@ bool Elaborator::elaborateClassTemplateArguments(
       continue;
     }
 
+    // Checking for and forcing completion of  partial expression as part pf template
+    // arguments.
+    if (auto PartialExpr = dyn_cast<clang::CppxPartialEvalExpr>(ArgExpr)) {
+      ArgExpr = PartialExpr->completeExpr();
+      if (!ArgExpr) {
+        getCxxSema().Diags.Report(SyntaxArg->getLocation(),
+                                  clang::diag::err_failed_to_translate_expr);
+        continue;
+      }
+    }
+
+
     auto TemplateArg = SemaRef.convertExprToTemplateArg(ArgExpr);
     if (TemplateArg.isInvalid())
       // TODO: Figure out if this needs an error message or not.
@@ -5307,12 +5392,13 @@ clang::Expr *Elaborator::elaborateMemberAccess(clang::Expr *LHS,
   }
 
   clang::QualType Ty = LHS->getType();
-  clang::Expr *NsOrTyExpr = nullptr;
+  // clang::Expr *NsOrTyExpr = nullptr;
   if (SemaRef.isElaboratingClass()) {
     if (Ty->isKindType() || Ty->isNamespaceType()) {
       auto *E = SemaRef.createPartialExpr(S->getLocation(),
                                           SemaRef.isElaboratingClass(),
-                                          true, NsOrTyExpr);
+                                          SemaRef.isThisValidInCurrentScope(),
+                                          LHS);
       return elaboratePartialEvalMemberAccess(E, S);
     }
   } else {
@@ -5329,8 +5415,8 @@ clang::Expr *
 Elaborator::elaboratePartialEvalMemberAccess(clang::CppxPartialEvalExpr *E,
                                              const InfixSyntax *S) {
   if (auto Atom = dyn_cast<AtomSyntax>(S->getOperand(1))) {
-    return E->appendName(Atom->getLocation(),
-                         &CxxAST.Idents.get(Atom->getSpelling()));
+    clang::IdentifierInfo *ID = &CxxAST.Idents.get(Atom->getSpelling());
+    return E->appendName(Atom->getLocation(), ID);
   } else {
     error(S->getLocation()) << "incorrect member access syntax";
     return E->completeExpr();
@@ -5777,7 +5863,6 @@ clang::Expr *Elaborator::elaborateMemberAccessOp(clang::Expr *LHS,
     clang::tok::TokenKind AccessTokenKind = clang::tok::TokenKind::period;
     if (LHS->getType()->isPointerType())
       AccessTokenKind = clang::tok::TokenKind::arrow;
-
     clang::ExprResult RHSExpr =
       SemaRef.getCxxSema().ActOnMemberAccessExpr(SemaRef.getCurClangScope(),
                                                 LHS, S->getLocation(),
@@ -6037,6 +6122,7 @@ clang::DiagnosticBuilder Elaborator::error(clang::SourceLocation Loc) {
 
 bool Elaborator::delayElaborateDeclType(clang::CXXRecordDecl *RD,
                                         Declaration *D) {
+  BALANCE_DBG();
   // Declaration *D = SemaRef.getCurrentScope()->findDecl(S);
   // if (!D) {
   //   return false;
@@ -6107,10 +6193,12 @@ void Elaborator::delayElaborateMethodDef(Declaration *D) {
 }
 
 void Elaborator::delayElaborationClassBody(Declaration *D) {
+  BALANCE_DBG();
   elaborateDeclarationTyping(D);
 }
 
 void Elaborator::delayElaborateDefaultParam(Declaration *ParamDecl) {
+  BALANCE_DBG();
   assert(SemaRef.CurrentLateMethodDecl && "Late method decl not set");
   SemaRef.CurrentLateMethodDecl->DefaultArgs.emplace_back(ParamDecl);
 }
@@ -6154,6 +6242,8 @@ void Elaborator::lateElaborateAttributes(ElaboratingClass &Class) {
 }
 
 void Elaborator::lateElaborateMethodDecls(ElaboratingClass &Class) {
+  BALANCE_DBG();
+
   // If the current class is a template re-enter the template before we continue.
   bool HasTemplateScope = !Class.IsTopLevelClass && Class.TemplateScope;
   Sema::ClangScopeRAII ClassTemplateScope(SemaRef,
@@ -6191,12 +6281,14 @@ void Elaborator::lateElaborateMethodDecls(ElaboratingClass &Class) {
 }
 
 void Elaborator::lateElaborateDefaultParams(ElaboratingClass &Class) {
+  BALANCE_DBG();
   for (size_t i = 0; i < Class.LateElaborations.size(); ++i) {
     Class.LateElaborations[i]->ElaborateDefaultParams();
   }
 }
 
 void Elaborator::lateElaborateMemberInitializers(ElaboratingClass &Class) {
+  BALANCE_DBG();
   bool CurrentlyNested = !Class.IsTopLevelClass;
 
   Sema::ClangScopeRAII MemberInitScope(SemaRef, clang::Scope::DeclScope |
@@ -6230,6 +6322,7 @@ void Elaborator::lateElaborateMemberInitializers(ElaboratingClass &Class) {
 }
 
 void Elaborator::lateElaborateMethodDefs(ElaboratingClass &Class) {
+  BALANCE_DBG();
   bool CurrentlyNested = !Class.IsTopLevelClass;
   Sema::ClangScopeRAII MethodDefScope(SemaRef, clang::Scope::DeclScope |
     clang::Scope::ClassScope, clang::SourceLocation(), CurrentlyNested);
@@ -6252,7 +6345,48 @@ void Elaborator::lateElaborateAttribute(LateElaboratedAttributeDecl &Field) {
       "really know.");
 }
 
+
+void Elaborator::lateElaborateMemberInitializer(
+    LateElaborateMemberInitializer &MemberInit) {
+  BALANCE_DBG();
+  assert(MemberInit.D && "Invalid declaration detected.");
+  assert(MemberInit.D->isFieldDecl()
+         && "Declaration doesn't declare a field.\n");
+
+  // Start delayed member This occurs for each member initializer within a
+  // given class.
+  elaborateDefinitionInitialization(MemberInit.D);
+}
+
+void Elaborator::lateElaborateMethodDecl(
+    LateElaboratedMethodDeclaration &Method) {
+  BALANCE_DBG();
+  Sema::ClangScopeRAII FunctionDeclScope(SemaRef, clang::Scope::DeclScope |
+      clang::Scope::FunctionPrototypeScope |
+      clang::Scope::FunctionDeclarationScope,
+      clang::SourceLocation());
+  Sema::LateMethodRAII MethodTracking(SemaRef, &Method);
+  elaborateDeclarationTyping(Method.D);
+  // This is to check if the method delcaration was a success and in the event
+  // that it is we need to finish the exception specifier after the end of the
+  // class.
+  if (Method.D->getCxx()) {
+    if (auto FD = dyn_cast<clang::FunctionDecl>(Method.D->getCxx())) {
+      if (FD->getExceptionSpecType() == clang::EST_Unparsed) {
+        if (!Method.D->getInitializer()) {
+          SemaRef.getCurrentElaboratingClass().LateElaborations.push_back(
+            new LateElaboratedMethodDef(SemaRef, Method.D)
+          );
+        }
+      }
+    }
+  }
+  SemaRef.getCxxSema().ActOnFinishDelayedCXXMethodDeclaration(
+      SemaRef.getCurClangScope(), Method.D->getCxx());
+}
+
 void Elaborator::lateElaborateMethodDef(LateElaboratedMethodDef &Method) {
+  BALANCE_DBG();
   if (!Method.D->getCxx())
     return;
   // Finish exception spec before method body?
@@ -6281,51 +6415,19 @@ void Elaborator::lateElaborateMethodDef(LateElaboratedMethodDef &Method) {
 }
 
 
-void Elaborator::lateElaborateMemberInitializer(
-    LateElaborateMemberInitializer &MemberInit) {
-  assert(MemberInit.D && "Invalid declaration detected.");
-  assert(MemberInit.D->isFieldDecl()
-         && "Declaration doesn't declare a field.\n");
 
-  // Start delayed member This occurs for each member initializer within a
-  // given class.
-  elaborateDefinitionInitialization(MemberInit.D);
-}
 
-void Elaborator::lateElaborateMethodDecl(
-    LateElaboratedMethodDeclaration &Method) {
-  Sema::ClangScopeRAII FunctionDeclScope(SemaRef, clang::Scope::DeclScope |
-      clang::Scope::FunctionPrototypeScope |
-      clang::Scope::FunctionDeclarationScope,
-      clang::SourceLocation());
-  Sema::LateMethodRAII MethodTracking(SemaRef, &Method);
-  elaborateDeclarationTyping(Method.D);
-  // This is to check if the method delcaration was a success and in the event
-  // that it is we need to finish the exception specifier after the end of the
-  // class.
-  if (Method.D->getCxx()) {
-    if (auto FD = dyn_cast<clang::FunctionDecl>(Method.D->getCxx())) {
-      if (FD->getExceptionSpecType() == clang::EST_Unparsed) {
-        if (!Method.D->getInitializer()) {
-          SemaRef.getCurrentElaboratingClass().LateElaborations.push_back(
-            new LateElaboratedMethodDef(SemaRef, Method.D)
-          );
-        }
-      }
-    }
-  }
-  SemaRef.getCxxSema().ActOnFinishDelayedCXXMethodDeclaration(
-      SemaRef.getCurClangScope(), Method.D->getCxx());
-}
 
 void Elaborator::lateElaborateDefaultParams(
     LateElaboratedMethodDeclaration &MethodDecl) {
+  BALANCE_DBG();
   for(LateElaboratedDefaultArgument &Arg : MethodDecl.DefaultArgs)
     lateElaborateDefaultParam(Arg);
 }
 
 void Elaborator::lateElaborateDefaultParam(
     LateElaboratedDefaultArgument &DefaultParam) {
+  BALANCE_DBG();
   elaborateDefinitionInitialization(DefaultParam.Param);
 }
 

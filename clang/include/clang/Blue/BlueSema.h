@@ -219,15 +219,15 @@ public:
   /// This functions will be responsible for converting an expression into
   /// a TInfo and reporting if it fails, it shall return nullptr in the
   /// event it fails.
-  clang::TypeSourceInfo *getTypeSourceInfoFromExpr(const clang::Expr *TyExpr,
+  clang::TypeSourceInfo *getTypeSourceInfoFromExpr(clang::Expr *TyExpr,
                              clang::SourceLocation Loc=clang::SourceLocation());
 
   /// This simply checks and extracts the QualType from a type expression.
   /// This can return a QualType where .isNull() is true,
-  clang::QualType getQualTypeFromTypeExpr(const clang::Expr *TyExpr);
+  // clang::QualType getQualTypeFromTypeExpr(clang::Expr *TyExpr);
 
 
-  clang::ParsedType getParsedTypeFromExpr(const clang::Expr *TyExpr,
+  clang::ParsedType getParsedTypeFromExpr(clang::Expr *TyExpr,
                              clang::SourceLocation Loc=clang::SourceLocation());
 
   clang::CppxDeclRefExpr *buildNSDeclRef(clang::CppxNamespaceDecl *D,
@@ -281,7 +281,9 @@ private:
 public:
   Declaration *getDeclaration(clang::Decl *Cxx);
 
-
+  // clang::Expr *buildReferenceToDecl(clang::SourceLocation Loc,
+  //                                   clang::LookupResult &R,
+  //                                   bool IsKnownOverload);
 //===----------------------------------------------------------------------===//
 //                      Partial Expr Creation                                 //
 //===----------------------------------------------------------------------===//
@@ -293,12 +295,14 @@ public:
                                                 clang::Expr *BaseExpr);
   bool memberAccessNeedsPartialExpr(clang::Expr *LHS, clang::IdentifierInfo *Id,
                                     clang::SourceLocation IdLoc);
+  bool isThisValidInCurrentScope();
 //===----------------------------------------------------------------------===//
 //                               RAII Objects                                 //
 //===----------------------------------------------------------------------===//
 
 public:
-// An RAII type for constructing scopes.
+
+  // An RAII type for constructing scopes.
   struct ScopeRAII {
     ScopeRAII(Sema &S, Scope::Kind K, const Syntax *ConcreteTerm,
               Scope **SavedScope = nullptr)
@@ -828,7 +832,111 @@ private:
 // using OptionalScopeRAII = OptionalInitScope<Sema::
 using OptionalScopeRAII = OptionalInitScope<Sema::ScopeRAII>;
 using OptionalResumeScopeRAII = OptionalInitScope<ResumeScopeRAII>;
-using OptioanlClangScopeRAII = OptionalInitScope<Sema::ClangScopeRAII>;
+using OptionalClangScopeRAII = OptionalInitScope<Sema::ClangScopeRAII>;
+struct ElabBalanceChecker {
+  Sema &SemaRef;
+  Declaration *PrevDecl = nullptr;
+  clang::DeclContext *PrevDC = nullptr;
+  clang::Scope *PrevClangScope = nullptr;
+  Scope *PrevBlueScope = nullptr;
+  ElabBalanceChecker(Sema &S)
+    :SemaRef(S),
+    PrevDecl(SemaRef.getCurrentDecl()),
+    PrevDC(SemaRef.getCurClangDeclContext()),
+    PrevClangScope(SemaRef.getCurClangScope()),
+    PrevBlueScope(SemaRef.getCurrentScope())
+  { }
+
+  ~ElabBalanceChecker() {
+    bool didError = false;
+    if (PrevDecl != SemaRef.getCurrentDecl()) {
+      didError = true;
+      llvm::outs() << "=====================================================\n";
+      llvm::outs() << "Dumping current gold declaration\n";
+      llvm::outs() << "=====================================================\n";
+      SemaRef.getCurrentDecl()->dump();
+      llvm::outs() << "=====================================================\n";
+      llvm::outs() << "Dumping previous gold declaration\n";
+      llvm::outs() << "=====================================================\n";
+      PrevDecl->dump();
+      llvm::outs() << "=====================================================\n";
+    }
+
+    if (PrevClangScope != SemaRef.getCurClangScope()) {
+      didError = true;
+      llvm::outs() << "=====================================================\n";
+      llvm::outs() << "Dumping current clang scope\n";
+      clang::Scope *CurScope = SemaRef.getCurClangScope();
+      while(CurScope) {
+        llvm::outs() << "=====================================================\n";
+        CurScope->dump();
+        if (CurScope->getEntity()) {
+          llvm::outs() << "Dumping Entity = ";
+          if (auto Ent = dyn_cast<clang::Decl>(CurScope->getEntity())) {
+            Ent->dump();
+          } else {
+            llvm::outs() << "Entity isn't a declaration\n";
+          }
+        }
+        CurScope = CurScope->getParent();
+      }
+
+      llvm::outs() << "=====================================================\n";
+      llvm::outs() << "Dumping expected clang scope\n";
+      CurScope = PrevClangScope;
+      while(CurScope) {
+        llvm::outs() << "=====================================================\n";
+        CurScope->dump();
+        if (CurScope->getEntity()) {
+          llvm::outs() << "Dumping Entity = ";
+          if (auto Ent = dyn_cast<clang::Decl>(CurScope->getEntity())) {
+            Ent->dump();
+          } else {
+            llvm::outs() << "Entity isn't a declaration\n";
+          }
+        }
+        CurScope = CurScope->getParent();
+      }
+      llvm::outs() << "=====================================================\n";
+    }
+
+    if (PrevDC != SemaRef.getCurClangDeclContext()) {
+      didError = true;
+      llvm::outs() << "=====================================================\n";
+      llvm::outs() << "Dumping current DeclContext\n";
+      llvm::outs() << "=====================================================\n";
+      SemaRef.getCurClangDeclContext()->dumpDeclContext();
+      if (auto TempDcl = dyn_cast<clang::Decl>(SemaRef.getCurClangDeclContext())) {
+        TempDcl->dump();
+      } else {
+        llvm::outs() << "Current decl context isn't a clang::decl.\n";
+      }
+      llvm::outs() << "=====================================================\n";
+      llvm::outs() << "Dumping expected DeclContext\n";
+      llvm::outs() << "=====================================================\n";
+      PrevDC->dumpDeclContext();
+      if (auto TempDcl = dyn_cast<clang::Decl>(PrevDC)) {
+        TempDcl->dump();
+      } else {
+        llvm::outs() << "Current decl context isn't a clang::decl.\n";
+      }
+      llvm::outs() << "=====================================================\n";
+    }
+    if (PrevBlueScope != SemaRef.getCurrentScope()) {
+      didError = true;
+      llvm::outs() << "=====================================================\n";
+      llvm::outs() << "Dumping current gold scope\n";
+      llvm::outs() << "=====================================================\n";
+      SemaRef.getCurrentScope()->dump();
+      llvm::outs() << "=====================================================\n";
+      llvm::outs() << "Dumping previous gold scope\n";
+      llvm::outs() << "=====================================================\n";
+      PrevBlueScope->dump();
+      llvm::outs() << "=====================================================\n";
+    }
+    assert(!didError && "Pre/post/invariant condition violation");
+  }
+};
 } // end namespace blue
 
 #endif

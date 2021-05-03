@@ -86,7 +86,7 @@ public:
 
   clang::Decl *elaborateDeclarationTyping(Declaration *D);
   void elaborateTemplateParameters(OptionalScopeRAII &TemplateScope,
-                                   OptioanlClangScopeRAII &ClangTemplateScope,
+                                   OptionalClangScopeRAII &ClangTemplateScope,
                                    Declaration *D, Declarator *Dcl);
   void buildTemplateParams(const ListSyntax *Params,
                            llvm::SmallVectorImpl<clang::NamedDecl *> &Res);
@@ -201,7 +201,7 @@ public:
   void elaborateTemplateArgs(const EnclosureSyntax *Enc, const ListSyntax *ArgList,
                              clang::TemplateArgumentListInfo &TemplateArgs,
                    llvm::SmallVectorImpl<clang::TemplateArgument> &ActualArgs);
-  clang::Expr *elabortateTemplateInstantiationWithArgs(const EnclosureSyntax *Enc, clang::Expr *Base,
+  clang::Expr *elaborateTemplateInstantiationWithArgs(const EnclosureSyntax *Enc, clang::Expr *Base,
                                                     const ListSyntax *ArgList);
   clang::Expr *elaborateClassTemplateSelection(clang::Expr *IdExpr,
                                                const EnclosureSyntax *Enc,
