@@ -186,15 +186,80 @@ PartialNameAccessExprImpl::normalAccess_appendName_updateTransition(
       SemaRef.getCxxSema().Diags.Report(Loc, clang::diag::err_no_member)
                                         << NonNameLHS << Parm;
       return nullptr;
-    } else if (isa<clang::FieldDecl>(RHSDecl)) {
-      // Reference the field by name and construct the correct member
-      // access expression.
-      return buildKnownMemberExpr(Loc, R.getLookupName().getAsIdentifierInfo());
+    } else if (auto FD = dyn_cast<clang::FieldDecl>(RHSDecl)) {
+      clang::RecordDecl *RD = FD->getParent();
+      clang::QualType MemberTy(RD->getTypeForDecl(), 0);
+      // If we have a NonNameLHS than we don't do anything here and just construct
+      // the member expression
+      if (NonNameLHS) {
+        return buildKnownMemberExpr(Loc, R.getLookupName().getAsIdentifierInfo());
+      }
+      clang::QualType CurThisTy = SemaRef.getCxxSema().getCurrentThisType();
+      if (CurThisTy.isNull()) {
+        // This can't logically happen because if we are not inside of a class
+        // and a LHS expression is a type then it isn't processed as a nested
+        // name specifier.
+        llvm_unreachable("Referencing a member without being inside a class "
+                        "and without an object.");
+      }
+      clang::QualType CurrentClass = CurThisTy->getPointeeType();
+      assert (!CurrentClass.isNull() && "invalid pointee type.");
+      // if the type we are referencing is a base of the type we are inside
+      // the we can build a member expression. If it isn't then we should
+      // build a DeclRefExpr.
+      if (SemaRef.getCxxSema().IsDerivedFrom(Loc, CurrentClass, MemberTy)) {
+        // Reference the field by name and construct the correct member
+        // access expression.
+        return buildKnownMemberExpr(Loc, R.getLookupName().getAsIdentifierInfo());
 
-    } else if (isa<clang::CXXMethodDecl>(RHSDecl)) {
-      // I need to make sure that this is in fact not a construct, or destructor
-      // name (if we even have those).
-      return buildKnownMemberExpr(Loc, R.getLookupName().getAsIdentifierInfo());
+      }
+      // In this case we are referencing a class we are not in side of,
+      // and won't have an implicit this expression.
+      return clang::DeclRefExpr::Create(SemaRef.getCxxAST(),
+                                  SS.getWithLocInContext(SemaRef.getCxxAST()),
+                                        clang::SourceLocation(), FD,
+                                        /*Capture=*/false, Loc,
+                                        FD->getType(), clang::VK_LValue);
+    } else if (auto MD = dyn_cast<clang::CXXMethodDecl>(RHSDecl)) {
+      clang::CXXRecordDecl *RD = MD->getParent();
+      clang::QualType MemberTy(RD->getTypeForDecl(), 0);
+
+      // If we have a NonNameLHS than we don't do anything here and just construct
+      // the member expression
+      if (NonNameLHS) {
+        return buildKnownMemberExpr(Loc, R.getLookupName().getAsIdentifierInfo());
+      }
+      clang::QualType CurThisTy = SemaRef.getCxxSema().getCurrentThisType();
+      if (CurThisTy.isNull()) {
+        // This can't logically happen because if we are not inside of a class
+        // and a LHS expression is a type then it isn't processed as a nested
+        // name specifier.
+        llvm_unreachable("Referencing a member without being inside a class "
+                        "and without an object.");
+      }
+      clang::QualType CurrentClass = CurThisTy->getPointeeType();
+      assert (!CurrentClass.isNull() && "invalid pointee type.");
+      // if the type we are referencing is a base of the type we are inside
+      // the we can build a member expression. If it isn't then we should
+      // build a DeclRefExpr.
+      if (SemaRef.getCxxSema().IsDerivedFrom(Loc, CurrentClass, MemberTy)) {
+        // Reference the field by name and construct the correct member
+        // access expression.
+        return buildKnownMemberExpr(Loc, R.getLookupName().getAsIdentifierInfo());
+
+      }
+      // In this case we are referencing a class we are not in side of,
+      // and won't have an implicit this expression.
+      return clang::UnresolvedLookupExpr::Create(SemaRef.getCxxAST(), RD,
+                                    SS.getWithLocInContext(SemaRef.getCxxAST()),
+                                                 R.getLookupNameInfo(),
+                                                 // Not sure if needs ADL or
+                                                 // not it's going to depend on
+                                                 // the kind of function it is.
+                                                 /*ADL=*/false,
+                                                 /*Overloaded*/false,
+                                                 R.begin(),
+                                                 R.end());
 
     } else {
       // This is an error and we are not sure how to handle this!
@@ -303,13 +368,80 @@ PartialNameAccessExprImpl::baseQualified_appendName_updateTransition(
                                         << NonNameLHS << Parm ;
       return nullptr;
 
-    } else if (isa<clang::FieldDecl>(RHSDecl)) {
-      return buildKnownMemberExpr(Loc, R.getLookupName().getAsIdentifierInfo());
+    } else if (auto FD = dyn_cast<clang::FieldDecl>(RHSDecl)) {
+      clang::RecordDecl *RD = FD->getParent();
+      clang::QualType MemberTy(RD->getTypeForDecl(), 0);
+      // If we have a NonNameLHS than we don't do anything here and just construct
+      // the member expression
+      if (NonNameLHS) {
+        return buildKnownMemberExpr(Loc, R.getLookupName().getAsIdentifierInfo());
+      }
+      clang::QualType CurThisTy = SemaRef.getCxxSema().getCurrentThisType();
+      if (CurThisTy.isNull()) {
+        // This can't logically happen because if we are not inside of a class
+        // and a LHS expression is a type then it isn't processed as a nested
+        // name specifier.
+        llvm_unreachable("Referencing a member without being inside a class "
+                        "and without an object.");
+      }
+      clang::QualType CurrentClass = CurThisTy->getPointeeType();
+      assert (!CurrentClass.isNull() && "invalid pointee type.");
+      // if the type we are referencing is a base of the type we are inside
+      // the we can build a member expression. If it isn't then we should
+      // build a DeclRefExpr.
+      if (SemaRef.getCxxSema().IsDerivedFrom(Loc, CurrentClass, MemberTy)) {
+        // Reference the field by name and construct the correct member
+        // access expression.
+        return buildKnownMemberExpr(Loc, R.getLookupName().getAsIdentifierInfo());
 
-    } else if (isa<clang::CXXMethodDecl>(RHSDecl)) {
-      // I need to make sure that this is in fact not a construct, or destructor
-      // name (if we even have those).
-      return buildKnownMemberExpr(Loc, R.getLookupName().getAsIdentifierInfo());
+      }
+      // In this case we are referencing a class we are not in side of,
+      // and won't have an implicit this expression.
+      return clang::DeclRefExpr::Create(SemaRef.getCxxAST(),
+                                  SS.getWithLocInContext(SemaRef.getCxxAST()),
+                                        clang::SourceLocation(), FD,
+                                        /*Capture=*/false, Loc,
+                                        FD->getType(), clang::VK_LValue);
+    } else if (auto MD = dyn_cast<clang::CXXMethodDecl>(RHSDecl)) {
+      clang::CXXRecordDecl *RD = MD->getParent();
+      clang::QualType MemberTy(RD->getTypeForDecl(), 0);
+
+      // If we have a NonNameLHS than we don't do anything here and just construct
+      // the member expression
+      if (NonNameLHS) {
+        return buildKnownMemberExpr(Loc, R.getLookupName().getAsIdentifierInfo());
+      }
+      clang::QualType CurThisTy = SemaRef.getCxxSema().getCurrentThisType();
+      if (CurThisTy.isNull()) {
+        // This can't logically happen because if we are not inside of a class
+        // and a LHS expression is a type then it isn't processed as a nested
+        // name specifier.
+        llvm_unreachable("Referencing a member without being inside a class "
+                        "and without an object.");
+      }
+      clang::QualType CurrentClass = CurThisTy->getPointeeType();
+      assert (!CurrentClass.isNull() && "invalid pointee type.");
+      // if the type we are referencing is a base of the type we are inside
+      // the we can build a member expression. If it isn't then we should
+      // build a DeclRefExpr.
+      if (SemaRef.getCxxSema().IsDerivedFrom(Loc, CurrentClass, MemberTy)) {
+        // Reference the field by name and construct the correct member
+        // access expression.
+        return buildKnownMemberExpr(Loc, R.getLookupName().getAsIdentifierInfo());
+
+      }
+      // In this case we are referencing a class we are not in side of,
+      // and won't have an implicit this expression.
+      return clang::UnresolvedLookupExpr::Create(SemaRef.getCxxAST(), RD,
+                                    SS.getWithLocInContext(SemaRef.getCxxAST()),
+                                                 R.getLookupNameInfo(),
+                                                 // Not sure if needs ADL or
+                                                 // not it's going to depend on
+                                                 // the kind of function it is.
+                                                 /*ADL=*/false,
+                                                 /*Overloaded*/false,
+                                                 R.begin(),
+                                                 R.end());
 
     } else {
       error(Loc) << "invalid name expression";

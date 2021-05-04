@@ -711,8 +711,7 @@ C : type = {
 }
 
 )BLUE";
-  // FIXME: fix the type to this once I know what it should be.
-  auto ToMatch = varDecl(hasName("memberPtr"), hasType(asString("long long int")));
+  auto ToMatch = varDecl(hasName("memberPtr"), hasType(asString("void (struct B::*)(void)")));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
@@ -732,7 +731,8 @@ C : type = {
 }
 
 )BLUE";
-  // FIXME: fix the type to this once I know what it should be.
+  // FIXME: I don't know how to write a member function pointer in blue/what
+  // they actually look like
   auto ToMatch = varDecl(hasName("memberPtr"), hasType(asString("long long int")));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
@@ -749,8 +749,7 @@ C : type = {
 }
 
 )BLUE";
-  // FIXME: fix the type to this once I know what it should be.
-  auto ToMatch = varDecl(hasName("memberPtr"), hasType(asString("long long int")));
+  auto ToMatch = varDecl(hasName("memberPtr"), hasType(asString("int struct B::*")));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
