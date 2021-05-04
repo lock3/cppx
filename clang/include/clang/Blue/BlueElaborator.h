@@ -95,6 +95,7 @@ public:
   clang::Decl *elaborateTypeAliasOrVariableTemplate(Declaration *D);
 
   Declaration *elaborateTemplateParameter(const Syntax *Parm);
+  Declaration *elaborateTemplateTemplateParameter(Declaration *D);
 
   void elaborateParameters(const ListSyntax *S);
 

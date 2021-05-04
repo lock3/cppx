@@ -557,8 +557,6 @@ void Elaborator::elaborateTemplateParameters(OptionalScopeRAII &TemplateScope,
 
   // Constructing actual parameters.
   llvm::SmallVector<clang::NamedDecl *, 4> TemplateParamDecls;
-  // if (!TPD->isImplicitlyEmpty()) {
-    // Elaborator El(SemaRef.getContext(), SemaRef);
   auto TS = cast<TemplateSyntax>(Dcl->getInfo());
   auto Enc = dyn_cast<EnclosureSyntax>(TS->getParameters());
   if (!Enc)
@@ -814,7 +812,8 @@ Declaration *Elaborator::elaborateTemplateParameter(const Syntax *Parm) {
     // TODO: Create an error message for this.
     llvm_unreachable("Invalid parameter");
   }
-  // clang::DeclContext *Owner = D->getOwningDeclContext();
+
+// clang::DeclContext *Owner = D->getOwningDeclContext();
 //   if (isa<clang::LinkageSpecDecl>(Owner)) {
 //     SemaRef.Diags.Report(D->Op->getLoc(),
 //                          clang::diag::err_invalid_extern_c)
@@ -822,7 +821,10 @@ Declaration *Elaborator::elaborateTemplateParameter(const Syntax *Parm) {
 //     return nullptr;
 //   }
 
-//   ExprElaborator TypeElab(Context, SemaRef);
+  // Building the template template parameter.
+  if (D->declaratorContainsTemplate())
+    return elaborateTemplateTemplateParameter(D);
+
   clang::Expr *TyExpr = elaborateDeclarator(D->Decl);
   if (!TyExpr){
     getCxxSema().Diags.Report(D->Decl->getLocation(),
@@ -880,6 +882,27 @@ Declaration *Elaborator::elaborateTemplateParameter(const Syntax *Parm) {
   D->setCxx(SemaRef, NTTP);
   D->CurrentPhase = Phase::Typing;
   return D;
+}
+
+Declaration *Elaborator::elaborateTemplateTemplateParameter(Declaration *D) {
+  BALANCE_DBG();
+  // Building template template parameter.
+  OptionalScopeRAII TemplateParamScope(SemaRef);
+  OptionalClangScopeRAII ClangTemplateScope(SemaRef);
+
+  // Handling template declarations.
+  elaborateTemplateParameters(TemplateParamScope, ClangTemplateScope, D,
+                              D->Decl);
+  clang::DeclContext *Owner = D->DeclaringContext;
+  auto TTPD = clang::TemplateTemplateParmDecl::Create(SemaRef.getCxxAST(),
+                                                      Owner,
+                                                      D->getErrorLocation(), 0,
+                                                      0, /*Pack=*/false, D->Id,
+                                               D->TemplateParamStorage.front());
+  D->CurrentPhase = Phase::Typing;
+  D->setCxx(SemaRef, TTPD);
+  return D;
+
 }
 
 void Elaborator::elaborateParameters(const ListSyntax *S) {

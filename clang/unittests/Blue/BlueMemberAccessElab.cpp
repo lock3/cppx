@@ -781,70 +781,70 @@ C : type = {
 }
 
 
-// TEST(BlueMemberAccess, NameDisambiguationForTemplateArguments_TemplateTemplateArg) {
-//   StringRef Code = R"BLUE(
+TEST(BlueMemberAccess, NameDisambiguationForTemplateArguments_TemplateTemplateArg) {
+  StringRef Code = R"BLUE(
 
-// A :[Template:[T:type]->type] ->type = {
-//   Ty : type = Template;
-// }
+A :[Template:[T:type]->type] ->type = {
+  Ty : type = Template[int];
+}
 
-// A2 :[T:type] ->type = {
-//   i:int;
-// }
+A2 :[T:type] ->type = {
+  i:int;
+}
 
-// B : type = {
-//   IntegerType : type = int;
-// }
+B : type = {
+  IntegerType : type = int;
+}
 
-// C : type = {
-//   :B;
-//   i:int;
-//   foo: (inout this) -> void = {
-//     var:A[A2].Ty;
-//   }
-// }
-// )BLUE";
-//   auto ToMatch =
-//     varDecl(
-//       hasName("var"),
-//       hasType(asString("int"))
-//     );
-//   ASSERT_TRUE(matches(Code.str(), ToMatch));
-// }
+C : type = {
+  :B;
+  i:int;
+  foo: (inout this) -> void = {
+    var:A[A2].Ty;
+  }
+}
+)BLUE";
+  auto ToMatch =
+    varDecl(
+      hasName("var"),
+      hasType(asString("A<A2>::Ty"))
+    );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
 
-// TEST(BlueMemberAccess, NameDisambiguationForTemplateArguments_TemplateTemplateArg_FromInsideANamespace) {
-//   StringRef Code = R"BLUE(
+TEST(BlueMemberAccess, NameDisambiguationForTemplateArguments_TemplateTemplateArg_FromInsideANamespace) {
+  StringRef Code = R"BLUE(
 
-// A :[Template:[T:type]->type] ->type = {
-//   Ty : type = Template[int];
-// }
+A :[Template:[T:type]->type] ->type = {
+  Ty : type = Template[int];
+}
 
-// NS:namespace = {
+NS:namespace = {
 
-//   A2 :[T:type] -> type = {
-//     i:int;
-//   }
-// }
+  A2 :[T:type] -> type = {
+    i:int;
+  }
+}
 
-// B : type = {
-//   IntegerType : type = int;
-// }
+B : type = {
+  IntegerType : type = int;
+}
 
-// C : type = {
-//   :B;
-//   i:int;
-//   foo: (inout this) -> void = {
-//     var:A[NS.A2].Ty;
-//   }
-// }
-// )BLUE";
-//   auto ToMatch =
-//     varDecl(
-//       hasName("var"),
-//       hasType(asString("int"))
-//     );
-//   ASSERT_TRUE(matches(Code.str(), ToMatch));
-// }
+C : type = {
+  :B;
+  i:int;
+  foo: (inout this) -> void = {
+    var:A[NS.A2].Ty;
+  }
+}
+)BLUE";
+  auto ToMatch =
+    varDecl(
+      hasName("var"),
+      hasType(asString("A<A2>::Ty"))
+    );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
 
 
 TEST(BlueMemberAccess, BaseClassDisambiguationThroughTemplateAlias_InDerived) {
