@@ -28,6 +28,7 @@
 #include "clang/Sema/ParsedTemplate.h"
 #include "clang/Sema/TypeLocUtil.h"
 
+#include "clang/Blue/BlueDependentExprTransformer.h"
 #include "clang/Blue/BlueElaborator.h"
 #include "clang/Blue/BluePartialExpr.h"
 #include "clang/Blue/BlueScope.h"
@@ -830,9 +831,20 @@ Sema::getTypeSourceInfoFromExpr(clang::Expr *TyExpr,
   if (!TyExpr->getType()->isTypeOfTypes()) {
     if (auto Partial = dyn_cast<clang::CppxPartialEvalExpr>(TyExpr)) {
       clang::Expr *E2 = Partial->completeExpr();
-      if (E2)
+      if (E2) {
+        if (const clang::CppxTypeLiteral *Lit
+                                   = dyn_cast<clang::CppxTypeLiteral>(E2)) {
+          clang::QualType NewTy = Lit->getValue()->getType();
+          if (auto ElabTy = dyn_cast<clang::ElaboratedType>(NewTy)) {
+            return gold::BuildAnyTypeLoc(Context.CxxAST,
+                                         ElabTy->getNamedType(),
+                                         Loc);
+          }
+        }
         return getTypeSourceInfoFromExpr(E2);
+      }
     }
+    assert(false);
     getCxxSema().Diags.Report(Loc, clang::diag::err_not_a_type);
     return nullptr;
   }
@@ -848,6 +860,8 @@ Sema::getTypeSourceInfoFromExpr(clang::Expr *TyExpr,
 clang::CppxTypeLiteral *Sema::buildTypeExprTypeFromExpr(clang::Expr *E,
                                                     clang::SourceLocation Loc,
                                                     bool IsConstruct) {
+  assert(!isa<clang::CppxTypeLiteral>(E) && "unable to rebuild a type expression "
+         "that is already a type expression.");
   return buildAnyTypeExpr(Context.CxxAST.CppxKindTy,
                           gold::BuildAnyTypeLoc(Context.CxxAST,
                                           Context.CxxAST.getCppxTypeExprTy(
@@ -1163,121 +1177,12 @@ Declaration *Sema::getDeclaration(clang::Decl *Cxx) {
 
   return Iter->second;
 }
-/*
-  std::string Name = R.getLookupName().getAsString();
-  if (IsKnownOverload) {
-    llvm_unreachable("We haven't implemented overload references yet.");
-  }
-  // assert(FoundDecl && "Incorrectly set found declaration.");
-  if (clang::ValueDecl *VD = R.getAsSingle<clang::ValueDecl>()) {
-    // clang::QualType FoundTy = VD->getType();
-    // If the user annotated the DeclRefExpr with an incorrect type.
-    // if (!Ty.isNull() && Ty != FoundTy) {
-    //   SemaRef.getCxxSema().Diags.Report(Loc,
-    //     clang::diag::err_type_annotation_mismatch) << FoundTy << Ty;
-    //   return nullptr;
-    // }
-
-    if (isa<clang::FieldDecl>(VD)) {
-      // FIXME: Write a test for this!
-      // Building this access.
-      // clang::FieldDecl* Field = cast<clang::FieldDecl>(VD);
-      // clang::RecordDecl* RD = Field->getParent();
-      // clang::QualType ThisTy(RD->getTypeForDecl(), 0);
-      // clang::QualType ThisPtrTy = SemaRef.getContext().CxxAST.getPointerType(
-      //                                                                 ThisTy);
-      // clang::Expr* This = SemaRef.getCxxSema().BuildCXXThisExpr(Loc,
-      //                                                           ThisPtrTy,
-      //                                                           true);
-
-      // clang::DeclAccessPair FoundDecl = clang::DeclAccessPair::make(Field,
-      //                                                     Field->getAccess());
-      // clang::CXXScopeSpec SS;
-      // clang::ExprResult MemberExpr
-      //     = SemaRef.getCxxSema().BuildFieldReferenceExpr(This, true,
-      //                                                 clang::SourceLocation(),
-      //                                                     SS, Field, FoundDecl,
-      //                                                     DNI);
-      // clang::Expr *Ret = MemberExpr.get();
-      // if (!Ret) {
-      //   SemaRef.Diags.Report(Loc, clang::diag::err_no_member)
-      //       << Field << ThisTy;
-      // }
-      // ExprMarker(Context.CxxAST, SemaRef).Visit(Ret);
-      // return Ret;
-      llvm_unreachable("Reference to a Field decl not implemented yet.");
-    }
-    // Need to check if the result is a CXXMethodDecl because that's a
-    // ValueDecl.
-    if(isa<clang::CXXMethodDecl>(VD)) {
-      // FIXME: Write a test for this!
-      // clang::CXXScopeSpec SS;
-      // clang::SourceLocation Loc;
-      // // This may need to change into a different type of function call
-      // // base on given arguments, because this could be an issue.
-      // return SemaRef.getCxxSema().BuildPossibleImplicitMemberExpr(SS, Loc, R,
-      //                                                             nullptr,
-      //                                       SemaRef.getCurClangScope()).get();
-      // llvm_unreachable("Reference to a CXX Method decl not implemented yet.");
-    }
-
-    if(isa<clang::FunctionDecl>(VD)) {
-      // // Correctly rebuilding the declaration name info.
-      const clang::DeclarationNameInfo &DNI = R.getLookupNameInfo();
-      return clang::UnresolvedLookupExpr::Create(SemaRef.getCxxAST(),
-                                                  R.getNamingClass(),
-                                              clang::NestedNameSpecifierLoc(),
-                                                  DNI,
-                                                  // ADL=
-                                                  true, true,
-                                                  R.begin(), R.end());
-    }
-    // Simply assuming that this is a variable declaration.
-    clang::QualType ResultType = VD->getType();
-    if (ResultType.getTypePtr()->isReferenceType())
-      ResultType = ResultType.getTypePtr()->getPointeeType();
-
-    clang::ExprValueKind ValueKind =
-      SemaRef.getCxxSema().getValueKindForDeclReference(ResultType,
-                                                        VD, Loc);
-    clang::DeclRefExpr *DRE =
-      SemaRef.getCxxSema().BuildDeclRefExpr(VD, ResultType, ValueKind,
-                                            R.getLookupNameInfo(),
-                                            clang::NestedNameSpecifierLoc(),
-                                            VD, clang::SourceLocation(),
-                                            nullptr);
-    ExprMarker(SemaRef.getCxxAST(), SemaRef).Visit(DRE);
-    return DRE;
-  }
-
-  // Processing the case when the returned result is a type.
-  if (const clang::TagDecl *TD = R.getAsSingle<clang::TagDecl>())
-    return SemaRef.buildTypeExprFromTypeDecl(TD, Loc);
-
-  if (clang::ClassTemplateDecl *CTD
-                                = R.getAsSingle<clang::ClassTemplateDecl>())
-    return SemaRef.buildTemplateType(CTD, Loc);
-
-  if (auto *NS = R.getAsSingle<clang::CppxNamespaceDecl>())
-    return SemaRef.buildNSDeclRef(NS, Loc);
-
-
-  if (auto *TD = R.getAsSingle<clang::TypeDecl>())
-    return SemaRef.buildTypeExprFromTypeDecl(TD, Loc);
-
-  if (auto *TD = R.getAsSingle<clang::TemplateDecl>())
-    return SemaRef.buildTemplateType(TD, Loc);
-
-  SemaRef.getCxxSema().Diags.Report(Loc,
-                              clang::diag::err_identifier_not_declared_in_scope)
-                                   << Name;
-  return nullptr;*/
-
 
 clang::CppxPartialEvalExpr *Sema::createPartialExpr(clang::SourceLocation Loc,
                                                     bool IsWithinClass,
                                                     bool AllowImplicitThis,
-                                                    clang::Expr *BaseExpr) {
+                                                    clang::Expr *BaseExpr,
+                                           bool IsPartOfTemplateInstantiation) {
   PartialNameAccessExprImpl *PartialImpl = new PartialNameAccessExprImpl(*this);
   PartialImpl->BeginLocation = Loc;
   PartialImpl->EndLocation = Loc;
@@ -1286,8 +1191,8 @@ clang::CppxPartialEvalExpr *Sema::createPartialExpr(clang::SourceLocation Loc,
   PartialImpl->setIsWithinClass(IsWithinClass);
   PartialImpl->allowUseOfImplicitThis(AllowImplicitThis);
   PartialImpl->setBaseExpr(BaseExpr);
+  PartialImpl->setIsInsideTemplateInstantiation(IsPartOfTemplateInstantiation);
   return Ret;
-
 }
 
 bool Sema::memberAccessNeedsPartialExpr(clang::Expr *LHS,
@@ -1441,6 +1346,80 @@ void Sema::diagnoseElabCycleError(Declaration *CycleTerminalDecl) {
     getCxxSema().Diags.Report(CycleNote->Def->getLocation(),
                               clang::diag::note_cycle_entry);
   }
+}
+
+
+clang::QualType Sema::TransformCppxTypeExprType(
+    const clang::MultiLevelTemplateArgumentList &TemplateArgs,
+    clang::SourceLocation Loc, clang::DeclarationName Entity,
+    clang::TypeLocBuilder &TLB, clang::CppxTypeExprTypeLoc TL) {
+  auto Ty = TL.getType()->getAs<clang::CppxTypeExprType>();
+
+  assert(Ty && "invalid type pointer");
+  assert(Ty->getTyExpr() && "Invalid type expression");
+
+  DependentExprTransformer rebuilder(*this, Context, TemplateArgs, Loc, Entity);
+  clang::Expr *Ret = rebuilder.transformDependentExpr(Ty->getTyExpr());
+  if (!Ret)
+    // Returning an empty type because this was an error.
+    return clang::QualType();
+  clang::QualType OutTy;
+  clang::TypeSourceInfo *TInfo = nullptr;
+  if (Ty->isForConstruct()) {
+    OutTy = Ret->getType();
+    if (OutTy->isDependentType()) {
+      // This should never happen unless we have an impossible/invalid
+      // AST structure, that we failed to account for.
+      llvm_unreachable("Invalid type transformation");
+    }
+    if (OutTy->isPointerType()) {
+      OutTy = OutTy->getPointeeType();
+    } else {
+      getCxxSema().Diags.Report(Ret->getExprLoc(),
+                   clang::diag::err_construct_on_non_pointer_ty);
+      return clang::QualType();
+    }
+  } else {
+    TInfo = getTypeSourceInfoFromExpr(Ret, Ret->getExprLoc());
+    if (!TInfo)
+      return clang::QualType();
+
+    OutTy = TInfo->getType();
+  }
+  TInfo = gold::BuildAnyTypeLoc(Context.CxxAST, TLB, OutTy,
+                          Ty->getTyExpr()->getExprLoc());
+  return TInfo->getType();
+}
+
+clang::Expr *Sema::TransformCppxDependentMemberAccessExpr(
+    const clang::MultiLevelTemplateArgumentList &TemplateArgs,
+    clang::SourceLocation Loc, clang::DeclarationName Entity,
+    clang::CppxDependentMemberAccessExpr *E) {
+  DependentExprTransformer rebuilder(*this, Context, TemplateArgs, Loc, Entity);
+  return rebuilder.transformDependentExpr(E);
+}
+
+clang::Expr *Sema::TransformCppxTemplateOrArrayExpr(
+    const clang::MultiLevelTemplateArgumentList &TemplateArgs,
+    clang::SourceLocation Loc, clang::DeclarationName Entity,
+    clang::CppxTemplateOrArrayExpr *E) {
+  DependentExprTransformer rebuilder(*this, Context, TemplateArgs, Loc, Entity);
+  return rebuilder.transformDependentExpr(E);
+}
+
+clang::Expr *Sema::TransformCppxCallOrConstructorExpr(
+    const clang::MultiLevelTemplateArgumentList &TemplateArgs,
+    clang::SourceLocation Loc, clang::DeclarationName Entity,
+    clang::CppxCallOrConstructorExpr *E) {
+  DependentExprTransformer rebuilder(*this, Context, TemplateArgs, Loc, Entity);
+  return rebuilder.transformDependentExpr(E);
+}
+clang::Expr *Sema::TransformCppxDerefOrPtrExpr(
+    const clang::MultiLevelTemplateArgumentList &TemplateArgs,
+    clang::SourceLocation Loc, clang::DeclarationName Entity,
+    clang::CppxDerefOrPtrExpr *E) {
+  DependentExprTransformer rebuilder(*this, Context, TemplateArgs, Loc, Entity);
+  return rebuilder.transformDependentExpr(E);
 }
 
 clang::ParsedTemplateArgument Sema::convertExprToTemplateArg(clang::Expr *E) {

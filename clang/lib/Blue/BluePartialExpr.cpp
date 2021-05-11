@@ -767,7 +767,9 @@ static bool lookForNameInType(Sema &SemaRef,
                               clang::SourceLocation IdLoc,
                               clang::IdentifierInfo *Id,
                               clang::LookupResult &R) {
-
+  if (auto ElabTy = Ty->getAs<clang::ElaboratedType>()) {
+    Ty = ElabTy->desugar();
+  }
   const auto *TST = Ty->getAs<clang::TemplateSpecializationType>();
   if (!(Ty->isStructureOrClassType() || Ty->isUnionType()
         || Ty->isEnumeralType()) && !TST) {
@@ -777,13 +779,14 @@ static bool lookForNameInType(Sema &SemaRef,
     return true;
   }
 
+
   clang::TagDecl *TD = Ty->getAsTagDecl();
   // TODO: Implement using statements.
   // if (SemaRef.elaboratingUsingInClassScope() && TST) {
-  //   TD = cast<clang::TagDecl>(TST->getTemplateName().getAsTemplateDecl()
-  //                             ->getTemplatedDecl());
-  // }
-
+  if (TST){
+    TD = cast<clang::TagDecl>(TST->getTemplateName().getAsTemplateDecl()
+                              ->getTemplatedDecl());
+  }
   // Fetching declaration to ensure that we actually have the current scope
   // for lookup.
   // Attempthing to fetch the declaration now.
@@ -813,6 +816,38 @@ static bool lookForNameInType(Sema &SemaRef,
   return !R.empty();
 }
 
+static bool doOuterContextLookupContextLookup(clang::LookupResult &R,
+                                  clang::DeclContext *DC) {
+  assert(DC && "Missing DeclContext.");
+  while(DC) {
+    if (!DC->isLookupContext()) {
+      DC = DC->getLookupParent();
+      continue;
+    }
+    auto Dcls = DC->lookup(R.getLookupName());
+    if (!Dcls.empty()) {
+      for(auto D : Dcls) {
+        R.addDecl(D);
+      }
+      return false;
+    }
+    DC = DC->getLookupParent();
+  }
+  return true;
+}
+
+static bool doSimpleDCLookup(clang::LookupResult &R, clang::DeclContext *DC) {
+  assert(DC && "Invalid DeclContext");
+  auto Dcls = DC->lookup(R.getLookupName());
+  if (!Dcls.empty()) {
+    for(auto D : Dcls) {
+      R.addDecl(D);
+    }
+    return false;
+  }
+  return true;
+}
+
 clang::Expr *PartialNameAccessExprImpl::appendName(clang::SourceLocation L,
                                                    clang::IdentifierInfo *Id) {
   clang::DeclarationNameInfo DNI({Id}, L);
@@ -821,20 +856,76 @@ clang::Expr *PartialNameAccessExprImpl::appendName(clang::SourceLocation L,
   switch(State) {
     case BuildingNormalNameAccessExpr:{
       assert(CurExpr == NonNameLHS && "Precondition failure");
-      clang::QualType TyToLookInside = CurExpr->getType().getDesugaredType(
+      if (getIsInTemplateInstantiation()) {
+        clang::QualType Ty = CurExpr->getType().getDesugaredType(
                                                            SemaRef.getCxxAST());
-
-      // now we have to do normal lookup and to find the next declaration?
-      if (TyToLookInside->isPointerType())
-        TyToLookInside = TyToLookInside->getPointeeType();
-      if (!lookForNameInType(SemaRef, TyToLookInside,
-                            CurExpr->getExprLoc(), L, Id, R)) {
-        if (SemaRef.lookupUnqualifiedName(R, SemaRef.getCurrentScope())) {
-          std::string Msg = "unable to find '" + Id->getName().str() + "'";
-          error(L) << Msg;
+        if (Ty->isPointerType())
+          Ty = Ty->getPointeeType();
+        const auto *TST = Ty->getAs<clang::TemplateSpecializationType>();
+        if ( !(Ty->isStructureOrClassType() || Ty->isUnionType()
+              || Ty->isEnumeralType()) && !TST) {
+          SemaRef.getCxxSema().Diags.Report(L,
+                                    clang::diag::err_invalid_type_for_name_spec)
+                                        << Ty;
           return nullptr;
         }
-        R.resolveKind();
+        clang::TagDecl *TD = Ty->getAsTagDecl();
+        if (!TD) {
+          error(L) << "cannot access members from this type";
+          return nullptr;
+        }
+        if (doSimpleDCLookup(R, TD)) {
+          // SemaRef.getCurClangDeclContext()
+          // auto Sc = SemaRef.getCurClangScope();
+          // if (Sc) {
+          //   Sc->dump();
+          //   // Sc = Sc->getParent();
+          //   if (Sc->getEntity()) {
+          //     llvm::outs() << "Dumping the entity of the current scope\n";
+          //     Sc->getEntity()->dumpLookups();
+          //   }
+          //   llvm::outs() << "Dumping the Lookup entity from the current scope?\n";
+          //   Sc->getLookupEntity()->dumpLookups();
+          // } else {
+          //   llvm::outs() << "Clang scope not set right now\n";
+          // }
+          // NonNameLHS->getDeclContext();
+          if (SemaRef.getCxxSema().getFunctionLevelDeclContext()) {
+            llvm::outs() << "Current function level decl context\n";
+            SemaRef.getCxxSema().getFunctionLevelDeclContext()->dumpLookups();
+          }
+          if (doOuterContextLookupContextLookup(R, SemaRef.getCurClangDeclContext())) {
+            // llvm::outs() << "Dumping everything currently in scope\n";
+            // SemaRef.getCurClangDeclContext()->dumpLookups();
+            // if (auto D = dyn_cast<clang::Decl>(SemaRef.getCurClangDeclContext())) {
+            //   llvm::outs() << "Dumping current decl context because it's a declaration\n";
+            //   D->dump();
+            // }
+            // llvm::outs() << "Unable to find " << Id->getName().str()
+            //     << " appendName BuildingNormalNameAccessExpr Inside template?\n";
+            std::string Msg = "unable to find '" + Id->getName().str() + "'";
+            error(L) << Msg;
+            return nullptr;
+          }
+        }
+      } else {
+
+        clang::QualType TyToLookInside = CurExpr->getType().getDesugaredType(
+                                                            SemaRef.getCxxAST());
+
+        // now we have to do normal lookup and to find the next declaration?
+
+        if (!lookForNameInType(SemaRef, TyToLookInside,
+                              CurExpr->getExprLoc(), L, Id, R)) {
+          if (SemaRef.lookupUnqualifiedName(R, SemaRef.getCurrentScope())) {
+            llvm::outs() << "Unable to find " << Id->getName().str()
+               << "appendName BuildingNormalNameAccessExpr unqualified name?\n";
+            std::string Msg = "unable to find '" + Id->getName().str() + "'";
+            error(L) << Msg;
+            return nullptr;
+          }
+          R.resolveKind();
+        }
       }
       return normalAccess_appendName_updateTransition(L, R);
     }
@@ -842,11 +933,19 @@ clang::Expr *PartialNameAccessExprImpl::appendName(clang::SourceLocation L,
     case BuildingNamespaceExpr:{
         auto NsDcl = cast<clang::CppxNamespaceDecl>(SemaRef.getDeclFromExpr(
                                                CurExpr, CurExpr->getExprLoc()));
-        if (SemaRef.lookupUnqualifiedName(R, NsDcl->getBlueScopeRep())) {
-          // (std::string("unable to find '") + Id->getName() + "'");
+        if (getIsInTemplateInstantiation()) {
+          if (doSimpleDCLookup(R, NsDcl)) {
+            llvm::outs() << "Unable to find " << Id->getName().str()
+                << "appendName BuildingNamespaceExpr in template ?\n";
+            std::string Msg = "unable to find '" + Id->getName().str() + "'";
+            error(L) << Msg;
+            return nullptr;
+          }
+       } else if (SemaRef.lookupUnqualifiedName(R, NsDcl->getBlueScopeRep())) {
+          llvm::outs() << "Unable to find " << Id->getName().str()
+              << "appendName BuildingNamespaceExpr Unqualified name?\n";
           std::string Msg = "unable to find '" + Id->getName().str() + "'";
           error(L) << Msg;
-          // This means we didn't find anything in scope.
           return nullptr;
         }
         R.resolveKind();
@@ -858,17 +957,48 @@ clang::Expr *PartialNameAccessExprImpl::appendName(clang::SourceLocation L,
       if (!TInfo) {
         llvm_unreachable("Invalid type for state unable to continue");
       }
-      clang::QualType TyToLookInside = TInfo->getType();
-      // now we have to do normal lookup and to find the next declaration?
-      if (TyToLookInside->isPointerType())
-        TyToLookInside = TyToLookInside->getPointeeType();
 
-      if (!lookForNameInType(SemaRef, TyToLookInside,
-                             CurExpr->getExprLoc(), L, Id, R)) {
-        SemaRef.getCxxSema().Diags.Report(L, clang::diag::err_no_member)
-            << Id->getName() << TyToLookInside;
-        return nullptr;
+      if (getIsInTemplateInstantiation()) {
+        clang::QualType Ty = TInfo->getType().getDesugaredType(
+                                                            SemaRef.getCxxAST());
+        if (Ty->isPointerType())
+          Ty = Ty->getPointeeType();
+        const auto *TST = Ty->getAs<clang::TemplateSpecializationType>();
+        if (!(Ty->isStructureOrClassType() || Ty->isUnionType()
+            || Ty->isEnumeralType()) && !TST) {
+          SemaRef.getCxxSema().Diags.Report(L,
+                                    clang::diag::err_invalid_type_for_name_spec)
+                                        << Ty;
+          return nullptr;
+        }
+        clang::TagDecl *TD = Ty->getAsTagDecl();
+        if (!TD){
+          error(L) << "cannot access members from this type";
+          return nullptr;
+        }
+        if (doSimpleDCLookup(R, TD)) {
+          if (doOuterContextLookupContextLookup(R, SemaRef.getCurClangDeclContext())) {
+            llvm::outs() << "Unable to find " << Id->getName().str()
+                << "appendName BuildingBaseQualifiedExpr In template context\n";
+            std::string Msg = "unable to find '" + Id->getName().str() + "'";
+            error(L) << Msg;
+            return nullptr;
+          }
+        }
+      } else {
+        clang::QualType TyToLookInside = TInfo->getType();
+        // now we have to do normal lookup and to find the next declaration?
+        if (TyToLookInside->isPointerType())
+          TyToLookInside = TyToLookInside->getPointeeType();
+
+        if (!lookForNameInType(SemaRef, TyToLookInside,
+                              CurExpr->getExprLoc(), L, Id, R)) {
+          SemaRef.getCxxSema().Diags.Report(L, clang::diag::err_no_member)
+              << Id->getName() << TyToLookInside;
+          return nullptr;
+        }
       }
+      R.resolveKind();
       return baseQualified_appendName_updateTransition(L, R);
     }
     break;
@@ -900,12 +1030,12 @@ clang::Expr *PartialNameAccessExprImpl::appendName(clang::SourceLocation L,
   return getIncompleteExpr();
 }
 
-
 clang::Expr *
 PartialNameAccessExprImpl::appendElementExpr(clang::SourceLocation B,
                                              clang::SourceLocation E,
                                   clang::TemplateArgumentListInfo &TemplateArgs,
-          llvm::SmallVectorImpl<clang::ParsedTemplateArgument> &ParsedArguments)
+          llvm::SmallVectorImpl<clang::ParsedTemplateArgument> &ParsedArguments,
+                             llvm::SmallVectorImpl<clang::Expr *> &OnlyExprArgs)
 {
   switch(State) {
     case BuildingBaseQualifiedExpr:
@@ -916,18 +1046,19 @@ PartialNameAccessExprImpl::appendElementExpr(clang::SourceLocation B,
     case BuildingTemplateQualifiedExpr:{
         // This is the only case that's allowed in this scenario.
         auto TemplateDcl = cast<clang::TemplateDecl>(
-                        SemaRef.getDeclFromExpr(CurExpr, CurExpr->getExprLoc()));
+                       SemaRef.getDeclFromExpr(CurExpr, CurExpr->getExprLoc()));
         clang::TemplateName TName(TemplateDcl);
-        clang::Sema::TemplateTy TemplateTyName = clang::Sema::TemplateTy::make(TName);
+        clang::Sema::TemplateTy TemplateTyName
+                                         = clang::Sema::TemplateTy::make(TName);
         clang::ASTTemplateArgsPtr InArgs(ParsedArguments);
         clang::TypeResult Result = SemaRef.getCxxSema().ActOnTemplateIdType(
             SemaRef.getCurClangScope(), SS, /*TemplateKWLoc*/ B,
             TemplateTyName, TemplateDcl->getIdentifier(), CurExpr->getExprLoc(),
-            /*LAngleLoc*/B, InArgs, /*RAngleLoc*/ E, false, false);
+            /*LAngleLoc*/B, InArgs, /*RAngleLoc*/ E, false, true);
 
         if (Result.isInvalid()) {
           SemaRef.getCxxSema().Diags.Report(CurExpr->getExprLoc(),
-                                        clang::diag::err_failed_to_translate_expr);
+                                     clang::diag::err_failed_to_translate_expr);
           return nullptr;
         }
 
@@ -937,6 +1068,24 @@ PartialNameAccessExprImpl::appendElementExpr(clang::SourceLocation B,
                                             InstantiatedTemplatTy.getTypePtr());
         clang::TypeSourceInfo *NewTInfo = LocInfoTy->getTypeSourceInfo();
         CurExpr = SemaRef.buildTypeExpr(NewTInfo);
+        if (NewTInfo->getType()->isDependentType() && !getIsInTemplateInstantiation()) {
+          // If we have an LHS then we may need to do something slightly
+          // different here?
+          if (NonNameLHS) {
+            llvm_unreachable("Not sure if this is possible or not yet.");
+          }
+          clang::Expr *Ret =
+           rebuildNestedNameSpecifier(SS.getWithLocInContext(SemaRef.getCxxAST()));
+
+          // Modifying things.
+          clang::DeclarationNameInfo DNI({TemplateDcl->getIdentifier()}, IdLoc);
+          Ret = clang::CppxDependentMemberAccessExpr::Create(
+            SemaRef.getCxxAST(), Ret, SemaRef.getCxxAST().DependentTy,
+            IdLoc, DNI);
+          Ret = clang::CppxTemplateOrArrayExpr::Create(SemaRef.getCxxAST(),
+                                                       Ret, OnlyExprArgs);
+          return Ret;
+        }
         State = BuildingBaseQualifiedExpr;
         SS.Extend(SemaRef.getCxxAST(), IdLoc, NewTInfo->getTypeLoc(), IdLoc);
         return getIncompleteExpr();
@@ -946,6 +1095,210 @@ PartialNameAccessExprImpl::appendElementExpr(clang::SourceLocation B,
       llvm_unreachable("State not implemented yet!");
   }
   return nullptr;
+}
+
+// static clang::Expr *rebuildTypeForNNS(Sema &SemaRef, const clang::Type *Ty) {
+
+//   // clang::DeclarationNameInfo DNI(
+//   //   CurNNS->getAsNamespace()->getDeclName(), NNS.getBeginLoc());
+//   // return clang::CppxDependentMemberAccessExpr::Create(
+//   //   SemaRef.getCxxAST(), NonNameLHS, SemaRef.getCxxAST().DependentTy,
+//   //   NNS.getBeginLoc(), DNI);
+// }
+clang::Expr *PartialNameAccessExprImpl::doSingleRebuild(clang::NestedNameSpecifierLoc NNS,
+                              clang::NestedNameSpecifier *CurNNS,
+                              clang::Expr *LHS) {
+  switch(CurNNS->getKind()) {
+    case clang::NestedNameSpecifier::Identifier:{
+      clang::DeclarationNameInfo DNI({CurNNS->getAsIdentifier()},
+                                    NNS.getLocalBeginLoc());
+      return clang::CppxDependentMemberAccessExpr::Create(
+        SemaRef.getCxxAST(), LHS, SemaRef.getCxxAST().DependentTy,
+        NNS.getLocalBeginLoc(), DNI);
+    }
+    case clang::NestedNameSpecifier::NamespaceAlias:{
+      clang::DeclarationNameInfo DNI(
+        CurNNS->getAsNamespaceAlias()->getDeclName(), NNS.getLocalBeginLoc());
+      return clang::CppxDependentMemberAccessExpr::Create(
+        SemaRef.getCxxAST(), LHS, SemaRef.getCxxAST().DependentTy,
+        NNS.getLocalBeginLoc(), DNI);
+    }
+    case clang::NestedNameSpecifier::Namespace:{
+      clang::DeclarationNameInfo DNI(
+        CurNNS->getAsNamespace()->getDeclName(), NNS.getLocalBeginLoc());
+      return clang::CppxDependentMemberAccessExpr::Create(
+        SemaRef.getCxxAST(), LHS, SemaRef.getCxxAST().DependentTy,
+        NNS.getLocalBeginLoc(), DNI);
+    }
+    case clang::NestedNameSpecifier::TypeSpec:{
+      // Templates should never occur here!
+      clang::DeclarationNameInfo DNI(
+        CurNNS->getAsRecordDecl()->getDeclName(), NNS.getLocalBeginLoc());
+      return clang::CppxDependentMemberAccessExpr::Create(
+        SemaRef.getCxxAST(), LHS, SemaRef.getCxxAST().DependentTy,
+        NNS.getLocalBeginLoc(), DNI);
+    }
+    case clang::NestedNameSpecifier::TypeSpecWithTemplate:{
+
+      const clang::Type *Ty = CurNNS->getAsType();
+      const auto *TST = Ty->getAs<clang::TemplateSpecializationType>();
+      if (!TST) {
+        // We may have to handle elaborated types also.
+        Ty->dump();
+        llvm_unreachable("Not sure what the type is!");
+      }
+      clang::IdentifierInfo *Id = nullptr;
+      clang::TemplateName TN = TST->getTemplateName();
+      switch(TN.getKind()) {
+        case clang::TemplateName::Template:
+          Id = TN.getAsTemplateDecl()->getIdentifier();
+          break;
+        case clang::TemplateName::OverloadedTemplate:{
+            // I need to grab the first decl and get an identifier from it.
+            // llvm_unreachable("OverloadedTemplate name resolution Not implemented");
+            auto OT = TN.getAsOverloadedTemplate();
+            if (OT->size() == 0) {
+              llvm_unreachable("Incorrectly generated template overload name");
+            }
+            for (auto D : *OT) {
+              if (auto NamedDcl = dyn_cast<clang::NamedDecl>(D)) {
+                Id = NamedDcl->getIdentifier();
+                break;
+              }
+            }
+            if (!Id)
+              // TODO: I need to figure out if this needs to be an error message
+              // instead of a hard failure.
+              llvm_unreachable("Incorrectly generated template overload name");
+          }
+          break;
+        case clang::TemplateName::AssumedTemplate:
+          Id = TN.getAsAssumedTemplateName()->getDeclName().getAsIdentifierInfo();
+          break;
+        case clang::TemplateName::QualifiedTemplate:
+          // FIXME: If we have this then we have an error
+          llvm_unreachable("this shouldn't be possible?");
+          break;
+        case clang::TemplateName::DependentTemplate:
+          Id = const_cast<clang::IdentifierInfo *>(
+                          TN.getAsDependentTemplateName()->getIdentifier());
+          break;
+        case clang::TemplateName::SubstTemplateTemplateParm:
+          Id = TN.getAsSubstTemplateTemplateParm()->getParameter()->getIdentifier();
+          break;
+        case clang::TemplateName::SubstTemplateTemplateParmPack:
+          // I'm not sure this is correct but AFAIK this can't occur as part
+          // the name part of the nested name specifier, because that wouldn't
+          // make any sense.
+          llvm_unreachable("We can't have a parameter pack inside of a "
+                            "nested name specifier.");
+          break;
+        default:
+          llvm_unreachable("invalid template name kind");
+      }
+      assert(Id && "failed to correctly set identifier");
+
+      // Reconstructing the previous dependent expression using the given
+      // template name.
+      clang::DeclarationNameInfo DNI({Id}, NNS.getLocalBeginLoc());
+      clang::Expr *AccessExpr = clang::CppxDependentMemberAccessExpr::Create(
+        SemaRef.getCxxAST(), LHS, SemaRef.getCxxAST().DependentTy,
+        NNS.getLocalBeginLoc(), DNI);
+      llvm::SmallVector<clang::Expr *, 16> AdjustedArguments;
+      auto TL = NNS.getTypeLoc().getAs<clang::TemplateSpecializationTypeLoc>();
+      unsigned Index = 0;
+      for(clang::TemplateArgument TA : TST->template_arguments()) {
+        clang::TemplateArgumentLoc TAL = TL.getArgLoc(Index);
+        clang::Expr *ToAppend = nullptr;
+        switch(TA.getKind()) {
+          case clang::TemplateArgument::Type:
+            ToAppend = SemaRef.buildTypeExpr(TAL.getTypeSourceInfo());
+            break;
+          case clang::TemplateArgument::Declaration:
+            ToAppend = TAL.getSourceDeclExpression();
+            break;
+          case clang::TemplateArgument::NullPtr:
+            ToAppend = TAL.getSourceNullPtrExpression();
+            break;
+          case clang::TemplateArgument::Integral:
+            ToAppend = TAL.getSourceIntegralExpression();
+            break;
+          case clang::TemplateArgument::Template:
+            ToAppend = SemaRef.buildTemplateType(
+                  TA.getAsTemplate().getAsTemplateDecl(),TAL.getLocation());
+            break;
+          case clang::TemplateArgument::TemplateExpansion:
+            llvm_unreachable("Template expansion handling not implemented yet.");
+            break;
+          case clang::TemplateArgument::Expression:
+            AdjustedArguments.emplace_back(TAL.getSourceExpression());
+            break;
+          case clang::TemplateArgument::Pack:
+            llvm_unreachable("I don't know what this is?!");
+          default:
+            llvm_unreachable("Invalid template argument kind.");
+        }
+        AdjustedArguments.emplace_back(ToAppend);
+        ++Index;
+      }
+      return clang::CppxTemplateOrArrayExpr::Create(SemaRef.getCxxAST(),
+                                                    AccessExpr,
+                                                    AdjustedArguments);
+    }
+    case clang::NestedNameSpecifier::Global:
+      llvm_unreachable("Global nested name specifier not implemented yet");
+
+    case clang::NestedNameSpecifier::Super:
+      llvm_unreachable("__super not supported");
+
+    default:
+      llvm_unreachable("Invalid nested name specifier kind");
+  }
+}
+
+clang::Expr *PartialNameAccessExprImpl::rebuildNestedNameSpecifier(clang::NestedNameSpecifierLoc NNS) {
+  clang::NestedNameSpecifierLoc NNSPrev = NNS.getPrefix();
+  clang::Expr *LHS = nullptr;
+  clang::NestedNameSpecifier *CurNNS = NNS.getNestedNameSpecifier();
+  if (NNSPrev) {
+    LHS = rebuildNestedNameSpecifier(NNSPrev);
+    if (!LHS)
+      llvm_unreachable("Rebuilding an nested name specifier should never fail");
+  } else {
+    if (NonNameLHS) {
+      LHS = NonNameLHS;
+    } else {
+      // The last thing within the current declaration is the current nested
+      // name specifier.
+      switch(CurNNS->getKind()) {
+        case clang::NestedNameSpecifier::Identifier:
+          llvm_unreachable("This may be the only error case, where we have some "
+                           "unknown dependent identifier");
+        case clang::NestedNameSpecifier::NamespaceAlias:
+          return SemaRef.buildNSDeclRef(CurNNS->getAsNamespaceAlias(), NNS.getLocalBeginLoc());
+        case clang::NestedNameSpecifier::Namespace:
+          return SemaRef.buildNSDeclRef(
+            cast<clang::CppxNamespaceDecl>(CurNNS->getAsNamespace()),
+            NNS.getLocalBeginLoc());
+        case clang::NestedNameSpecifier::TypeSpec:
+          return SemaRef.buildTypeExpr(clang::QualType(CurNNS->getAsType(), 0),
+                                       NNS.getLocalBeginLoc());
+        case clang::NestedNameSpecifier::TypeSpecWithTemplate:
+          return SemaRef.buildTypeExpr(clang::QualType(CurNNS->getAsType(), 0),
+                                       NNS.getLocalBeginLoc());
+        case clang::NestedNameSpecifier::Global:
+          llvm_unreachable("Global nested name specifier not implemented yet");
+
+        case clang::NestedNameSpecifier::Super:
+          llvm_unreachable("__super not supported");
+
+        default:
+          llvm_unreachable("Invalid nested name specifier kind");
+      }
+    }
+  }
+  return doSingleRebuild(NNS, CurNNS, LHS);
+
 }
 
 clang::Expr *PartialNameAccessExprImpl::completeExpr() {

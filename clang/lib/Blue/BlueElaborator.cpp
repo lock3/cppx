@@ -682,7 +682,7 @@ clang::Decl *Elaborator::elaborateTypeAliasOrVariableTemplate(Declaration *D) {
   // ExprElaborator Elab(Context, SemaRef);
   Declarator *TyDcl = D->Decl->Next;
   if (!TyDcl) {
-    Error(D->Def->getLocation(),"Deduced alias types not supported.");
+    Error(D->Def->getLocation(), "Deduced alias types not supported.");
     return nullptr;
   }
 
@@ -773,6 +773,17 @@ clang::Decl *Elaborator::elaborateTypeAliasOrVariableTemplate(Declaration *D) {
     clang::Expr *InitTyExpr = elaborateExpression(Init);
     if (!InitTyExpr)
       return nullptr;
+
+    if (auto PartialExpr = dyn_cast<clang::CppxPartialEvalExpr>(InitTyExpr)) {
+      clang::Expr *CompletedExpr = PartialExpr->completeExpr();
+      if (!CompletedExpr)
+        return nullptr;
+      InitTyExpr = CompletedExpr;
+    }
+    if (isACppxDependentExpr(InitTyExpr)) {
+      InitTyExpr = SemaRef.buildTypeExprTypeFromExpr(InitTyExpr,
+                                                     InitTyExpr->getExprLoc());
+    }
     clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(InitTyExpr,
                                                            Init->getLocation());
     if (!TInfo)
@@ -2655,6 +2666,9 @@ clang::Expr *Elaborator::elaborateTypeDeclarator(const Declarator *Dcl) {
     if (!E)
       return nullptr;
   }
+  if (isACppxDependentExpr(E))
+    E = SemaRef.buildTypeExprTypeFromExpr(E, Dcl->getLocation());
+
   clang::QualType T = E->getType();
   if (!T->isKindType()) {
     Error(Dcl->getLocation(), "invalid type");
@@ -3811,7 +3825,7 @@ clang::Expr *Elaborator::elaborateCallExpression(const CallSyntax *S) {
   } else if (ArgEnclosure->isBracketEnclosure()) {
     if (!ArgEnclosure->getOperand())
       // I'm not really sure this can happen.
-      llvm_unreachable("Invalid empty template instantiation.");
+      llvm_unreachable("Invalid empty template instantiation not implemented yet.");
     auto LS = cast<ListSyntax>(ArgEnclosure->getOperand());
     if (IdExpr->getType()->isTemplateType())
         return elaborateClassTemplateSelection(IdExpr, ArgEnclosure, LS);
@@ -3822,12 +3836,23 @@ clang::Expr *Elaborator::elaborateCallExpression(const CallSyntax *S) {
       clang::SourceLocation LocEnd = ArgEnclosure->getClose().getLocation();
       clang::TemplateArgumentListInfo TemplateArgs(LocEnd, LocStart);
       llvm::SmallVector<clang::ParsedTemplateArgument, 16> ParsedArguments;
+      llvm::SmallVector<clang::Expr *, 16> OnlyExpr;
       if (elaborateClassTemplateArguments(ArgEnclosure, LS,
-                                          TemplateArgs, ParsedArguments))
+                                          TemplateArgs, ParsedArguments, OnlyExpr))
         return nullptr;
-
       return PartialExpr->appendElementExpr(LocStart, LocEnd, TemplateArgs,
-                                            ParsedArguments);
+                                            ParsedArguments, OnlyExpr);
+    }
+    if (IdExpr->getDependence() != clang::ExprDependence::None) {
+      llvm::SmallVector<clang::Expr *, 16> ArgExprs;
+      for (const Syntax *SS : LS->children()) {
+        clang::Expr *Arg = elaborateExpression(SS);
+        if (!Arg)
+          continue;
+        ArgExprs.emplace_back(Arg);
+      }
+      return clang::CppxTemplateOrArrayExpr::Create(SemaRef.getCxxAST(),
+                                                    IdExpr, ArgExprs);
     }
 
     if (!isa<clang::OverloadExpr>(IdExpr)){
@@ -5293,8 +5318,8 @@ Elaborator::elaborateClassTemplateSelection(clang::Expr *IdExpr,
   clang::SourceLocation LocEnd = Enc->getClose().getLocation();
   clang::TemplateArgumentListInfo TemplateArgs(LocEnd, LocStart);
   llvm::SmallVector<clang::ParsedTemplateArgument, 16> ParsedArguments;
-
-  if (elaborateClassTemplateArguments(Enc, ArgList, TemplateArgs, ParsedArguments))
+  llvm::SmallVector<clang::Expr *, 16> OnlyExpr;
+  if (elaborateClassTemplateArguments(Enc, ArgList, TemplateArgs, ParsedArguments, OnlyExpr))
     return nullptr;
 
   clang::Decl *Decl = SemaRef.getDeclFromExpr(IdExpr, IdExpr->getExprLoc());
@@ -5340,7 +5365,8 @@ Elaborator::elaborateClassTemplateSelection(clang::Expr *IdExpr,
 bool Elaborator::elaborateClassTemplateArguments(
   const EnclosureSyntax *Enc,
     const ListSyntax *Args, clang::TemplateArgumentListInfo &ArgInfo,
-    llvm::SmallVectorImpl<clang::ParsedTemplateArgument> &ParsedArgs) {
+    llvm::SmallVectorImpl<clang::ParsedTemplateArgument> &ParsedArgs,
+    llvm::SmallVectorImpl<clang::Expr *> &OnlyExprArgs) {
 
   for(const Syntax *SyntaxArg : Args->children()) {
 
@@ -5350,6 +5376,7 @@ bool Elaborator::elaborateClassTemplateArguments(
                                 clang::diag::err_failed_to_translate_expr);
       continue;
     }
+    OnlyExprArgs.emplace_back(ArgExpr);
 
     // Checking for and forcing completion of  partial expression as part pf template
     // arguments.
@@ -5417,7 +5444,22 @@ clang::Expr *Elaborator::elaborateMemberAccess(clang::Expr *LHS,
   clang::QualType Ty = LHS->getType();
   // clang::Expr *NsOrTyExpr = nullptr;
   if (SemaRef.isElaboratingClass()) {
-    if (Ty->isKindType() || Ty->isNamespaceType()) {
+    if (Ty->isKindType()) {
+      clang::TypeSourceInfo *TInfo =
+                    SemaRef.getTypeSourceInfoFromExpr(LHS, LHS->getExprLoc());
+      if (!TInfo)
+        return nullptr;
+      if (!TInfo->getType()->isDependentType()) {
+        auto *E = SemaRef.createPartialExpr(S->getLocation(),
+                                            SemaRef.isElaboratingClass(),
+                                            SemaRef.isThisValidInCurrentScope(),
+                                            LHS);
+        return elaboratePartialEvalMemberAccess(E, S);
+      } else {
+        return handleDependentTypeNameLookup(SemaRef, S, LHS, nullptr,
+                                             S->getOperand(1));
+      }
+    } else if (Ty->isNamespaceType()) {
       auto *E = SemaRef.createPartialExpr(S->getLocation(),
                                           SemaRef.isElaboratingClass(),
                                           SemaRef.isThisValidInCurrentScope(),
@@ -5863,14 +5905,6 @@ clang::Expr *Elaborator::elaborateMemberAccessOp(clang::Expr *LHS,
     // if (LHS->getDependence() != clang::ExprDependence::None) {
     //   llvm_unreachable("dependent access expression not implemented yet.");
     // }
-
-    // static clang::Expr *handleLookupInsideType(Sema &SemaRef,
-    //                                        clang::ASTContext &CxxAST,
-    //                                        clang::Expr *Prev,
-    //                                        const Syntax *Op,
-    //                                        const Syntax *RHS, bool AddressOf);
-    // clang::Expr *Ret = handleLookupInsideType(SemaRef, CxxAST, Previous, Op,
-    //                                           RHS, /*IsAddrof=*/false);
     if (SemaRef.memberAccessNeedsPartialExpr(LHS, IdInfo, IdSyntax->getLocation() )) {
       auto *E = SemaRef.createPartialExpr(S->getLocation(),
                                           SemaRef.isElaboratingClass(),
@@ -5878,6 +5912,17 @@ clang::Expr *Elaborator::elaborateMemberAccessOp(clang::Expr *LHS,
                                           || LHS->getType()->isTypeOfTypes()),
                                           LHS);
       return elaboratePartialEvalMemberAccess(E, S);
+    }
+    if (LHS->getDependence() != clang::ExprDependenceScope::None) {
+      // Handling special case for nested name specifier being a dependent
+      // expression
+      clang::DeclarationNameInfo DNI({
+                &SemaRef.getCxxAST().Idents.get(IdSyntax->getSpelling())},
+                                      IdSyntax->getLocation());
+      return clang::CppxDependentMemberAccessExpr::Create(SemaRef.getCxxAST(),
+                                                          LHS,
+                                                SemaRef.getCxxAST().DependentTy,
+                                                  IdSyntax->getLocation(), DNI);
     }
 
 

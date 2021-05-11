@@ -292,7 +292,8 @@ public:
   clang::CppxPartialEvalExpr *createPartialExpr(clang::SourceLocation Loc,
                                                 bool IsWithinClass,
                                                 bool allowImplicitThis,
-                                                clang::Expr *BaseExpr);
+                                                clang::Expr *BaseExpr,
+                                    bool IsPartOfTemplateInstantiation = false);
   bool memberAccessNeedsPartialExpr(clang::Expr *LHS, clang::IdentifierInfo *Id,
                                     clang::SourceLocation IdLoc);
   bool isThisValidInCurrentScope();
@@ -748,8 +749,35 @@ public:
   };
 
 public:
+  /// Transformation triggering expressions.
+  clang::QualType TransformCppxTypeExprType(
+    const clang::MultiLevelTemplateArgumentList &TemplateArgs,
+    clang::SourceLocation Loc, clang::DeclarationName Entity,
+    clang::TypeLocBuilder &TLB, clang::CppxTypeExprTypeLoc TL);
+
+  clang::Expr *TransformCppxDependentMemberAccessExpr(
+    const clang::MultiLevelTemplateArgumentList &TemplateArgs,
+    clang::SourceLocation Loc, clang::DeclarationName Entity,
+    clang::CppxDependentMemberAccessExpr *E);
+
+  clang::Expr *TransformCppxTemplateOrArrayExpr(
+    const clang::MultiLevelTemplateArgumentList &TemplateArgs,
+    clang::SourceLocation Loc, clang::DeclarationName Entity,
+    clang::CppxTemplateOrArrayExpr *E);
+
+  clang::Expr *TransformCppxCallOrConstructorExpr(
+    const clang::MultiLevelTemplateArgumentList &TemplateArgs,
+    clang::SourceLocation Loc, clang::DeclarationName Entity,
+    clang::CppxCallOrConstructorExpr *E);
+
+  clang::Expr *TransformCppxDerefOrPtrExpr(
+    const clang::MultiLevelTemplateArgumentList &TemplateArgs,
+    clang::SourceLocation Loc, clang::DeclarationName Entity,
+    clang::CppxDerefOrPtrExpr *E);
+
   clang::ParsedTemplateArgument convertExprToTemplateArg(clang::Expr *E);
-};
+
+}; // End of class blue::Sema
 
 
 template<typename T>

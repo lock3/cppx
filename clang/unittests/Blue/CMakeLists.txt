@@ -48,6 +48,7 @@ add_clang_unittest(BlueTests
   BlueConstTypeElab.cpp
   BlueDefaultAndDeleteFunctionElab.cpp
   BlueDefaultParametersElab.cpp
+  BlueDependentMemberAccessElab.cpp
   BlueDestructorElab.cpp
   BlueForElab.cpp
   BlueFunctionElab.cpp

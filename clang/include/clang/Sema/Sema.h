@@ -13661,9 +13661,12 @@ public:
   bool checkSYCLDeviceFunction(SourceLocation Loc, FunctionDecl *Callee);
 private:
   gold::Sema *GSema = nullptr;
+  blue::Sema *BSema = nullptr;
 public:
   void setGoldSema(gold::Sema *Sm) { GSema = Sm; }
   gold::Sema *getGoldSema() const { return GSema; }
+  void setBlueSema(blue::Sema *Sm) { BSema = Sm; }
+  blue::Sema *getBlueSema() const { return BSema; }
 };
 
 /// RAII object that enters a new expression evaluation context.

@@ -538,7 +538,8 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::EnumTypeLoc>
 
 template<> TypeSourceInfo *BuildTypeLoc<clang::ElaboratedTypeLoc>
 (clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
-  llvm_unreachable("unimplemented");
+  llvm_unreachable("Working on it.");
+
 }
 
 template<> TypeSourceInfo *BuildTypeLoc<clang::ElaboratedTypeLoc>

@@ -6919,7 +6919,6 @@ QualType TreeTransform<Derived>::TransformCppxTypeExprType(
   QualType T = TL.getType();
   TLB.pushTypeSpec(T).setNameLoc(TL.getNameLoc());
   return T;
-  // llvm_unreachable("Working on type expression transformation.");
 }
 
 template<typename Derived>
@@ -9033,8 +9032,13 @@ TreeTransform<Derived>::TransformCppxTypeLiteral(CppxTypeLiteral *E) {
 template<typename Derived>
 ExprResult
 TreeTransform<Derived>::TransformCppxPartialEvalExpr(CppxPartialEvalExpr *E) {
-  return new (SemaRef.Context) CppxPartialEvalExpr(E->getType(), E->getImpl(),
-                                                   E->getLocation());
+  if (SemaRef.getLangOpts().Gold)
+    return new (SemaRef.Context) CppxPartialEvalExpr(E->getType(), E->getImpl(),
+                                                     E->getLocation());
+  if (SemaRef.getLangOpts().Blue)
+    return new (SemaRef.Context) CppxPartialEvalExpr(E->getType(), E->getBImpl(),
+                                                     E->getLocation());
+  llvm_unreachable("Unsupported language operation not implemented yet.");
 }
 
 template<typename Derived>
@@ -14357,6 +14361,12 @@ TreeTransform<Derived>::TransformCppxDependentMemberAccessExpr(
     = getDerived().TransformDeclarationNameInfo(E->getMemberNameInfo());
   if (!NameInfo.getName())
     return ExprError();
+  if (SemaRef.getLangOpts().Blue) {
+    if (auto PE = dyn_cast<clang::CppxPartialEvalExpr>(Base.get())) {
+      return PE->appendName(NameInfo.getLoc(),
+                            NameInfo.getName().getAsIdentifierInfo());
+    }
+  }
   return getDerived().RebuildCppxDependentMemberAccessExpr(Base.get(),
                                                            BaseType,
                                                            E->getOperatorLoc(),
@@ -14369,19 +14379,20 @@ template<typename Derived>
 ExprResult
 TreeTransform<Derived>::TransformCppxTemplateOrArrayExpr(
                                                    CppxTemplateOrArrayExpr *E) {
-  ExprResult Base((Expr*) nullptr);
-  Expr *OldBase;
-  OldBase = E->getBase();
-  Base = getDerived().TransformExpr(OldBase);
-  if (Base.isInvalid())
-    return ExprError();
-
   // Transforming the arguments
   bool ArgsChanged = false;
   llvm::SmallVector<Expr *, 16> TransformedAguments;
   if (getDerived().TransformExprs(E->getArgs(), E->getNumArgs(),
                                   /*IsCall*/false, TransformedAguments,
                                   &ArgsChanged))
+    return ExprError();
+
+  ExprResult Base((Expr*) nullptr);
+  Expr *OldBase;
+  OldBase = E->getBase();
+
+  Base = getDerived().TransformExpr(OldBase);
+  if (Base.isInvalid())
     return ExprError();
 
   return getDerived().RebuildCppxTemplateOrArrayExpr(Base.get(),

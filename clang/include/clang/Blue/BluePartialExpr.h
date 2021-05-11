@@ -67,6 +67,7 @@ private:
                                   clang::IdentifierInfo *Name);
   clang::Expr *buildKnownMemberExpr(clang::SourceLocation IdLoc,
                                     clang::IdentifierInfo *MemberId);
+
 public:
 
   virtual clang::Expr *setIsWithinClass(bool IsInClassScope) override;
@@ -80,8 +81,14 @@ public:
   virtual clang::Expr *appendElementExpr(clang::SourceLocation B,
                                          clang::SourceLocation E,
                                  clang::TemplateArgumentListInfo &TemplateArgs,
-           llvm::SmallVectorImpl<clang::ParsedTemplateArgument> &ActualArgs) override;
-
+           llvm::SmallVectorImpl<clang::ParsedTemplateArgument> &ActualArgs,
+           llvm::SmallVectorImpl<clang::Expr *> &OnlyExprArgs) override;
+private:
+  clang::Expr *doSingleRebuild(clang::NestedNameSpecifierLoc NNS,
+                               clang::NestedNameSpecifier *CurNNS,
+                               clang::Expr *LHS);
+  clang::Expr *rebuildNestedNameSpecifier(clang::NestedNameSpecifierLoc NNS);
+public:
   /// This is used to generate the complete expression.
   virtual clang::Expr *completeExpr() override;
 

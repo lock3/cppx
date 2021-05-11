@@ -108,6 +108,7 @@ namespace blue {
   class CppxPartialNameAccessBase {
     PartialExprKind Kind;
     clang::Expr *IncompleteExprValue = nullptr;
+    bool IsInTemplate = false;
   public:
     CppxPartialNameAccessBase(PartialExprKind K)
       :Kind(K)
@@ -121,6 +122,13 @@ namespace blue {
       IncompleteExprValue = E;
     }
 
+    void setIsInsideTemplateInstantiation(bool DuringInstantiation) {
+      IsInTemplate = DuringInstantiation;
+    }
+    bool getIsInTemplateInstantiation() {
+      return IsInTemplate;
+    }
+
     clang::Expr *getIncompleteExpr() const { return IncompleteExprValue; }
 
     clang::SourceLocation beginLoc() const { return BeginLocation; }
@@ -132,13 +140,16 @@ namespace blue {
     virtual clang::Expr *allowUseOfImplicitThis(bool AllowImplicitThis) = 0;
     virtual clang::Expr *setBaseExpr(clang::Expr *) = 0;
 
+
+
     /// Return true if the given arguments can be handled applied to the
     /// partial expression, this could be template parameters or array access.
     virtual clang::Expr *appendName(clang::SourceLocation L, clang::IdentifierInfo *Id) = 0;
     virtual clang::Expr *appendElementExpr(clang::SourceLocation B,
                                            clang::SourceLocation E,
                               clang::TemplateArgumentListInfo &TemplateArgs,
-                llvm::SmallVectorImpl<clang::ParsedTemplateArgument> &ActualArgs) = 0;
+                llvm::SmallVectorImpl<clang::ParsedTemplateArgument> &ActualArgs,
+                llvm::SmallVectorImpl<clang::Expr *> &OnlyExprArgs) = 0;
 
 
     /// This is used to generate the complete expression.
@@ -385,10 +396,11 @@ public:
   clang::Expr *appendElementExpr(clang::SourceLocation Beginning,
                                  clang::SourceLocation EndingLoc,
                                  clang::TemplateArgumentListInfo &TemplateArgs,
-                   llvm::SmallVectorImpl<clang::ParsedTemplateArgument> &ActualArgs) {
+                   llvm::SmallVectorImpl<clang::ParsedTemplateArgument> &ActualArgs,
+                   llvm::SmallVectorImpl<clang::Expr *> &OnlyExprArgs) {
     assert(PartialKind == Tag::BlueLang && "Incorrect language.");
     return PImpl.BImpl->appendElementExpr(Beginning, EndingLoc, TemplateArgs,
-                                          ActualArgs);
+                                          ActualArgs, OnlyExprArgs);
   }
 
   /// This is used to generate the complete expression that is represented

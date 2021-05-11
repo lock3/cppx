@@ -7,8 +7,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-//  Tests for member access, member access with nested name specifiers, and
-//  dependent names with the same.
+//  Tests for member access, and member access with nested name specifiers.
 //
 //===----------------------------------------------------------------------===//
 #include "BlueParseUtil.h"
@@ -305,12 +304,7 @@ C :[T:type] -> type = {
 
 
 )BLUE";
-  auto ToMatch =
-    cxxDependentScopeMemberExpr(
-      hasDescendant(
-        cxxThisExpr()
-      )
-    );
+  auto ToMatch = cppxDependentMemberAccessExpr();
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
@@ -332,7 +326,6 @@ C :[T:type] -> type = {
 
 
 )BLUE";
-  // this is
   auto ToMatch = cxxDependentScopeMemberExpr();
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
@@ -353,7 +346,7 @@ C : [T:type] -> type = {
 }
 
 )BLUE";
-  auto ToMatch = cxxDependentScopeMemberExpr();
+  auto ToMatch = cppxDependentMemberAccessExpr();
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
@@ -372,13 +365,7 @@ C : [T:type] -> type = {
 }
 
 )BLUE";
-  auto ToMatch =
-    cxxDependentScopeMemberExpr(
-      hasDescendant(
-        cxxThisExpr()
-      )
-    );
-  // auto ToMatch = ();
+  auto ToMatch = cppxDependentMemberAccessExpr();
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 

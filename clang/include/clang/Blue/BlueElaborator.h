@@ -211,7 +211,8 @@ public:
   bool elaborateClassTemplateArguments(const EnclosureSyntax *Enc,
                                        const ListSyntax *Args,
                                        clang::TemplateArgumentListInfo &ArgInfo,
-              llvm::SmallVectorImpl<clang::ParsedTemplateArgument> &ParsedArgs);
+              llvm::SmallVectorImpl<clang::ParsedTemplateArgument> &ParsedArgs,
+                            llvm::SmallVectorImpl<clang::Expr *> &OnlyExprArgs);
 
   /// Dispatching function, that determines based on the LHS's type how to
   /// process the RHS of the expression.
