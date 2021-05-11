@@ -68,21 +68,6 @@ static inline void copyParamSpecs(DeclarationSyntax *S,
 
 // Syntax productions
 
-Syntax *Parser::parseFile() {
-  Syntax *Decls = nullptr;
-
-  llvm::SmallVector<Syntax *, 16> SS;
-  if (!atEndOfFile())
-    Decls = parseDeclSequence(SS);
-
-  return new FileSyntax(Decls);
-}
-
-Syntax *Parser::parseDeclSequence(SyntaxSeq &SS) {
-  while (!atEndOfFile())
-    parseItem(*this, &Parser::parseDeclaration, SS);
-  return new SequenceSyntax(AllocateSeq(SS), SS.size());
-}
 
 template<typename Parse, typename Sequence>
 static Syntax *parseIntoVector(Sequence &Seq, Parse Fn) {
@@ -297,72 +282,6 @@ Syntax *Parser::parseDescriptor()
 }
 
 
-/// Parse a declaration:
-///
-///   declaration:
-///     definition
-Syntax *Parser::parseDeclaration() {
-  Token Intro;
-  Syntax *Pars = nullptr;
-  if (nextTokenIs(tok::UsingKeyword)) {
-    Pars = parsePrefixExpression();
-    expectToken(tok::Semicolon);
-    return Pars;
-  }
-  Pars = parseDefinition();
-  if (!Pars)
-    return nullptr;
-
-  DeclarationSyntax *Decl = cast<DeclarationSyntax>(Pars);
-  return Decl;
-}
-
-/// Definition declaration:
-///
-///   definition-declaration:
-///     declarator-list? type-clause initializer-clause 
-///
-///   type-clause: 
-///     : type constraint? 
-///     : constraint? 
-///
-///   type: 
-///     prefix-expression 
-///
-///   constraint:
-///     is pattern
-///
-///   initializer-clause: 
-///     ; 
-///     = expression ; 
-///     = block-statement
-///
-///   block:
-///     block-statement 
-Syntax *Parser::parseDefinition() {
-  // Parse the declarator-list.
-  // Checking for unary declaration syntax.
-  Token AccessSpecifier;
-  if (nextTokenIs(tok::PublicKeyword)
-      || nextTokenIs(tok::PrivateKeyword)
-      || nextTokenIs(tok::ProtectedKeyword)) {
-    AccessSpecifier = consumeToken();
-  }
-  Syntax *Decl = nullptr;
-  if (nextTokenIsNot(tok::Colon)) {
-    Decl = parseDeclaratorList();
-  }
-
-  DescriptorClause DC = parseDescriptorClause(*this);
-  InitializerClause IC;
-  if (nextTokenIsNot(tok::Semicolon))
-      IC = parseInitializerClause(*this);
-  else
-    expectToken(tok::Semicolon);
-
-  return new DeclarationSyntax(Decl, DC.Type, DC.Cons, IC.Init, AccessSpecifier);
-}
-
 static inline bool isCloseEnclosure(tok::TokenKind K) {
   switch (K) {
   case tok::RightParen:
@@ -374,6 +293,92 @@ static inline bool isCloseEnclosure(tok::TokenKind K) {
   }
 }
 
+Syntax *Parser::parseFile() {
+  Syntax *Decls = nullptr;
+
+  llvm::SmallVector<Syntax *, 16> SS;
+  if (!atEndOfFile())
+    Decls = parseDeclSequence(SS);
+
+  return new FileSyntax(Decls);
+}
+
+Syntax *Parser::parseDeclSequence(SyntaxSeq &SS) {
+  while (!atEndOfFile())
+    parseItem(*this, &Parser::parseDeclaration, SS);
+  return new SequenceSyntax(AllocateSeq(SS), SS.size());
+}
+
+/// Parse a declaration:
+///
+///   declaration:
+///     definition-declaration
+///     using-declaration
+Syntax *Parser::parseDeclaration() {
+  Token Intro;
+  Syntax *Pars = nullptr;
+  if (nextTokenIs(tok::UsingKeyword)) {
+    // Pars = parsePrefixExpression();
+    // expectToken(tok::Semicolon);
+    // return Pars;
+  }
+
+  Pars = parseDefinition();
+  if (!Pars)
+    return nullptr;
+
+  DeclarationSyntax *Decl = cast<DeclarationSyntax>(Pars);
+  return Decl;
+}
+
+/// Definition declaration:
+///
+///   decl-specifier-seq_{opt} identifier descriptor-clause initializer-clause
+///
+///   decl-specifier-seq_{opt} identifier-list descriptor-clause ;
+///
+///   ( binding-list ) : = expression ;
+Syntax *Parser::parseDefinition() {
+  // Parse the declarator-list.
+  // Checking for unary declaration syntax.
+  Token AccessSpecifier;
+  if (nextTokenIs(tok::PublicKeyword)
+      || nextTokenIs(tok::PrivateKeyword)
+      || nextTokenIs(tok::ProtectedKeyword)) {
+    AccessSpecifier = consumeToken();
+  }
+
+  if (nextTokenIs(tok::LeftParen))
+    llvm_unreachable("unimplemented");
+
+  Syntax *Decl = parseIdExpression();
+  DescriptorClause DC = parseDescriptorClause(*this);
+  InitializerClause IC;
+  if (nextTokenIsNot(tok::Semicolon))
+      IC = parseInitializerClause(*this);
+  else
+    expectToken(tok::Semicolon);
+
+  return new DeclarationSyntax(Decl, DC.Type, DC.Cons, IC.Init, AccessSpecifier);
+}
+
+/// Parse an expression.
+///
+///   expression:
+///     leave-expression 
+///     expression where ( parameter-group )
+Syntax *Parser::parseExpression() {
+  // Syntax *E0 = parseLeaveExpression();
+  // while (Token Op = matchToken(tok::WhereKeyword)) {
+  //   // Syntax* E1 = parseParenEnclosed(&Parser::parse_parameter_group);
+  //   Syntax *E1 = nullptr;
+  //   E0 = new InfixSyntax(Op, E0, E1);
+  // }
+
+  // return E0;
+}
+
+#if 0
 /// Builds the declarator list.
 static Syntax *makeDeclaratorList(SyntaxSeq &SS, Parser &P)
 {
@@ -480,7 +485,7 @@ Syntax *Parser::parseExpressionList()
 /// Technically, this allows the declaration of multiple functions having
 /// the same return type, but we can semantically limit declarators to just
 /// variables.
-Syntax *Parser::parseDeclaratorList()
+Syntax *Parser::parseDeclaratorLists::()
 {
   llvm::SmallVector<Syntax *, 4> SS;
   do
@@ -1635,5 +1640,6 @@ Syntax *Parser::parseTupleExpression() {
 Syntax *Parser::parseArrayExpression() {
   return nullptr;
 }
+#endif
 
 } // namespace blue
