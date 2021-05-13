@@ -522,40 +522,40 @@ foo:()->void = {
 }
 
 
-TEST(BlueDependentMemberAccess, BaseClassThroughLocalAlias_InsideCurrentFunction) {
-  StringRef Code = R"BLUE(
+// TEST(BlueDependentMemberAccess, BaseClassThroughLocalAlias_InsideCurrentFunction) {
+//   StringRef Code = R"BLUE(
 
-A : type = {
-  Base : [T:type] -> type = B[T];
-}
+// A : type = {
+//   Base : [T:type] -> type = B[T];
+// }
 
-B : [T:type] -> type = {
-  i:int;
-}
+// B : [T:type] -> type = {
+//   i:int;
+// }
 
-C : [T:type] -> type = {
-  :B[T];
-  i:int;
-  foo:(inout this) -> void = {
-    Ty:[U:type]->type = B[U];
-    this.Ty[T].i = 4;
-  }
-}
-foo:()->void = {
-  x:C[int];
-  x.foo();
-}
-)BLUE";
-  auto ToMatch = memberExpr(
-    member(hasName("i")),
-    has(implicitCastExpr(
-      has(
-        cxxThisExpr(hasType(asString("struct C<int> *")))
-      )
-    ))
-  );
-  ASSERT_TRUE(matches(Code.str(), ToMatch));
-}
+// C : [T:type] -> type = {
+//   :B[T];
+//   i:int;
+//   foo:(inout this) -> void = {
+//     Ty:[U:type]->type = B[U];
+//     this.Ty[T].i = 4;
+//   }
+// }
+// foo:()->void = {
+//   x:C[int];
+//   x.foo();
+// }
+// )BLUE";
+//   auto ToMatch = memberExpr(
+//     member(hasName("i")),
+//     has(implicitCastExpr(
+//       has(
+//         cxxThisExpr(hasType(asString("struct C<int> *")))
+//       )
+//     ))
+//   );
+//   ASSERT_TRUE(matches(Code.str(), ToMatch));
+// }
 
 // TEST(BlueDependentMemberAccess, CallToOverload_InsideOfBaseClass) {
 //   StringRef Code = R"BLUE(
@@ -692,6 +692,8 @@ foo:()->void = {
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
+
+
 TEST(BlueDependentMemberAccess, NamespaceAlias_InsideNamespace_DeclaredInFunction) {
   StringRef Code = R"BLUE(
 NS:namespace = {
@@ -773,7 +775,7 @@ foo:()->void = {
   x.foo();
 }
 )BLUE";
-  auto ToMatch = varDecl(hasName("memberPtr"), hasType(asString("void (struct B::*)(void)")));
+  auto ToMatch = varDecl(hasName("memberPtr"), hasType(asString("void (struct B<int>::*)(void)")));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
@@ -814,7 +816,7 @@ foo:()->void = {
   x.foo();
 }
 )BLUE";
-  auto ToMatch = varDecl(hasName("memberPtr"), hasType(asString("int struct B::*")));
+  auto ToMatch = varDecl(hasName("memberPtr"), hasType(asString("int struct B<int>::*")));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
@@ -934,7 +936,7 @@ foo:()->void = {
   auto ToMatch =
     varDecl(
       hasName("var"),
-      hasType(asString("A<A2>::Ty"))
+      hasType(asString("A::Ty"))
     );
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }

@@ -5336,6 +5336,7 @@ Elaborator::elaborateClassTemplateSelection(clang::Expr *IdExpr,
   clang::ASTTemplateArgsPtr InArgs(ParsedArguments);
   clang::SourceLocation Loc = ArgList->getLocation();
   if (clang::VarTemplateDecl *VTD = dyn_cast<clang::VarTemplateDecl>(CTD)) {
+    
     clang::DeclarationNameInfo DNI(VTD->getDeclName(), Loc);
     clang::LookupResult R(getCxxSema(), DNI, clang::Sema::LookupAnyName);
     R.addDecl(VTD);
@@ -5343,8 +5344,11 @@ Elaborator::elaborateClassTemplateSelection(clang::Expr *IdExpr,
                                                             &TemplateArgs);
     if (ER.isInvalid())
       return nullptr;
+
     return ER.get();
+
   } else {
+    // Rebuilding any dependent arguments.
     clang::TypeResult Result = SemaRef.getCxxSema().ActOnTemplateIdType(
       SemaRef.getCurClangScope(), SS, /*TemplateKWLoc*/ Loc,
       TemplateTyName, II, IdExpr->getExprLoc(),

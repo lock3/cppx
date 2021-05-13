@@ -875,34 +875,7 @@ clang::Expr *PartialNameAccessExprImpl::appendName(clang::SourceLocation L,
           return nullptr;
         }
         if (doSimpleDCLookup(R, TD)) {
-          // SemaRef.getCurClangDeclContext()
-          // auto Sc = SemaRef.getCurClangScope();
-          // if (Sc) {
-          //   Sc->dump();
-          //   // Sc = Sc->getParent();
-          //   if (Sc->getEntity()) {
-          //     llvm::outs() << "Dumping the entity of the current scope\n";
-          //     Sc->getEntity()->dumpLookups();
-          //   }
-          //   llvm::outs() << "Dumping the Lookup entity from the current scope?\n";
-          //   Sc->getLookupEntity()->dumpLookups();
-          // } else {
-          //   llvm::outs() << "Clang scope not set right now\n";
-          // }
-          // NonNameLHS->getDeclContext();
-          if (SemaRef.getCxxSema().getFunctionLevelDeclContext()) {
-            llvm::outs() << "Current function level decl context\n";
-            SemaRef.getCxxSema().getFunctionLevelDeclContext()->dumpLookups();
-          }
           if (doOuterContextLookupContextLookup(R, SemaRef.getCurClangDeclContext())) {
-            // llvm::outs() << "Dumping everything currently in scope\n";
-            // SemaRef.getCurClangDeclContext()->dumpLookups();
-            // if (auto D = dyn_cast<clang::Decl>(SemaRef.getCurClangDeclContext())) {
-            //   llvm::outs() << "Dumping current decl context because it's a declaration\n";
-            //   D->dump();
-            // }
-            // llvm::outs() << "Unable to find " << Id->getName().str()
-            //     << " appendName BuildingNormalNameAccessExpr Inside template?\n";
             std::string Msg = "unable to find '" + Id->getName().str() + "'";
             error(L) << Msg;
             return nullptr;
@@ -918,8 +891,7 @@ clang::Expr *PartialNameAccessExprImpl::appendName(clang::SourceLocation L,
         if (!lookForNameInType(SemaRef, TyToLookInside,
                               CurExpr->getExprLoc(), L, Id, R)) {
           if (SemaRef.lookupUnqualifiedName(R, SemaRef.getCurrentScope())) {
-            llvm::outs() << "Unable to find " << Id->getName().str()
-               << "appendName BuildingNormalNameAccessExpr unqualified name?\n";
+    
             std::string Msg = "unable to find '" + Id->getName().str() + "'";
             error(L) << Msg;
             return nullptr;
@@ -935,15 +907,11 @@ clang::Expr *PartialNameAccessExprImpl::appendName(clang::SourceLocation L,
                                                CurExpr, CurExpr->getExprLoc()));
         if (getIsInTemplateInstantiation()) {
           if (doSimpleDCLookup(R, NsDcl)) {
-            llvm::outs() << "Unable to find " << Id->getName().str()
-                << "appendName BuildingNamespaceExpr in template ?\n";
             std::string Msg = "unable to find '" + Id->getName().str() + "'";
             error(L) << Msg;
             return nullptr;
           }
        } else if (SemaRef.lookupUnqualifiedName(R, NsDcl->getBlueScopeRep())) {
-          llvm::outs() << "Unable to find " << Id->getName().str()
-              << "appendName BuildingNamespaceExpr Unqualified name?\n";
           std::string Msg = "unable to find '" + Id->getName().str() + "'";
           error(L) << Msg;
           return nullptr;
@@ -978,8 +946,6 @@ clang::Expr *PartialNameAccessExprImpl::appendName(clang::SourceLocation L,
         }
         if (doSimpleDCLookup(R, TD)) {
           if (doOuterContextLookupContextLookup(R, SemaRef.getCurClangDeclContext())) {
-            llvm::outs() << "Unable to find " << Id->getName().str()
-                << "appendName BuildingBaseQualifiedExpr In template context\n";
             std::string Msg = "unable to find '" + Id->getName().str() + "'";
             error(L) << Msg;
             return nullptr;
