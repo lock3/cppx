@@ -742,6 +742,7 @@ clang::Expr *PartialNameAccessExprImpl::setBaseExpr(clang::Expr *B) {
         // We can't do anything with a template until we know if it has arguments
         // or not (meaning we are refering to the current type or another instantiated type).
         case BuildingTemplateQualifiedExpr:
+          llvm::outs() << "Setting base as template qualified expression\n";
         case BuildingNormalNameAccessExpr:
           // We don't need to extend the current name specifier in these cases.
           break;
@@ -770,6 +771,9 @@ static bool lookForNameInType(Sema &SemaRef,
   if (auto ElabTy = Ty->getAs<clang::ElaboratedType>()) {
     Ty = ElabTy->desugar();
   }
+  if (Ty->isPointerType()) {
+    Ty = Ty->getPointeeType();
+  }
   const auto *TST = Ty->getAs<clang::TemplateSpecializationType>();
   if (!(Ty->isStructureOrClassType() || Ty->isUnionType()
         || Ty->isEnumeralType()) && !TST) {
@@ -783,9 +787,11 @@ static bool lookForNameInType(Sema &SemaRef,
   clang::TagDecl *TD = Ty->getAsTagDecl();
   // TODO: Implement using statements.
   // if (SemaRef.elaboratingUsingInClassScope() && TST) {
-  if (TST){
-    TD = cast<clang::TagDecl>(TST->getTemplateName().getAsTemplateDecl()
-                              ->getTemplatedDecl());
+  if (!TD) {
+    if (TST) {
+      TD = cast<clang::TagDecl>(TST->getTemplateName().getAsTemplateDecl()
+                                ->getTemplatedDecl());
+    }
   }
   // Fetching declaration to ensure that we actually have the current scope
   // for lookup.

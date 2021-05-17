@@ -3826,11 +3826,17 @@ clang::Expr *Elaborator::elaborateCallExpression(const CallSyntax *S) {
     if (!ArgEnclosure->getOperand())
       // I'm not really sure this can happen.
       llvm_unreachable("Invalid empty template instantiation not implemented yet.");
+    if (IdExpr->getType()->isKindType()
+        || IdExpr->getType()->isNamespaceType()) {
+      error(IdExpr->getExprLoc()) << "cannot apply [] syntax to types and namespaces";
+      return nullptr;
+    }
     auto LS = cast<ListSyntax>(ArgEnclosure->getOperand());
     if (IdExpr->getType()->isTemplateType())
         return elaborateClassTemplateSelection(IdExpr, ArgEnclosure, LS);
 
     if (auto PartialExpr = dyn_cast<clang::CppxPartialEvalExpr>(IdExpr)) {
+      llvm::outs() << "Called elaborateCallExpr\n";
       // Handling partial expression instantiation.
       clang::SourceLocation LocStart = ArgEnclosure->getOpen().getLocation();
       clang::SourceLocation LocEnd = ArgEnclosure->getClose().getLocation();
@@ -5313,7 +5319,6 @@ clang::Expr *
 Elaborator::elaborateClassTemplateSelection(clang::Expr *IdExpr,
                                             const EnclosureSyntax *Enc,
                                             const ListSyntax *ArgList) {
-
   clang::SourceLocation LocStart = Enc->getOpen().getLocation();
   clang::SourceLocation LocEnd = Enc->getClose().getLocation();
   clang::TemplateArgumentListInfo TemplateArgs(LocEnd, LocStart);
@@ -5336,7 +5341,6 @@ Elaborator::elaborateClassTemplateSelection(clang::Expr *IdExpr,
   clang::ASTTemplateArgsPtr InArgs(ParsedArguments);
   clang::SourceLocation Loc = ArgList->getLocation();
   if (clang::VarTemplateDecl *VTD = dyn_cast<clang::VarTemplateDecl>(CTD)) {
-    
     clang::DeclarationNameInfo DNI(VTD->getDeclName(), Loc);
     clang::LookupResult R(getCxxSema(), DNI, clang::Sema::LookupAnyName);
     R.addDecl(VTD);
@@ -5477,6 +5481,10 @@ clang::Expr *Elaborator::elaborateMemberAccess(clang::Expr *LHS,
       return elaborateNestedNamespaceAccess(LHS, S);
   }
 
+  if (Ty->isTemplateType()) {
+    error(LHS->getExprLoc()) << "unable to access a member of a template";
+    return nullptr;
+  }
   return elaborateMemberAccessOp(LHS, S);
 }
 
