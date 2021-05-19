@@ -307,9 +307,39 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::FunctionTypeLoc>
   return BuildTypeLoc<clang::FunctionTypeLoc>(Context, TLB, Ty, Loc);
 }
 
+// You should use BuildFunctionTypeLoc instead of this, but we're stuck with it
+// when it comes to recursively rebuilding function pointer types.
 template<> TypeSourceInfo *BuildTypeLoc<clang::FunctionProtoTypeLoc>
 (clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
-  llvm_unreachable("Use BuildFunctionTypeLoc.");
+  // Push the return type to the TypeLocBuilder.
+  QualType ReturnType = Ty->getAs<clang::FunctionType>()->getReturnType();
+  BuildAnyTypeLoc(Ctx, TLB, ReturnType, Loc);
+  clang::FunctionProtoTypeLoc TL = TLB.push<clang::FunctionProtoTypeLoc>(Ty);
+  TL.setLocalRangeBegin(Loc);
+  TL.setLParenLoc(Loc);
+  TL.setRParenLoc(Loc);
+  TL.setExceptionSpecRange(clang::SourceRange(Loc, Loc));
+  TL.setLocalRangeEnd(Loc);
+
+  // We have to fabricate more declarations here, since FunctionTypeLocs
+  // take a ParmVarDecl, but the type itself only carries the type of each
+  // parameter. Easily the worst design decision in the history of compilers.
+  const clang::FunctionProtoType *FPT = Ty->getAs<clang::FunctionProtoType>();
+  for (unsigned I = 0; I < FPT->getNumParams(); ++I) {
+    std::string InventedName;
+    llvm::raw_string_ostream OS(InventedName);
+    OS << "__auto-param-" << I;
+    auto *II = &Ctx.Idents.get(OS.str());
+    clang::QualType T = FPT->getParamType(I);
+    clang::TypeSourceInfo *TInfo = BuildAnyTypeLoc(Ctx, T, Loc);
+    clang::ParmVarDecl *Temp =
+      clang::ParmVarDecl::Create(Ctx,
+                                 nullptr, Loc, Loc,
+                                 {II}, T, TInfo, clang::SC_None, nullptr);
+    TL.setParam(I, Temp);
+  }
+
+  return TLB.getTypeSourceInfo(Ctx, Ty);
 }
 
 template<> TypeSourceInfo *BuildTypeLoc<clang::FunctionProtoTypeLoc>
@@ -825,8 +855,12 @@ TypeSourceInfo *BuildAnyTypeLoc(clang::ASTContext &Context,
   bool IsQualified = T.hasQualifiers();
   QualType Base = IsQualified ? T.getUnqualifiedType() : T;
   TypeSourceInfo *TInfo = nullptr;
+  clang::Type::TypeClass TC = T->getTypeClass();
 
-  switch (T->getTypeClass()) {
+  if (TC != Base->getTypeClass())
+    TC = Base->getTypeClass();
+
+  switch (TC) {
 #define ABSTRACT_TYPE(CLASS, PARENT)
 #define TYPE(CLASS, PARENT)                                                    \
   case clang::Type::CLASS:{                                                    \

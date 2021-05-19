@@ -153,12 +153,6 @@ enum class Phase : std::size_t
 
 llvm::StringRef phaseToStr(Phase p);
 
-struct NNSDeclaratorInfo {
-  NestedNameSpecifierDeclarator *Name = nullptr;
-  TemplateParamsDeclarator *Template = nullptr;
-  SpecializationDeclarator *SpecializationArgs = nullptr;
-};
-
 enum InitKind {
   IK_None,
   IK_Exclaim,
@@ -205,6 +199,9 @@ public:
   /// True if this declares a pointer to a function or an array of
   /// function pointers.
   bool declaresFunctionPointerOrArray() const;
+
+  /// True if this declares a pointer to a method.
+  bool declaresMethodPointer() const;
 
   /// Declares variable with in body initialization.
   bool declaresInitializedVariable() const;

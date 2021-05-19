@@ -26,6 +26,7 @@
 #include "clang/Gold/GoldTokens.h"
 
 #include <vector>
+#include <list>
 #include <array>
 
 namespace gold {
@@ -36,8 +37,6 @@ using clang::cast;
 using clang::cast_or_null;
 using clang::dyn_cast;
 using clang::dyn_cast_or_null;
-
-struct Attribute;
 
 struct Syntax
 {
@@ -76,23 +75,24 @@ struct Syntax
 
   clang::SourceLocation getLoc() const;
 
-  using AttrVec = llvm::SmallVector<Attribute *, 4>;
-  AttrVec const &getAttributes() const { return Attributes; }
-  void addAttribute(Attribute *Attr);
-  void updateAttributes(const AttrVec &Attrs) {
+  using AttrList = std::list<Syntax *>;
+  AttrList const &getAttributes() const { return Attributes; }
+  void addAttribute(Syntax *Attr);
+  void updateAttributes(const AttrList &Attrs) {
     Attributes.insert(Attributes.end(), Attrs.begin(), Attrs.end());
   }
-  void updateAttributes(AttrVec &&Attrs) {
+  void updateAttributes(AttrList &&Attrs) {
     if (Attributes.empty()) {
       Attributes = Attrs;
       return;
     }
+
     updateAttributes(Attrs);
   }
 
 protected:
   SyntaxKind Kind;
-  AttrVec Attributes;
+  AttrList Attributes;
 };
 
 struct ErrorSyntax : Syntax
@@ -497,21 +497,6 @@ struct FileSyntax : Syntax, VectorNode<Syntax>
   }
 };
 
-struct Attribute
-{
-  Attribute(Syntax *Arg)
-    : Arg(Arg)
-  {}
-
-  const Syntax *getArg() const {
-    return Arg;
-  }
-
-private:
-  Syntax *Arg;
-};
-
-
 enum MarkupStyle {
   MS_MarkdownStyle,
   MS_HTMLStyle,
@@ -604,6 +589,7 @@ struct MarkupSyntax : Syntax {
   std::array<Syntax *, 4> Elems;
 };
 
+// FIXME: Where is the SourceLocation?
 struct DocAttrSyntax : Syntax, VectorNode<Syntax>
 {
   DocAttrSyntax(Syntax **Ts, unsigned NumElems)

@@ -667,6 +667,9 @@ public:
   clang::IdentifierInfo *const OperatorDotCaretII;
   clang::IdentifierInfo *const OperatorAmpersandII;
   clang::IdentifierInfo *const OperatorMapII;
+  clang::IdentifierInfo *const OperatorPreattributeII;
+  clang::IdentifierInfo *const OperatorPostattributeII;
+
 
   // Tokens used for constructor and destructor;
   clang::IdentifierInfo *const ConstructorII;
@@ -1013,6 +1016,11 @@ public:
                            const FunctionExtInfo &ExtInfo,
                            const FunctionExtProtoInfo &ProtoTypeInfo,
                            const FunctionExceptionSpec &ExceptionSpecInfo);
+  bool rebuildMemberPointerType(clang::VarDecl *VD,
+                                clang::SourceLocation Loc,
+                                const clang::MemberPointerType *MPT,
+                                const clang::FunctionProtoType *FPT,
+                                const FunctionExtProtoInfo &EPI);
 
   clang::CppxNamespaceDecl *ActOnStartNamespaceDef(clang::Scope *NamespcScope,
                                       clang::SourceLocation InlineLoc,

@@ -133,7 +133,9 @@ Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
     UnaryPostfixOpMap(getUnaryOperatorPostfixMapping()),
     DefaultCharTy(CxxAST.CharTy),
     BuiltinTypes(createBuiltinTypeList())
-{ }
+{
+  InplaceNewId = &Context.CxxAST.Idents.get("__BuiltinBlueInPlaceNew");
+}
 
 Sema::~Sema() {
 }
@@ -799,6 +801,183 @@ void Sema::buildBitNot() {
   DidLoadBWNot = true;
 }
 
+void Sema::buildInplaceNew() {
+  // if (InplaceNewId)
+  //   return;
+  using namespace clang;
+  TranslationUnitDecl *TU = CxxAST.getTranslationUnitDecl();
+  ClangDeclContextRAII TranslationUnitDC(*this, TU);
+
+  // Default empty location for everything!
+  SourceLocation Loc;
+  SourceRange RangeLoc;
+
+  // Declaring parameter types.
+  QualType SizeTy = CxxAST.getAdjustedParameterType(CxxAST.UnsignedLongLongTy);
+  QualType VoidPtrTy = CxxAST.getAdjustedParameterType(CxxAST.VoidPtrTy);
+  TypeSourceInfo *SizeTyTInfo = gold::BuildAnyTypeLoc(CxxAST, SizeTy, Loc);
+  TypeSourceInfo *VoidPtrTyTInfo = gold::BuildAnyTypeLoc(CxxAST, VoidPtrTy, Loc);
+  QualType ReturnTy = CxxAST.VoidPtrTy;
+  /*
+  |-FunctionDecl 0x7fffd672a1d0 <cpp_test.cpp:2:1, line:4:1> line:2:7 used operator new 'void *(unsigned long, void *)'
+  | |-ParmVarDecl 0x7fffd67299f8 <col:20, col:34> col:34 x 'unsigned long'
+  | |-ParmVarDecl 0x7fffd6729a80 <col:37, col:43> col:43 used ptr 'void *'
+  | `-CompoundStmt 0x7fffd672a318 <col:48, line:4:1>
+  |   `-ReturnStmt 0x7fffd672a308 <line:3:3, col:10>
+  |     `-ImplicitCastExpr 0x7fffd672a2f0 <col:10> 'void *' <LValueToRValue>
+  |       `-DeclRefExpr 0x7fffd672a2d0 <col:10> 'void *' lvalue ParmVar 0x7fffd6729a80 'ptr' 'void *'
+  */
+  {
+    // Creating the parameter types.
+    llvm::SmallVector<QualType, 2> ParamTypes;
+    llvm::SmallVector<ParmVarDecl *, 2> Params;
+    ParamTypes.emplace_back(SizeTy);
+    ParamTypes.emplace_back(VoidPtrTy);
+
+    // Building function prototype.
+    FunctionProtoType::ExtProtoInfo EPI;
+    EPI.ExceptionSpec.Type = EST_BasicNoexcept;
+    EPI.ExtInfo = CxxAST.getDefaultCallingConvention(false, false);
+    EPI.Variadic = false;
+
+    // Creating function type.
+    QualType FnTy = CxxAST.getFunctionType(ReturnTy, ParamTypes, EPI);
+    auto FnTInfo = gold::BuildFunctionTypeLoc(CxxAST, FnTy, Loc, Loc,
+                                              Loc, RangeLoc, Loc, Params);
+    DeclarationName FnName(InplaceNewId);
+    InplaceNewFnDcl = FunctionDecl::Create(CxxAST, TU, Loc, Loc, FnName,
+                                           FnTInfo->getType(), FnTInfo, SC_None);
+    ClangDeclContextRAII FnDCTracking(*this, InplaceNewFnDcl);
+
+    // Creating function parameters.
+    {
+      IdentifierInfo *SizeParmName = &Context.CxxAST.Idents.get("sz");
+      ParmVarDecl *Parm = ParmVarDecl::Create(CxxAST, InplaceNewFnDcl, Loc, Loc,
+                                              SizeParmName, SizeTy, SizeTyTInfo,
+                                              SC_None, nullptr);
+      Params.emplace_back(Parm);
+    }
+    {
+      IdentifierInfo *PtrName = &Context.CxxAST.Idents.get("ptr");
+      ParmVarDecl *Parm = ParmVarDecl::Create(CxxAST, InplaceNewFnDcl, Loc, Loc,
+                                              PtrName, VoidPtrTy,
+                                              VoidPtrTyTInfo, SC_None, nullptr);
+      Params.emplace_back(Parm);
+    }
+    InplaceNewFnDcl->setParams(Params);
+    InplaceNewFnDcl->setInlineSpecified(true);
+
+    // Rebuilding function type so we have parameters
+    FnTInfo = gold::BuildFunctionTypeLoc(CxxAST, FnTy, Loc, Loc, Loc, RangeLoc,
+                                         Loc, Params);
+    InplaceNewFnDcl->setType(FnTInfo->getType());
+    InplaceNewFnDcl->setTypeSourceInfo(FnTInfo);
+
+    ExprValueKind ValueKind = CxxSema.getValueKindForDeclReference(ReturnTy,
+                                                                   Params[1],
+                                                                   Loc);
+    DeclarationNameInfo DNI({&CxxAST.Idents.get("ptr")}, Loc);
+    NestedNameSpecifierLoc NNS;
+    auto RefExpr = DeclRefExpr::Create(CxxAST, NNS, Loc, Params[1], false,
+                                       Loc, ReturnTy, ValueKind);
+    auto Cast = ImplicitCastExpr::Create(CxxAST, ReturnTy,
+                                         CK_LValueToRValue, RefExpr,
+                                         nullptr, ValueKind,
+                                         FPOptionsOverride());
+    ReturnStmt *RetStmt = ReturnStmt::Create(CxxAST, Loc, Cast, nullptr);
+    llvm::SmallVector<Stmt* , 1> BlockStmts({RetStmt});
+    CompoundStmt *Block = CompoundStmt::Create(CxxAST, BlockStmts, Loc, Loc);
+    InplaceNewFnDcl->setBody(Block);
+  }
+  InplaceNewFnDcl->setImplicit();
+  TU->addDecl(InplaceNewFnDcl);
+}
+
+clang::FunctionDecl *Sema::getInplaceNewFn() {
+  if (!InplaceNewFnDcl)
+    buildInplaceNew();
+  return InplaceNewFnDcl;
+}
+
+
+// void Sema::buildPlacementNew(clang::DeclContext *DC) {
+
+
+//   // Sort of resuming the translation unit scope so I can correctly create
+//   // my do nothing new/delete functions.
+//   QualType VoidPtrTy = CxxAST.VoidPtrTy;
+//   TypeSourceInfo *VoidPtrTyTInfo = gold::BuildAnyTypeLoc(CxxAST, VoidPtrTy, Loc);
+//   {
+//     llvm::SmallVector<clang::QualType, 2> ParamTypes;
+//     ParamTypes.emplace_back(VoidPtrTy);
+//     ParamTypes.emplace_back(CxxAST.UnsignedLongTy);
+
+//     clang::FunctionProtoType::ExtProtoInfo EPI;
+//     EPI.ExceptionSpec.Type = clang::EST_BasicNoexcept;
+//     EPI.ExtInfo = Context.CxxAST.getDefaultCallingConvention(false, false);
+//     EPI.Variadic = false;
+//     clang::QualType NewFnTy = CxxAST.getFunctionType(VoidPtrTy, ParamTypes, EPI);
+//     // clang::TypeSourceInfo *FnTInfo = gold::BuildFunctionTypeLoc(CxxAST,
+//     //                                                             NewFnTy,
+//     //                                                             Loc, Loc, Loc,
+//     //                                                             SourceRange(),
+//     //                                                             Loc, Params);
+
+//     auto TInfo = gold::BuildFunctionTypeLoc(CxxAST, VoidFnTy, Loc, Loc,
+//                                             Loc, SourceRange(), Loc, Params);
+//     // DeclarationName ParmName();
+//     // MemberCtor = CXXConstructorDecl::Create(getCxxAST(), AtAddrClass, Loc,
+//     //                                          CtorDNI, VoidFnTy, TInfo, ES,
+//     //                                          /*isInline*/true,
+//     //                                          /*isImplicitlyDeclared*/false,
+//     //                                          ConstexprSpecKind::Constexpr);
+//     clang::DeclarationName FnName(PlacementNewId);
+//     InPlaceNew = FunctionDecl::Create(Context.CxxAST, DC, Loc, Loc, FnName,
+//                                       TInfo->getType(), TInfo, SC_None);
+//     // // Setting the declaration to be implicit.
+//     // {
+//     //   clang::TypeSourceInfo *P0SrcInfo = BuildAnyTypeLoc(Context.CxxAST, Types[0], Loc);
+//     //   clang::IdentifierInfo *II = &Context.CxxAST.Idents.get("sz");
+//     //   clang::DeclarationName Name(II);
+//     //   clang::ParmVarDecl *P = clang::ParmVarDecl::Create(Context.CxxAST, InPlaceNew,
+//     //                                                      Loc, Loc, Name,
+//     //               Context.CxxAST.getAdjustedParameterType(P0SrcInfo->getType()),
+//     //                                         P0SrcInfo, clang::SC_None, nullptr);
+//     //   Params.push_back(P);
+//     // }
+//     // // Creating parameter 1.
+//     // {
+//     //   clang::TypeSourceInfo *P1SrcInfo = BuildAnyTypeLoc(Context.CxxAST, Types[1], Loc);
+//     //   clang::IdentifierInfo *II = &Context.CxxAST.Idents.get("ptr");
+//     //   clang::DeclarationName Name(II);
+//     //   clang::ParmVarDecl *P = clang::ParmVarDecl::Create(Context.CxxAST, InPlaceNew,
+//     //                                                      Loc, Loc, Name,
+//     //               Context.CxxAST.getAdjustedParameterType(P1SrcInfo->getType()),
+//     //                                      P1SrcInfo, clang::SC_None, nullptr);
+//     //   Params.push_back(P);
+//     // }
+//     llvm::SmallVector<clang::ParmVarDecl *, 2> Params;
+//     // InPlaceNew->setParams(Params);
+//     // InPlaceNew->setInlineSpecified(true);
+//     // // Rebuilding function type so we have parameters
+//     // FnTInfo = BuildFunctionTypeLoc(Context.CxxAST,
+//     //                                NewFnTy,
+//     //                                Loc, Loc, Loc,
+//     //                                clang::SourceRange(),
+//     //                                Loc, Params);
+//     // InPlaceNew->setType(FnTInfo->getType());
+//     // InPlaceNew->setTypeSourceInfo(FnTInfo);
+//     // {
+//     //   ClangScopeRAII FuncBody(*this, clang::Scope::FnScope |
+//     //                           clang::Scope::DeclScope |
+//     //                           clang::Scope::CompoundStmtScope,
+//     //                           clang::SourceLocation());
+
+//     // }
+//   }
+//   InPlaceNew->setImplicit();
+//   Owner->addDecl(InPlaceNew);
+// }
 
 clang::CppxTypeLiteral *Sema::buildTypeExpr(clang::QualType Ty,
                                             clang::SourceLocation Loc) {

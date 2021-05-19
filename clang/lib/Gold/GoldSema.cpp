@@ -223,6 +223,8 @@ Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
     OperatorDotCaretII(&Context.CxxAST.Idents.get("operator'.^'")),
     OperatorAmpersandII(&Context.CxxAST.Idents.get("operator'&'")),
     OperatorMapII(&Context.CxxAST.Idents.get("operator'=>'")),
+    OperatorPreattributeII(&Context.CxxAST.Idents.get("operator'Preattribute'")),
+    OperatorPostattributeII(&Context.CxxAST.Idents.get("operator'Postattribute'")),
     ConstructorII(&Context.CxxAST.Idents.get("constructor")),
     DestructorII(&Context.CxxAST.Idents.get("destructor")),
     VaStartII(&Context.CxxAST.Idents.get("__builtin_va_start")),
@@ -738,7 +740,8 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S,
         }
 
         // Skip early elaboration of declarations with nested name specifiers.
-        if (FoundDecl->hasNestedNameSpecifier())
+        if (FoundDecl->hasNestedNameSpecifier() &&
+            !FoundDecl->declaresMethodPointer())
           continue;
 
         if (!FoundDecl->Cxx) {
@@ -1456,6 +1459,48 @@ bool Sema::rebuildFunctionType(clang::FunctionDecl *FD,
   }
   FD->setType(ExceptionAdjustedTy);
   FD->setTypeSourceInfo(TInfo);
+  return false;
+}
+
+bool Sema::rebuildMemberPointerType(clang::VarDecl *VD,
+                                    clang::SourceLocation Loc,
+                                    const clang::MemberPointerType *MPT,
+                                    const clang::FunctionProtoType *FPT,
+                                    const FunctionExtProtoInfo &EPI) {
+  assert(VD && "Invalid pointer declaration");
+  assert(FPT && "Invalid function proto type");
+  clang::ASTContext &CxxAST = Context.CxxAST;
+  llvm::SmallVector<clang::ParmVarDecl *, 4> Params;
+  llvm::SmallVector<clang::QualType, 4> Types;
+  for (unsigned I = 0; I < FPT->getNumParams(); ++I) {
+    std::string InventedName;
+    llvm::raw_string_ostream OS(InventedName);
+    OS << "__auto-param-" << I;
+    auto *II = &CxxAST.Idents.get(OS.str());
+    clang::QualType T = FPT->getParamType(I);
+    clang::TypeSourceInfo *TInfo = BuildAnyTypeLoc(CxxAST, T, Loc);
+    clang::ParmVarDecl *Temp =
+      clang::ParmVarDecl::Create(CxxAST, getCurClangDeclContext(), Loc, Loc,
+                                 {II}, T, TInfo, clang::SC_None, nullptr);
+
+    Params.push_back(Temp);
+    Types.push_back(Temp->getType());
+  }
+
+  clang::QualType FnTy =
+    CxxAST.getFunctionType(FPT->getReturnType(), Types, EPI);
+  clang::DeclarationName Name;
+  clang::QualType MemberTy =
+    getCxxSema().BuildMemberPointerType(FnTy, {MPT->getClass(), 0}, Loc, Name);
+  clang::TypeSourceInfo *TInfo =
+    BuildMemberPtrTypeLoc(CxxAST, MemberTy, Params, Loc);
+  if (!TInfo) {
+    Diags.Report(Loc, clang::diag::err_invalid_function_type);
+    return true;
+  }
+
+  VD->setType(TInfo->getType());
+  VD->setTypeSourceInfo(TInfo);
   return false;
 }
 

@@ -110,7 +110,8 @@ public:
 
 
 private:
-  
+  clang::Stmt *elaborateStmtWithAttrs(const Syntax *S);
+
   clang::Stmt *elaborateIfStmt(const MacroSyntax *S);
   clang::Stmt *elaborateElseStmt(const MacroSyntax *S);
   clang::Stmt *elaborateArrayMacroStmt(const MacroSyntax *S);
@@ -125,6 +126,9 @@ private:
                                   clang::SourceLocation ForLoc);
   clang::Stmt *elaborateWhileStmt(const MacroSyntax *S);
   clang::Stmt *elaborateBlockWhileStmt(const MacroSyntax *S);
+
+private:
+  std::list<const Syntax *> StmtAttributes;
 };
 
 } // namespace gold

@@ -53,6 +53,8 @@ class TypeSourceInfo;
 class DeclContext;
 class CppxDependentMemberAccessExpr;
 class CppxPartialEvalExpr;
+class CXXConstructorDecl;
+
 } // namespace clang
 
 
@@ -166,6 +168,7 @@ public:
   /// This is a helper function that dumps ALL of the functions into the
   /// translation unit at once.
   void createBitwiseBuiltinFunctions();
+
 private:
   bool DidLoadBWAnd = false;
   bool DidLoadBWOr = false;
@@ -182,6 +185,16 @@ public:
   void buildBitNot();
   ///}
 
+  /// Constructs inside of the global scope the at address function, and
+  /// object that's needed to use it.
+  ///{
+  clang::FunctionDecl *getInplaceNewFn();
+private:
+  void buildInplaceNew();
+  clang::IdentifierInfo *InplaceNewId;
+  clang::FunctionDecl *InplaceNewFnDcl = nullptr;
+public:
+  ///}
   clang::CppxTypeLiteral *buildTypeExpr(clang::QualType Ty,
                                         clang::SourceLocation Loc);
   clang::CppxTypeLiteral *buildTypeExpr(clang::TypeSourceInfo *TInfo);
@@ -856,6 +869,19 @@ private:
   clang::Scope *PrevClangScope = nullptr;
 };
 
+struct ClangDeclContextRAII {
+  Sema &SemaRef;
+  clang::DeclContext *PrevDC;
+  ClangDeclContextRAII(Sema &S, clang::DeclContext *NextDC)
+    :SemaRef(S),
+    PrevDC(S.getCurClangDeclContext())
+  {
+    SemaRef.setClangDeclContext(NextDC);
+  }
+  ~ClangDeclContextRAII() {
+    SemaRef.setClangDeclContext(PrevDC);
+  }
+};
 
 // using OptionalScopeRAII = OptionalInitScope<Sema::
 using OptionalScopeRAII = OptionalInitScope<Sema::ScopeRAII>;

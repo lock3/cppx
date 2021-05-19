@@ -49,6 +49,21 @@ main() : int! {
   ASSERT_TRUE(matches(Code.str(), Test));
 }
 
+TEST(GoldLambda, Mutable) {
+  StringRef Code = R"(
+main() : int! {
+  y : int = 42
+  fn = lambda<mutable>{ y  }(){ return y; }
+  test = fn();
+}
+)";
+
+  DeclarationMatcher Test =
+    varDecl(hasName("test"), hasType(asString("int")));
+  ASSERT_TRUE(matches(Code.str(), Test));
+}
+
+
 TEST(GoldLambda, InitCapture) {
   StringRef Code = R"(
 main() : int! {

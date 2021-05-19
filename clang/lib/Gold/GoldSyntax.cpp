@@ -58,11 +58,12 @@ clang::SourceLocation Syntax::getLoc() const {
   case SK_LambdaMacro:
     return cast<MacroSyntax>(this)->getCallLoc();
   case SK_File:
+  default:
     return SourceLocation();
   }
 }
 
-void Syntax::addAttribute(Attribute *Attr) {
+void Syntax::addAttribute(Syntax *Attr) {
   Attributes.push_back(Attr);
 }
 

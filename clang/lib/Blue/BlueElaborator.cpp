@@ -3725,7 +3725,6 @@ clang::Expr *buildIdExpr(Sema &SemaRef,
     llvm::StringRef Id,
     clang::SourceLocation Loc) {
   // Check for builtin types.
-
   // Easy case of a wildcard expression.
   if (Id == "_")
     return clang::CppxWildcardExpr::Create(SemaRef.getCxxAST(), Loc);
@@ -3733,6 +3732,7 @@ clang::Expr *buildIdExpr(Sema &SemaRef,
   if (Id == "this") {
     return SemaRef.getCxxSema().ActOnCXXThis(Loc).get();
   }
+
   // Doing variable lookup.
   clang::IdentifierInfo *II = &SemaRef.getCxxAST().Idents.get(Id);
   clang::LookupResult R(SemaRef.getCxxSema(), {{II}, Loc},
@@ -3745,16 +3745,10 @@ clang::Expr *buildIdExpr(Sema &SemaRef,
     auto BuiltinMapIter = SemaRef.BuiltinTypes.find(Id);
     if (BuiltinMapIter != SemaRef.BuiltinTypes.end())
       return SemaRef.buildTypeExpr(BuiltinMapIter->second, Loc);
-    if (SemaRef.lookupUnqualifiedName(R, SemaRef.getCurrentScope())) {
-      SemaRef.getCxxSema().Diags.Report(Loc,
-                              clang::diag::err_identifier_not_declared_in_scope)
-                                        << II->getName();
-      return nullptr;
-    }
+    SemaRef.lookupUnqualifiedName(R, SemaRef.getCurrentScope());
+
   }
 
-
-  // SemaRef.lookupUnqualifiedName(R);
   R.resolveKind();
   switch (R.getResultKind()) {
   case clang::LookupResult::FoundOverloaded: {
@@ -3773,8 +3767,9 @@ clang::Expr *buildIdExpr(Sema &SemaRef,
   case clang::LookupResult::NotFoundInCurrentInstantiation:
   case clang::LookupResult::NotFound: {
     SemaRef.getCxxSema().Diags.Report(Loc,
-                              clang::diag::err_undeclared_var_use)
-                              << Id;
+                            clang::diag::err_identifier_not_declared_in_scope)
+                                      << II->getName();
+
     return nullptr;
   }
   case clang::LookupResult::FoundUnresolvedValue:
@@ -3801,10 +3796,18 @@ clang::Expr *Elaborator::elaborateCallExpression(const CallSyntax *S) {
   if (LS) {
     if (LS->getSpelling() == "integer")
       return elaborateIntegerMetaFunction(S);
+
     if (LS->getSpelling() == "real")
       return elaborateRealMetaFunction(S);
+
     if (LS->getSpelling() == "character")
       return elaborateCharacterMetaFunction(S);
+
+    if (LS->getToken().hasKind(tok::InplaceNewKeyword))
+      return elaboratorInplaceNew(S);
+
+    if (LS->getToken().hasKind(tok::InplaceDeleteKeyword))
+      return elaboratorInplaceDelete(S);
   }
 
   // Handling non special case elaboration.
@@ -4513,6 +4516,9 @@ clang::Expr *BuildReferenceToDecl(Sema &SemaRef,
     // }
 
     if (isa<clang::FieldDecl>(VD)) {
+      // If we are inside of a non-static member declaration, then if the member
+      // is reachable through the current this pointer then we can create the
+      // implicit this reference to that variable.
       // FIXME: Write a test for this!
       // Building this access.
       // clang::FieldDecl* Field = cast<clang::FieldDecl>(VD);
@@ -5995,6 +6001,193 @@ static bool handleBuiltInByteCountEval(Elaborator &Elab, const Syntax *BytesArg,
       return reportInvalidUse(BytesLoc, 2);
   } else
     return reportInvalidUse(BytesLoc, 3);
+}
+
+clang::Expr *Elaborator::elaboratorInplaceNew(const CallSyntax *Call) {
+  auto EnclosureNode = dyn_cast<EnclosureSyntax>(Call->getOperand(1));
+  if (!EnclosureNode) {
+    error(Call->getLocation()) << "invalid call to __inplace_new";
+    return nullptr;
+  }
+  if (!EnclosureNode->isParenEnclosure()) {
+    error(Call->getLocation()) << "invalid use of __inplace_new";
+    return nullptr;
+  }
+
+  auto ArgList = dyn_cast<ListSyntax>(EnclosureNode->getTerm());
+  if (!ArgList) {
+    error(Call->getLocation()) << "invalid use of __inplace_new";
+    return nullptr;
+  }
+
+  if (ArgList->getNumChildren() < 2) {
+    error(Call->getLocation()) << "incorrect number of arguments given to __inplace_new";
+    return nullptr;
+  }
+
+  clang::Expr *PlacementArg = elaborateExpression(ArgList->getOperand(0));
+  if (!PlacementArg)
+    return nullptr;
+  clang::QualType PlacementArgTy = PlacementArg->getType();
+  if (PlacementArgTy->isKindType() || PlacementArgTy->isNamespaceType()
+      || PlacementArgTy->isTemplateType()) {
+    error(PlacementArg->getExprLoc()) << "invalid placement operand";
+    return nullptr;
+  }
+
+  clang::Expr *TypeExpr = elaborateConstantExpression(ArgList->getOperand(1));
+  if (!TypeExpr->getType()->isKindType()) {
+    error(PlacementArg->getExprLoc())
+      << "invalid type provided to new expression";
+    return nullptr;
+  }
+
+  llvm::SmallVector<clang::Expr *, 1> InPlaceArgs({PlacementArg});
+
+  clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(TypeExpr,
+                                                        TypeExpr->getExprLoc());
+  if (!TInfo)
+    return nullptr;
+
+  clang::SourceLocation Loc = PlacementArg->getExprLoc();
+  llvm::SmallVector<clang::Expr *, 4> CtorArgs;
+  unsigned Index = 2;
+  for(;Index < ArgList->getNumChildren(); ++Index) {
+    clang::Expr *Arg = elaborateExpression(ArgList->getOperand(Index));
+    if (!Arg)
+      continue;
+    clang::QualType ArgTy = Arg->getType();
+    if (ArgTy->isKindType() || ArgTy->isNamespaceType()
+        || ArgTy->isTemplateType()) {
+      error(Arg->getExprLoc()) << "invalid argument to a call";
+    }
+    CtorArgs.emplace_back(Arg);
+  }
+
+  clang::Expr *CtorExprOrParenList = nullptr;
+  auto ToConstruct = TInfo->getType();
+  if (ToConstruct->isDependentType()) {
+    // We need to make this happen instead of creating the unresolved
+    // constructor expression. The unresolved constructor expression
+    // is used to create a temporary object and not invoke the constructor.
+    // ParenListExpr
+    // CXXNewExpr 0x7fffbb559af8 <line:11:3, col:14> 'T *'
+    //      |-ParenListExpr 0x7fffbb559ac8 <col:12, col:14> 'NULL TYPE'
+    //      | `-IntegerLiteral 0x7fffbb559aa8 <col:13> 'int' 3
+    //      `-DeclRefExpr 0x7fffbb559a88 <col:8> 'T *' lvalue Var 0x7fffbb559a08 'x' 'T *'
+    CtorExprOrParenList = clang::ParenListExpr::Create(CxxAST, Loc, CtorArgs,
+                                                       Loc);
+  } else {
+    auto ParstedTy = SemaRef.getCxxSema().CreateParsedType(TInfo->getType(),
+                                                           TInfo);
+    CtorExprOrParenList = SemaRef.getCxxSema().ActOnCXXTypeConstructExpr(
+      ParstedTy, Loc, CtorArgs, Loc, false).get();
+  }
+
+  if (!CtorExprOrParenList) {
+    error(Loc) << "invalid constructor expression";
+    return nullptr;
+  }
+
+  return clang::CXXNewExpr::Create(
+      SemaRef.getCxxAST(),
+      /*IsGlobalNew*/false,
+      /*OperatorNew*/SemaRef.getInplaceNewFn(),
+      // No delete operator needed because technically there isn't one for
+      // placement new because it doesn't allocate memory.
+      /*OperatorDelete*/nullptr,
+      /*ShouldPassAlignment*/false,
+      /*UsualArrayDeleteWantsSize*/false,
+      /*PlacementArgs*/InPlaceArgs,
+      /*TypeIdParens*/clang::SourceRange(Loc, Loc),
+      /*ArraySize*/llvm::Optional<clang::Expr *>(),
+      /*InitializationStyle*/clang::CXXNewExpr::CallInit,
+      /*Initializer*/CtorExprOrParenList,
+      /*Ty*/TInfo->getType(),
+      /*AllocatedTypeInfo*/TInfo,
+      /*Range*/clang::SourceRange(Loc, Loc),
+      /*DirectInitRange*/clang::SourceRange(Loc, Loc)
+    );
+}
+
+clang::Expr *Elaborator::elaboratorInplaceDelete(const CallSyntax *Call) {
+  auto EnclosureNode = dyn_cast<EnclosureSyntax>(Call->getOperand(1));
+  if (!EnclosureNode) {
+    error(Call->getLocation()) << "invalid call to __inplace_delete";
+    return nullptr;
+  }
+  if (!EnclosureNode->isParenEnclosure()) {
+    error(Call->getLocation()) << "invalid use of __inplace_delete";
+    return nullptr;
+  }
+
+  auto ArgList = dyn_cast<ListSyntax>(EnclosureNode->getTerm());
+  if (!ArgList) {
+    error(Call->getLocation()) << "invalid use of __inplace_delete";
+    return nullptr;
+  }
+
+  if (ArgList->getNumChildren() != 1) {
+    error(Call->getLocation()) << "incorrect number of arguments given to __inplace_delete";
+    return nullptr;
+  }
+
+  clang::Expr *ToDelete = elaborateExpression(ArgList->getOperand(0));
+  if (!ToDelete)
+    return nullptr;
+  clang::QualType ToDeleteTy = ToDelete->getType();
+  if (ToDeleteTy->isKindType() || ToDeleteTy->isNamespaceType()
+      || ToDeleteTy->isTemplateType()) {
+    error(ToDelete->getExprLoc()) << "invalid argument";
+    return nullptr;
+  }
+
+  if (!ToDeleteTy->isPointerType()) {
+    if (ToDeleteTy->isDependentType()) {
+      ToDeleteTy = SemaRef.buildQualTypeExprTypeFromExpr(ToDelete,
+                                                         ToDelete->getExprLoc(),
+                                                         true);
+    } else {
+      SemaRef.getCxxSema().Diags.Report(ToDelete->getExprLoc(),
+                           clang::diag::err_pseudo_dtor_base_not_scalar)
+                           << ToDeleteTy;
+      return nullptr;
+    }
+  } else {
+    ToDeleteTy = ToDeleteTy->getPointeeType();
+  }
+  clang::CXXScopeSpec SS;
+  clang::SourceLocation Loc;
+  clang::tok::TokenKind AccessTokenKind = clang::tok::TokenKind::arrow;
+  clang::UnqualifiedId Id;
+  clang::TypeSourceInfo *TInfo = gold::BuildAnyTypeLoc(getCxxContext(),
+                                                       ToDeleteTy,
+                                                       ToDelete->getExprLoc());
+  auto CallLoc = Call->getLocation();
+  if (TInfo->getType()->isDependentType()) {
+    clang::PseudoDestructorTypeStorage DtorLoc(TInfo);
+    auto Ret = SemaRef.getCxxSema().BuildPseudoDestructorExpr(ToDelete, CallLoc,
+      AccessTokenKind, SS, nullptr, CallLoc, CallLoc, DtorLoc);
+    if (Ret.isInvalid())
+      return nullptr;
+    llvm::SmallVector<clang::Expr *, 0> ArgExprs;
+    Ret = CxxSema.ActOnCallExpr(CxxSema.getCurScope(), Ret.get(), Loc, ArgExprs, Loc);
+    if (Ret.isInvalid())
+      return nullptr;
+  }
+  auto PT = SemaRef.getCxxSema().CreateParsedType(TInfo->getType(), TInfo);
+  Id.setDestructorName(CallLoc, PT, CallLoc);
+
+  auto Ret = SemaRef.getCxxSema().ActOnMemberAccessExpr(
+      SemaRef.getCurClangScope(), ToDelete, CallLoc, AccessTokenKind, SS, Loc,
+      Id, nullptr);
+  if (Ret.isInvalid())
+    return nullptr;
+  llvm::SmallVector<clang::Expr *, 0> ArgExprs;
+  Ret = CxxSema.ActOnCallExpr(CxxSema.getCurScope(), Ret.get(), Loc, ArgExprs, Loc);
+  if (Ret.isInvalid())
+    return nullptr;
+  return Ret.get();
 }
 
 clang::Expr *Elaborator::elaborateIntegerMetaFunction(const BinarySyntax *S) {

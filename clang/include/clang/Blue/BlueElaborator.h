@@ -224,6 +224,9 @@ public:
   clang::Expr *elaborateNNS(clang::NamedDecl *NS, const InfixSyntax *S);
   clang::Expr *elaborateMemberAccessOp(clang::Expr *LHS, const InfixSyntax *S);
 
+  clang::Expr *elaboratorInplaceNew(const CallSyntax *Call);
+  clang::Expr *elaboratorInplaceDelete(const CallSyntax *Call);
+
   clang::Expr *elaborateIntegerMetaFunction(const BinarySyntax *S);
   clang::Expr *elaborateCharacterMetaFunction(const BinarySyntax *S);
   clang::Expr *elaborateRealMetaFunction(const BinarySyntax *S);

@@ -38,6 +38,7 @@ enum FusionKind {
   Operator,
   Conversion,
   Literal,
+  Attribute,
 };
 } // namespace tok
 
@@ -73,6 +74,10 @@ enum TokenFlags : unsigned short {
 
   /// Token is a fused conversion
   TF_FusedConversion = 0x04,
+
+  /// The token effectively starts a line, i.e., it is the first non-whitespace
+  /// token in the line.
+  TF_EffectivelyStartsLine = 0x08,
 };
 
 /// A token represents a symbol in the language, the end of file, or an
@@ -158,6 +163,10 @@ struct Token
 
   bool isAtStartOfLine() const {
     return Flags & TF_StartsLine;
+  }
+
+  bool isAtEffectiveStartOfLine() const {
+    return Flags & TF_EffectivelyStartsLine;
   }
 
   bool isFusedConversion() const {

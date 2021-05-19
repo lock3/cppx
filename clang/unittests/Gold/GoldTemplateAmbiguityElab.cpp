@@ -441,7 +441,7 @@ TEST(GoldTemplateAmbiguity, MemberFunctionPtr) {
   StringRef Code = R"(
 T1[T:type] = class:
   bar():void!
-    x: T1[T].() -> void = &T1[T].foo
+    x: ^(T1[T].() -> void) = &T1[T].foo
   foo():void!
     ;
 

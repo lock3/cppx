@@ -168,9 +168,12 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
   switch (OpKind) {
   case FOK_Throw:
     return elaborateThrowStmt(S);
-  case FOK_Colon: {
+  case FOK_Colon:
     return createDeclStmt(CxxAST, SemaRef, S);
-  }
+
+  case FOK_Preattr:
+  case FOK_Postattr:
+    return elaborateStmtWithAttrs(S);
 
   case FOK_Equals: {
     ExprElaborator LHSElab(Context, SemaRef);
@@ -276,6 +279,26 @@ static bool isConstExprIf(Sema &SemaRef, Attributes &Attrs, bool &IsConstExpr) {
     });
 }
 
+clang::Stmt *StmtElaborator::elaborateStmtWithAttrs(const Syntax *S) {
+  if (!isa<CallSyntax>(S))
+    return elaborateStmt(S);
+
+  const CallSyntax *Call = cast<CallSyntax>(S);
+  FusedOpKind Op = getFusedOpKind(SemaRef, Call);
+
+  if (Op == FOK_Postattr) {
+    StmtAttributes.push_back(Call->getArgument(1));
+    return elaborateStmtWithAttrs(Call->getArgument(0));
+  }
+
+  if (Op == FOK_Preattr) {
+    StmtAttributes.push_back(Call->getArgument(0));
+    return elaborateStmtWithAttrs(Call->getArgument(1));
+  }
+
+  return elaborateStmt(S);
+}
+
 clang::Stmt *StmtElaborator::elaborateIfStmt(const MacroSyntax *S) {
   const CallSyntax *Call = cast<CallSyntax>(S->getCall());
   clang::Expr *ConditionExpr;
@@ -285,12 +308,10 @@ clang::Stmt *StmtElaborator::elaborateIfStmt(const MacroSyntax *S) {
   // Gathering attributes from if statement.
   if (const auto *Call = dyn_cast<CallSyntax>(S->getCall())) {
     if (const auto *IfAtom = dyn_cast<AtomSyntax>(Call->getCallee())) {
-      for (const Attribute *Attr : IfAtom->getAttributes()) {
-        Attrs.emplace_back(Attr->getArg());
-      }
-      if (isConstExprIf(SemaRef, Attrs, IsConstExprIfStmt)) {
+      for (const Syntax *Attr : StmtAttributes)
+        Attrs.emplace_back(Attr);
+      if (isConstExprIf(SemaRef, Attrs, IsConstExprIfStmt))
         return nullptr;
-      }
     }
   }
 

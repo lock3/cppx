@@ -35,6 +35,7 @@ class NamespaceDecl;
 class Sema;
 class TypeSourceInfo;
 class NestedNameSpecifier;
+class UnqualifiedId;
 
 } // namespace clang
 
@@ -86,6 +87,8 @@ public:
 
   clang::Expr *elaborateCall(const CallSyntax *S);
 
+  clang::Expr *elaborateExprWithAttrs(const Syntax *S);
+
   /// This elaborates sizeof, alignof, noexcept used as an operator, constexpr
   /// as an operator, and decltype.
   /// This function also tests if the call is one of these operators, and returns
@@ -117,10 +120,19 @@ public:
                                         const Syntax *LHS,
                                         const CallSyntax *Op,
                                         const Syntax *RHS);
+  clang::Expr *completeMemberAccessRHS(clang::Expr *ElaboratedLHS,
+                                       clang::UnqualifiedId &Id,
+                                       const Syntax *LHS,
+                                       const CallSyntax *Op,
+                                       const Syntax *RHS);
   clang::Expr *elaborateMemberAccessRHSAtom(clang::Expr *ElaboratedLHS,
                                             const Syntax *LHS,
                                             const CallSyntax *Op,
                                             const AtomSyntax *RHS);
+  clang::Expr *elaborateMemberAccessRHSElem(clang::Expr *ElaboratedLHS,
+                                            const Syntax *LHS,
+                                            const CallSyntax *Op,
+                                            const ElemSyntax *RHS);
 
   clang::Expr *elaborateDisambuationSyntax(clang::Expr *ElaboratedLHS,
                                            const Syntax *LHS,
@@ -197,6 +209,7 @@ public:
   clang::Expr *elaboratePointerType(Declarator *D, clang::Expr *Ty);
 
 private:
+  clang::Expr *elaborateNNSForFunctionType(Declarator *D, clang::Expr *Ty);
   clang::Expr *handleOperatorConst(const CallSyntax *S);
   clang::Expr *handleRefType(const CallSyntax *S);
   clang::Expr *handleRRefType(const CallSyntax *S);
@@ -246,6 +259,8 @@ private:
   // True when we want to elaborate an expression without side effects. Used by
   // the declarator builder.
   bool TemporaryElaboration = false;
+
+  llvm::SmallVector<const Syntax *, 4> ExprAttributes;
 
 public:
   /// ---------------------------------------------------------------------- ///

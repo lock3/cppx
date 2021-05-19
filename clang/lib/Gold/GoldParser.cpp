@@ -169,7 +169,6 @@ static Syntax *makeOperator(const SyntaxContext &Ctx,
 static Syntax *makeList(const SyntaxContext &Ctx,
                         std::initializer_list<Syntax *> List);
 
-static Attribute *makeAttr(const SyntaxContext &Ctx, Syntax *Arg);
 
 static Syntax *onMarkup(clang::ASTContext &Context, MarkupStyle S, Syntax *Name,
                         Syntax *Content, Syntax *OtherBlock, Syntax *EndingTag);
@@ -294,11 +293,10 @@ static inline bool isSignificant(const Token &Tok) {
     Tok.isNewline() || Tok.isComment();
 }
 
-
-
 Token Parser::lineScannerFetch() {
   Token Tok;
   bool StartsLine = false;
+  bool LineHasStarted = false;
 
   // These two booleans, as well as the temporary SkipNewlineAfterComment,
   // keep track of the state of comments.
@@ -327,6 +325,13 @@ Token Parser::lineScannerFetch() {
     else if (!LastWasSignificant)
       SkipNewlineAfterComment = true;
 
+    if (isSignificant(Tok)) {
+      if (!LineHasStarted) {
+        LineHasStarted = true;
+        Tok.Flags |= TF_EffectivelyStartsLine;
+      }
+    }
+
     if (!Tok.isSpace() && !Tok.isNewline()) {
       Current = Tok;
       if (Tok.isComment())
@@ -345,10 +350,15 @@ Token Parser::lineScannerFetch() {
     }
 
     // Empty lines are discarded.
-    if (Tok.isNewline() && Tok.isAtStartOfLine())
+    if (Tok.isNewline() && Tok.isAtStartOfLine()) {
+      LineHasStarted = false;
       continue;
-    if (Tok.isNewline() && SkipNewlineAfterComment)
+    }
+
+    if (Tok.isNewline() && SkipNewlineAfterComment) {
+      LineHasStarted = false;
       continue;
+    }
 
     // Errors, space, and comments are discardable. If a token starts a
     // line, the next token will become the new start of line.
@@ -370,6 +380,7 @@ Token Parser::lineScannerFetch() {
     // \endcode
     if ((Tok.isSpace() || Tok.isNewline()) &&
         isInfix(Current, GreaterThanIsOperator)) {
+      LineHasStarted = false;
       continue;
     }
 
@@ -606,10 +617,6 @@ void Parser::parseList(llvm::SmallVectorImpl<Syntax *> &Vec) {
 //    def-list , def
 Syntax *Parser::parseExpr()
 {
-  while (nextTokenIs(tok::LeftBracket))
-    if (parsePreattr())
-      return onError();
-
   Syntax *Def = parseDef();
   if (Token Op = matchToken(tok::EqualGreater)) {
     // Note that '=>' is the mapping operator (e.g., a => 5). I'm not at
@@ -671,25 +678,23 @@ Syntax *Parser::parseExpr()
   return Def;
 }
 
-bool Parser::parsePreattr() {
+Syntax *Parser::parsePreattr() {
   EnclosingBrackets Brackets(*this);
   if (!Brackets.expectOpen())
-    return true;
+    return onError();
 
   AttributeScope AttrScope(InAttribute);
 
   // Don't parse an attribute if the brackets are empty.
-  Syntax *Arg = nextTokenIs(tok::RightBracket) ? nullptr : parseExpr();
+  Syntax *Attr = nextTokenIs(tok::RightBracket) ? nullptr : parseExpr();
 
   if (!Brackets.expectClose())
-    return true;
-  if (!Arg)
-    return true;
+    return onError();
+  if (!Attr)
+    return onError();
 
-  Attribute *Attr = makeAttr(Context, Arg);
-  Preattributes.push_back(Attr);
   expectToken(tok::Separator);
-  return false;
+  return Attr;
 }
 
 static bool isAssignmentOperator(TokenKind K) {
@@ -1200,21 +1205,15 @@ Syntax *Parser::parseIf()
 {
   Token if_tok = expectToken("if");
 
-  llvm::SmallVector<Attribute *, 4> Attrs;
-  if (!Preattributes.empty()) {
-    std::copy(Preattributes.begin(), Preattributes.end(),
-              std::back_inserter(Attrs));
-    Preattributes.clear();
-  }
-
   // FIXME: only allow attributes here for `if:` style syntax.
+  llvm::SmallVector<Syntax *, 4> Postattrs;
   while (nextTokenIs(tok::Less) || nextTokenIs(tok::LessBar))
-    Attrs.push_back(parsePostAttr());
+    Postattrs.push_back(parsePostAttr());
 
   Syntax *cond = nextTokenIs(tok::Colon) ? parseBlock() : parseParen();
 
   while (nextTokenIs(tok::Less) || nextTokenIs(tok::LessBar))
-    Attrs.push_back(parsePostAttr());
+    Postattrs.push_back(parsePostAttr());
 
   Syntax *then_block;
   if (matchToken("then")) {
@@ -1240,10 +1239,10 @@ Syntax *Parser::parseIf()
     else_macro = nullptr;
   }
 
-  // Abuse the preattribute vector to attach these to the operator'if' atom.
-  std::copy_if(Attrs.begin(), Attrs.end(), std::back_inserter(Preattributes),
-               [](Attribute *Attr) -> bool { return Attr; });
-  return onIf(if_tok, cond, then_block, else_macro);
+  Syntax *If = onIf(if_tok, cond, then_block, else_macro);
+  for (auto It = Postattrs.rbegin(); It != Postattrs.rend(); ++It)
+    If = onPostattribute(If, *It);
+  return If;
 }
 
 Syntax *Parser::parseWhile()
@@ -1326,9 +1325,9 @@ Syntax *Parser::parseLambda() {
   Token Tok = expectToken(tok::LambdaKeyword);
   Syntax *Capture = nullptr, *Parms = nullptr, *Block = nullptr;
 
-  llvm::SmallVector<Attribute *, 4> Attrs;
+  llvm::SmallVector<Syntax *, 4> Postattrs;
   while (nextTokenIs(tok::Less) || nextTokenIs(tok::LessBar))
-    Attrs.push_back(parsePostAttr());
+    Postattrs.push_back(parsePostAttr());
 
   Syntax *Templ = nullptr;
   if (nextTokenIs(tok::LeftBracket))
@@ -1361,9 +1360,10 @@ Syntax *Parser::parseLambda() {
   }
 
   Syntax *Call = onCall(Templ ? Templ : onAtom(Tok), Parms);
-  std::for_each(Attrs.begin(), Attrs.end(),
-                [Call](Attribute *A) { Call->addAttribute(A); });
-  return onLambdaMacro(Call, Block, Capture, Default);
+  Syntax *Lam = onLambdaMacro(Call, Block, Capture, Default);
+  for (auto It = Postattrs.rbegin(); It != Postattrs.rend(); ++It)
+    Lam = onPostattribute(Lam, *It);
+  return Lam;
 }
 
 Syntax *Parser::parseBlockLoop(Token KWTok)
@@ -1460,10 +1460,16 @@ Syntax *Parser::parsePre() {
 
     return onUnaryOrNull(Op, E);
   }
-  // This might not be right, there is a chance that this could be a pre-attribute
-  // or something like that, this would be to support constexpr if statements.
-  if (nextTokenIs(tok::LeftBracket))
+
+  // This could be a pre-attribute or an array prefix.
+  if (nextTokenIs(tok::LeftBracket)) {
+    if (scanBrackets()) {
+      Syntax *Attr = parsePreattr();
+      return onPreattribute(parsePre(), Attr);
+    }
+
     return parseArrayPrefix();
+  }
 
   if (nextTokenIs(tok::LeftParen))
     if (scanNNSPrefix())
@@ -1621,11 +1627,54 @@ static void trackEnclosureDepth(Token Enclosure,
   Track.Enclosures.push_back(EncLoc);
 }
 
+/// Keep track of the depth of enclosure tokens when scanning for
+/// attributes.
+static void trackEnclosureDepth(Token Enclosure,
+                                Parser::EnclosureTracker &Track) {
+  std::size_t K = 0;
+  switch (Enclosure.getKind()) {
+  case tok::LeftParen:
+  case tok::RightParen:
+    break;
+  case tok::LeftBracket:
+  case tok::RightBracket:
+    K = 1;
+    break;
+  case tok::LeftBrace:
+  case tok::RightBrace:
+    K = 2;
+    break;
+  case tok::Indent:
+  case tok::Dedent:
+    K = 3;
+    break;
+  default:
+    llvm_unreachable("using non-enclosure as enclosure");
+  }
+
+  using Tracker_t = Parser::AngleBracketTracker;
+  Tracker_t::Loc EncLoc{Enclosure.getLocation(),
+    {Track.EnclosureCounts[0], Track.EnclosureCounts[1],
+        Track.EnclosureCounts[2], Track.EnclosureCounts[3]}};
+
+  if (isNonAngleCloseEnclosure(Enclosure.getKind())) {
+    if (Track.isOpen() && (Track.Enclosures.back() == EncLoc))
+      Track.Enclosures.pop_back();
+
+    if (Track.EnclosureCounts[K])
+      --Track.EnclosureCounts[K];
+    return;
+  }
+
+  ++Track.EnclosureCounts[K];
+  ++EncLoc.EnclosureCounts[K];
+  Track.Enclosures.push_back(EncLoc);
+}
+
+
 /// Scan through tokens starting from a '<' and determine whether or not this
 /// is a comparison or attribute.
 bool Parser::scanAngles(Syntax *Base) {
-  // auto PreviousStart = Lex.Scanner.Start;
-  // std::size_t StartTokenDequeSize = Toks.size();
   std::size_t I = 0;
 
   // This came after a token that does not appear in base names.
@@ -1640,10 +1689,6 @@ bool Parser::scanAngles(Syntax *Base) {
                                              Angles.EnclosureCounts[1],
                                              Angles.EnclosureCounts[2],
                                              Angles.EnclosureCounts[3]}};
-  // auto ResetLexer = [&]() {
-  //   Toks.resize(StartTokenDequeSize);
-  //   Lex.Scanner.Start = PreviousStart;
-  // };
   while (true) {
     Token Current = peekToken(I++);
 
@@ -1689,6 +1734,37 @@ bool Parser::scanAngles(Syntax *Base) {
         return true;
     }
   }
+}
+
+/// Scan through tokens starting from a '[' and determine whether this is
+/// an attribute or an array type.
+bool Parser::scanBrackets() {
+  assert(nextTokenIs(tok::LeftBracket));
+  if (!peekToken().isAtEffectiveStartOfLine())
+    return false;
+
+  std::size_t I = 0;
+  EnclosureTracker Encs;
+
+  while (true) {
+    Token Current = peekToken(I++);
+    if (Current.isEndOfFile())
+      return false;
+
+    if (Current.isNewline())
+      return !Encs.isOpen();
+    // Newlines might be recognized as separators rather than newline tokens.
+    if (Current.hasKind(tok::Separator))
+      if (*(Current.getSymbol().data()) == '\n')
+        return !Encs.isOpen();
+
+    if (isNonAngleEnclosure(Current.getKind()))
+      trackEnclosureDepth(Current, Encs);
+    else if (!Encs.isOpen())
+      return false;
+  }
+
+  return false;
 }
 
 // Returns true if T is an operator that appears in a fold expression.
@@ -1842,7 +1918,7 @@ Syntax *Parser::parsePost()
       break;
     case tok::Less: {
       if (scanAngles(e))
-        e = parsePostAttr(e);
+        e = parsePostattribute(e);
       else {
         Angles.clear();
         return e;
@@ -2021,11 +2097,42 @@ bool Parser::scanNNSPrefix() {
   return false;
 }
 
-Attribute *Parser::parsePostAttr() {
-  if (getLookahead() == tok::LessBar) {
-    auto *DocAttr = parseDocAttr();
-    return makeAttr(Context, DocAttr);
+Syntax *Parser::parsePostAttr() {
+  if (getLookahead() == tok::LessBar)
+    return parseDocAttr();
+
+  EnclosingAngles Angles(*this);
+  if (!Angles.expectOpen())
+    return nullptr;
+
+  GreaterThanIsOperatorScope GTIOS(GreaterThanIsOperator, false);
+  AttributeScope AttrScope(InAttribute);
+
+  // Don't parse an attribute if the angles are empty.
+  Syntax *Attr = !(nextTokenIs(tok::Greater) || nextTokenIs(tok::GreaterEqual))
+    ? parseExpr() : nullptr;
+
+
+  // In the case where the user ended the attribute list with `>=`, such as
+  // in `x<private>=0`, we use this dirthack to split >= back into
+  // separate tokens.
+  if (nextTokenIs(tok::GreaterEqual)) {
+    clang::SourceLocation Loc = Toks.front().getLocation();
+    Toks.pop_front();
+    Toks.emplace_front(tok::Equal, Loc, getSymbol("="));
+    Toks.emplace_front(tok::Greater, Loc, getSymbol(">"));
   }
+
+  if (!Angles.expectClose())
+    return onError();
+
+  return Attr;
+}
+
+Syntax *Parser::parsePostattribute(Syntax *Operand) {
+  if (getLookahead() == tok::LessBar)
+    return parseDocAttr();
+
   EnclosingAngles Angles(*this);
   if (!Angles.expectOpen())
     return nullptr;
@@ -2049,13 +2156,13 @@ Attribute *Parser::parsePostAttr() {
   }
 
   if (!Angles.expectClose())
-    return makeAttr(Context, onError());
+    return onPostattribute(Operand, onError());
 
-  return makeAttr(Context, Arg);
+  return onPostattribute(Operand, Arg);
 }
 
 Syntax *Parser::parsePostAttr(Syntax *Pre) {
-  Attribute *Attr = parsePostAttr();
+  Syntax *Attr = parsePostAttr();
   if (!Attr)
     return onError();
 
@@ -2881,23 +2988,25 @@ static Syntax *makeSimpleCall(const SyntaxContext &Ctx, Parser &P,
   return new (Ctx) CallSyntax(P.onAtom(Tok), Args);
 }
 
-static Attribute *makeAttr(const SyntaxContext &Ctx, Syntax *Arg) {
-  return new (Ctx) Attribute(Arg);
+Syntax *Parser::onPreattribute(Syntax *Op, Syntax *Arg) {
+  Token *Base = new (Context) Token(tok::Identifier, Arg->getLoc(),
+                                    getSymbol("Preattribute"));
+  return onBinary(*Base, Arg, Op);
+}
+
+Syntax *Parser::onPostattribute(Syntax *Op, Syntax *Arg) {
+  Token *Base = new (Context) Token(tok::Identifier, Arg->getLoc(),
+                                    getSymbol("Postattribute"));
+  return onBinary(*Base, Op, Arg);
 }
 
 Syntax *Parser::onAtom(const Token &Tok) {
-  Syntax *Ret = new (Context) AtomSyntax(Tok);
-  if (!InAttribute)
-    attachPreattrs(Ret);
-  return Ret;
+  return new (Context) AtomSyntax(Tok);
 }
 
 Syntax *Parser::onAtom(const Token &Tok, const tok::FusionKind K,
                        Syntax *Data) {
-  Syntax *Ret = new (Context) AtomSyntax(Tok, K, Data);
-  if (!InAttribute)
-    attachPreattrs(Ret);
-  return Ret;
+  return new (Context) AtomSyntax(Tok, K, Data);
 }
 
 Syntax *Parser::onDocAttr(const llvm::SmallVectorImpl<Syntax*>& Vec) {
@@ -3340,17 +3449,6 @@ void Parser::finishPotentialAngleBracket(const Token &OpToken) {
   if (Angles.Angles.back() == CloseLoc)
     Angles.Angles.pop_back();
 }
-
-void Parser::attachPreattrs(Syntax *S) {
-  if (!Preattributes.size())
-    return;
-
-  for (auto *Attr : Preattributes)
-    S->addAttribute(Attr);
-
-  Preattributes.clear();
-}
-
 
 Token Parser::matchSeparator(Token const& Tok) {
   return Token(tok::Separator, Tok.getLocation(), Tok.getSymbol());

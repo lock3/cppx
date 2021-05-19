@@ -14,57 +14,30 @@ using ParentMapTy = DeclaratorBuilder::ParentMapTy;
 Declarator *DeclaratorBuilder::operator()(const Syntax *S) {
   NodeLabeler LabelNodes(SemaRef, NodeLabels, NodeParents);
   LabelNodes(S);
-  // for (auto Each : NodeLabels) {
-  //   const Syntax *P = nullptr;
-  //   auto It = NodeParents.find(Each.first);
-  //   if (It != NodeParents.end())
-  //     P = It->second;
-
-  //   llvm::outs() << "NODE: " << Each.second << " - " << Each.first
-  //                << ": PARENT: " << P << '\n';
-  //   Each.first->dump();
-  //   llvm::outs() << "===------------------===\n";
-  // }
 
   gold::Scope *CurrentScope = SemaRef.getCurrentScope();
   gold::Declarator *Dcl = nullptr;
   switch(CurrentScope->getKind()) {
   case SK_Namespace:
-    Dcl = handleNamespaceScope(S);
-    break;
+    return handleNamespaceScope(S);
   case SK_Parameter:
-    Dcl = handleParameterScope(S);
-    break;
+    return handleParameterScope(S);
   case SK_Template:
-    Dcl = handleTemplateScope(S);
-    break;
+    return handleTemplateScope(S);
   case SK_Function:
-    Dcl = handleFunctionScope(S);
-    break;
+    return handleFunctionScope(S);
   case SK_Block:
-    Dcl = handleBlockScope(S);
-    break;
+    return handleBlockScope(S);
   case SK_Class:
-    Dcl = handleClassScope(S);
-    break;
+    return handleClassScope(S);
   case SK_Control:
-    Dcl = handleControlScope(S);
-    break;
+    return handleControlScope(S);
   case SK_Catch:
-    Dcl = handleCatchScope(S);
-    break;
+    return handleCatchScope(S);
   case SK_Enum:
-    Dcl = handleEnumScope(S);
-    break;
+    return handleEnumScope(S);
   }
 
-  // Declarator *D = Result;
-  // while (D) {
-  //   llvm::outs() << D->getString() << " -> ";
-  //   D = D->Next;
-  // }
-  // llvm::outs() << "\nEND CHAIN\n";
-  // Dcl->printSequence(llvm::errs());
   return Dcl;
 }
 
@@ -108,24 +81,71 @@ static inline bool isTypeOperator(const FusedOpKind K) {
   }
 }
 
+static inline bool isBuiltinFunctionName(tok::TokenKind K) {
+  switch (K) {
+  case tok::StaticCastKeyword:
+  case tok::DynamicCastKeyword:
+  case tok::ReinterpretCastKeyword:
+  case tok::ConstCastKeyword:
+  case tok::ConstExprKeyword:
+  case tok::AlignOfKeyword:
+  case tok::SizeOfKeyword:
+  case tok::DeclTypeKeyword:
+  case tok::TypeidKeyword:
+  case tok::TypeIdKeyword:
+    return true;
+  default:
+    return false;
+  }
+
+}
+
 void DeclaratorBuilder::VisitGoldCallSyntax(const CallSyntax *S) {
   const AtomSyntax *Callee = dyn_cast<AtomSyntax>(S->getCallee());
   FusedOpKind Op = getFusedOpKind(SemaRef, S);
 
+  if (Op == FOK_Preattr) {
+    Owner.Attrs.insert(S->getArgument(0));
+    return VisitSyntax(S->getArgument(1));
+  }
+
+  if (Op == FOK_Postattr) {
+    Owner.Attrs.insert(S->getArgument(1));
+    return VisitSyntax(S->getArgument(0));
+  }
+
   // A normal function declaration.
   if (Op == FOK_Unknown && !isPostfixCaret(S)) {
-    if (Callee && Callee->getSpelling() == "...")
-      return buildType(S);
+    if (Callee) {
+      if (Callee->getSpelling() == "...")
+        return buildType(S);
+
+      Token Tok = Callee->getToken();
+      if (isBuiltinFunctionName(Tok.getKind()))
+        return buildType(S);
+      if (Tok.isFused() && Callee->getFusionBase() == tok::Conversion) {
+        Owner.ConversionTypeSyntax = Callee->getFusionArg();
+      }
+    }
 
     VisitSyntax(S->getCallee());
-    return buildFunction(S);
+    buildFunction(S);
+    // This might be a conversion function.
+    if (Owner.ConversionTypeSyntax)
+      buildType(Owner.ConversionTypeSyntax);
+    return;
   }
 
   if (Op == FOK_MemberAccess) {
-    Owner.AdditionalNodesWithAttrs.insert(S);
+    bool MethodType = false;
+    const Syntax *AccessParent = getParent(S);
+    if (AccessParent && !isLeftOfRoot(NodeLabels, S)) {
+      if (const CallSyntax *ParentCall = dyn_cast<CallSyntax>(AccessParent))
+        MethodType = getFusedOpKind(SemaRef, ParentCall) == FOK_Arrow;
 
-    if (getParent(S) && !isLeftOfRoot(NodeLabels, S))
-      return buildType(S);
+      if (!MethodType)
+        return buildType(S);
+    }
 
     if (S->getNumArguments() == 1) {
       buildGlobalNameSpecifier(S);
@@ -135,16 +155,44 @@ void DeclaratorBuilder::VisitGoldCallSyntax(const CallSyntax *S) {
     if (isa<AtomSyntax>(S->getArgument(0))) {
       buildNestedNameSpecifier(cast<AtomSyntax>(S->getArgument(0)));
     } else {
-      Owner.AdditionalNodesWithAttrs.insert(S);
-      {
-        ExprElaborator::BooleanRAII B(NestedTemplateName, true);
-        VisitSyntax(S->getArgument(0));
-      }
-      Cur->recordAttributes(S);
-      return VisitSyntax(S->getArgument(1));
+      ExprElaborator::BooleanRAII B(NestedTemplateName, true);
+      VisitSyntax(S->getArgument(0));
     }
 
-    return VisitSyntax(S->getArgument(1));
+    if (MethodType) {
+      const Syntax *Args =  S->getArgument(1);
+      while (isa<CallSyntax>(Args)) {
+        const CallSyntax *MethodCall = cast<CallSyntax>(S->getArgument(1));
+        FusedOpKind Op = getFusedOpKind(SemaRef, MethodCall);
+        if (Op == FOK_Preattr) {
+          Owner.Attrs.insert(MethodCall->getArgument(0));
+          Args = MethodCall->getArgument(1);
+        } else if (Op == FOK_Postattr) {
+          Owner.Attrs.insert(MethodCall->getArgument(1));
+          Args = MethodCall->getArgument(0);
+        } else {
+          unsigned DiagID =
+            SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                          "expected parameter list or attribute");
+          SemaRef.Diags.Report(Args->getLoc(), DiagID);
+          return;
+        }
+      }
+
+      if (!isa<ListSyntax>(Args)) {
+        unsigned DiagID =
+          SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                        "expected parameter list");
+        SemaRef.Diags.Report(Args->getLoc(), DiagID);
+        return;
+      }
+
+      return buildFunction(cast<ListSyntax>(Args));
+    }
+
+    VisitSyntax(S->getArgument(1));
+    Name = End;
+    return;
   }
 
   if (Op == FOK_Equals) {
@@ -170,6 +218,8 @@ void DeclaratorBuilder::VisitGoldCallSyntax(const CallSyntax *S) {
     return VisitSyntax(S->getArgument(0));
   } else if (Op == FOK_In) {
     return VisitSyntax(S->getArgument(0));
+  } else if (Op == FOK_Colon) {
+    Owner.RequiresDeclOrError = true;
   }
 
   if (isTypeOperator(Op))
@@ -198,9 +248,11 @@ void DeclaratorBuilder::VisitGoldCallSyntax(const CallSyntax *S) {
   END:
     if (IsPartialSpecialization) {
       buildPartialSpecialization(constructList(Context, S->getArgument(0)));
+      // Result->recordAttributes(S);
       return VisitSyntax(S->getArgument(1));
     } else {
       buildArray(S->getArgument(0));
+      return VisitSyntax(S->getArgument(1));
     }
   }
 
@@ -231,7 +283,7 @@ void DeclaratorBuilder::VisitGoldCallSyntax(const CallSyntax *S) {
 void DeclaratorBuilder::VisitGoldElemSyntax(const ElemSyntax *S) {
   if (isLeftOfRoot(NodeLabels, S) && isa<ElemSyntax>(S->getObject())) {
     Visit(S->getObject());
-    return buildPartialSpecialization(cast<ListSyntax>(S->getArguments()));
+    return buildPartialSpecialization(S);
   }
 
   // Check if we are more than one element deep and on the left,
@@ -250,8 +302,13 @@ void DeclaratorBuilder::VisitGoldElemSyntax(const ElemSyntax *S) {
     // We know this is a specialization if the base of the element is a type.
     // A specialization is just a type.
     if (E &&
-        (isa<clang::CppxDeclRefExpr>(E) || E->getType()->isTypeOfTypes()))
+        (isa<clang::CppxDeclRefExpr>(E) || E->getType()->isTypeOfTypes())) {
+      if (NestedTemplateName) {
+        VisitSyntax(S->getObject());
+        return buildSpecialization(S);
+      }
       return buildType(S);
+    }
   }
 
   VisitSyntax(S->getObject());
@@ -297,13 +354,16 @@ void DeclaratorBuilder::VisitGoldElemSyntax(const ElemSyntax *S) {
   }
 
   buildArray(S->getArguments());
-  // buildTemplateParams(cast<ListSyntax>(S->getArguments()));
 }
 
 void DeclaratorBuilder::VisitGoldMacroSyntax(const MacroSyntax *S) {
   if (const AtomSyntax *Call = dyn_cast<AtomSyntax>(S->getCall()))
     if (Call->getToken().hasKind(tok::UsingKeyword))
       return buildUsingDirectiveDeclarator(S);
+
+  if (Owner.RequiresDeclOrError)
+    SemaRef.Diags.Report(S->getLoc(), clang::diag::err_invalid_declaration_kind)
+      << 1;
 }
 
 // True when Child is a node on the left hand side of Parent.
@@ -348,6 +408,8 @@ void DeclaratorBuilder::VisitGoldAtomSyntax(const AtomSyntax *S) {
     return buildIdentifier(S);
   }
 
+  if (NestedTemplateName)
+    return buildNestedNameSpecifier(S);
   buildType(S);
 }
 
@@ -405,12 +467,8 @@ void DeclaratorBuilder::buildName(const Syntax *S) {
     FusedOpKind OpKind = getFusedOpKind(SemaRef, dyn_cast<CallSyntax>(S));
     switch(OpKind) {
       case FOK_MemberAccess:{
-        if (const auto *IdName = dyn_cast<AtomSyntax>(Call->getArgument(1))){
-          Owner.AdditionalNodesWithAttrs.insert(Call);
+        if (const auto *IdName = dyn_cast<AtomSyntax>(Call->getArgument(1)))
           return;
-          // return buildNestedTemplateSpecializationOrName(Call->getArgument(0),
-          //                                       buildIdentifier(IdName));
-        }
 
         if (const auto *E = dyn_cast<ErrorSyntax>(Call->getArgument(1)))
           return buildError(E);
@@ -438,13 +496,11 @@ void DeclaratorBuilder::buildError(const ErrorSyntax *S) {
 
 void DeclaratorBuilder::buildGlobalNameSpecifier(const CallSyntax *S) {
   auto Result = new GlobalNameSpecifierDeclarator(S, nullptr);
-  Result->recordAttributes(S);
   push(Result);
 }
 
 void DeclaratorBuilder::buildNestedNameSpecifier(const AtomSyntax *S) {
   auto Result = new NestedNameSpecifierDeclarator(S, nullptr);
-  Result->recordAttributes(S);
   push(Result);
 }
 
@@ -462,22 +518,20 @@ void DeclaratorBuilder::buildType(const Syntax *S) {
 
 void DeclaratorBuilder::buildFunction(const CallSyntax *S) {
   push(new FunctionDeclarator(S->getArguments(), nullptr));
-  Cur->recordAttributes(S);
 }
 
 void DeclaratorBuilder::buildFunction(const ListSyntax *S) {
   push(new FunctionDeclarator(S, nullptr));
-  Cur->recordAttributes(S);
 }
 
 void DeclaratorBuilder::buildTemplateParams(const ListSyntax *S) {
   push(new TemplateParamsDeclarator(S, nullptr));
-  Cur->recordAttributes(S);
+  // Cur->recordAttributes(S);
 }
 
 void DeclaratorBuilder::buildTemplateParams(const ElemSyntax *S) {
   buildTemplateParams(cast<ListSyntax>(S->getArguments()));
-  Cur->recordAttributes(S);
+  // Result->recordAttributes(S);
 }
 
 void DeclaratorBuilder::buildSpecialization(const ElemSyntax *S) {
@@ -485,12 +539,19 @@ void DeclaratorBuilder::buildSpecialization(const ElemSyntax *S) {
     push(new ImplicitEmptyTemplateParamsDeclarator(S, nullptr));
   push(new SpecializationDeclarator(cast<ListSyntax>(S->getArguments()),
                                     nullptr));
-  Cur->recordAttributes(S);
+  // Attach these attributes to the name declarator!
+  // Result->recordAttributes(S);
+  // Cur->recordAttributes(S);
 }
 
 void DeclaratorBuilder::buildPartialSpecialization(const ListSyntax *S) {
   push(new SpecializationDeclarator(S, nullptr));
-  Cur->recordAttributes(S);
+}
+
+void DeclaratorBuilder::buildPartialSpecialization(const ElemSyntax *S) {
+  push(new SpecializationDeclarator(cast<ListSyntax>(S->getArguments()),
+                                    nullptr));
+  // Result->recordAttributes(S);
 }
 
 void DeclaratorBuilder::buildUsingDirectiveDeclarator(const MacroSyntax *S) {
@@ -652,27 +713,81 @@ Declarator *DeclaratorBuilder::makeDeclarator(const Syntax *S) {
     }
   }
 
+  if (isa<MacroSyntax>(S)) {
+    VisitSyntax(S);
+    return Result;
+  }
+
+  const auto *Call = dyn_cast<CallSyntax>(S);
+  if (!Call) {
+    if (Owner.RequiresDeclOrError)
+      SemaRef.Diags.Report(S->getLoc(),
+                           clang::diag::err_invalid_declaration_kind)
+                           << 2;
+    return nullptr;
+  }
+
+
+  // None of these operators can be the root of a declaration,
+  // with the exception of very specific contexts.
+  switch(getFusedOpKind(SemaRef, Call)) {
+  case FOK_Colon:
+    Owner.RequiresDeclOrError = true;
+    break;
+  case FOK_Postattr:
+  case FOK_Preattr:
+    if (Owner.IsInsideEnum)
+      break;
+    LLVM_FALLTHROUGH;
+  case FOK_Unknown:
+  case FOK_Arrow:
+  case FOK_If:
+  case FOK_Else:
+  case FOK_Return:
+  case FOK_For:
+  case FOK_While:
+  case FOK_DotDot:
+  case FOK_Const:
+  case FOK_Ref:
+  case FOK_RRef:
+  case FOK_Brackets:
+  case FOK_Throw:
+  case FOK_Parens:
+  case FOK_DotCaret: {
+    if (Owner.RequiresDeclOrError) {
+      if (const AtomSyntax *Callee = dyn_cast<AtomSyntax>(Call->getCallee())) {
+        if (Owner.AllowShortCtorAndDtorSyntax &&
+              (Callee->getSpelling() == "constructor"
+               || Callee->getSpelling() == "destructor"
+               || (Callee->isFused() &&
+                   Callee->getFusionBase() == tok::Conversion))) {
+          VisitSyntax(Call);
+          return Result;
+        }
+      }
+
+      SemaRef.Diags.Report(Call->getCallee()->getLoc(),
+                           clang::diag::err_invalid_declaration_kind)
+                           << 2;
+    }
+
+    return nullptr;
+  }
+
+  default:
+    break;
+  } // switch (getFusedOpKind(SemaRef, Call)
+
+
   VisitSyntax(S);
   return Result;
-
-  // if (const auto *Macro = dyn_cast<MacroSyntax>(S))
-  //   return makeTopLevelDeclarator(Macro, nullptr);
-
-  // const auto *Call = dyn_cast<CallSyntax>(S);
-  // if (!Call) {
-  //   if (Owner.RequiresDeclOrError)
-  //     SemaRef.Diags.Report(S->getLoc(),
-  //                          clang::diag::err_invalid_declaration_kind)
-  //                          << 2;
-  //   return nullptr;
-  // }
 }
 
 void DeclaratorBuilder::buildIdentifier(const AtomSyntax *S) {
   // Don't bother with the unnamed name ("_")
   if (S->getToken().hasKind(tok::AnonymousKeyword)) {
     auto *D = new IdentifierDeclarator(S, nullptr);
-    D->recordAttributes(S);
+    // D->recordAttributes(S);
     push(D);
     return;
   }
@@ -708,7 +823,7 @@ void DeclaratorBuilder::buildIdentifier(const AtomSyntax *S) {
   }
 
   auto *D = new IdentifierDeclarator(S, nullptr);
-  D->recordAttributes(S);
+  // D->recordAttributes(S);
   D->setUserDefinedLiteralSuffix(UDLSuffix);
   push(D);
 }

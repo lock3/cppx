@@ -57,7 +57,7 @@ private:
   const OpInfoBase *OpInfo = nullptr;
   const Syntax *InitExpr = nullptr;
   InitKind InitOperatorUsed = IK_None;
-  llvm::SmallSet<const Syntax*, 6> AdditionalNodesWithAttrs;
+  llvm::SmallSet<const Syntax *, 4> Attrs;
 
   const Syntax *ConversionTypeSyntax = nullptr;
 

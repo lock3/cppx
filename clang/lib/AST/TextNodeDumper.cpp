@@ -2318,9 +2318,6 @@ void TextNodeDumper::Visit(const gold::Syntax *S) {
   dumpPointer(S);
   gold::ConstSyntaxVisitor<TextNodeDumper>::Visit(S);
 }
-void TextNodeDumper::Visit(const gold::Attribute* Attr) {
-  OS << "Attribute";
-}
 
 void TextNodeDumper::VisitGoldErrorSyntax(const gold::ErrorSyntax *S) {
 

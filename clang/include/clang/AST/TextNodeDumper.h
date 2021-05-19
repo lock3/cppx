@@ -197,7 +197,6 @@ public:
 
 
   void Visit(const gold::Syntax *S);
-  void Visit(const gold::Attribute* Attr);
 
   void Visit(const blue::Syntax *S);
 

@@ -308,6 +308,7 @@ static const llvm::StringMap<tok::FusionKind> FusionBases = {
   {"operator", tok::Operator},
   {"conversion", tok::Conversion},
   {"literal", tok::Literal},
+  {"attribute", tok::Attribute},
 };
 
 Token CharacterScanner::makeFusedToken(Token Base, Token **Data,

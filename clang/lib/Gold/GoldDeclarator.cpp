@@ -144,17 +144,13 @@ void Declarator::printSeqWithAttr(llvm::raw_ostream &os) const {
 
 }
 
-void Declarator::recordAttributes(const Syntax* AttrNode) {
-  if (AttrNode->getAttributes().empty())
-    return;
+void Declarator::recordAttribute(const Syntax *Attr) {
   if (!UnprocessedAttributes) {
     Attributes Attrs;
     UnprocessedAttributes = std::move(Attrs);
   }
-  AttributeNode = AttrNode;
-  for (const Attribute * A : AttrNode->getAttributes()) {
-    UnprocessedAttributes->emplace_back(A->getArg());
-  }
+
+  UnprocessedAttributes->emplace_back(Attr);
 }
 
 // ------------------ UnknownDeclarator ----------------------------------------

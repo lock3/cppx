@@ -39,6 +39,12 @@ Declaration *DeclarationBuilder::build(const Syntax *S) {
   if (!Dcl)
     return nullptr;
 
+  // Recording additional attributes associated with the name.
+  // This is to handle the special case of the . member access operator
+  // picking up the attributes from a nested name declaration with attributes.
+  for(const Syntax *Attr : Attrs)
+    BuildDeclarator.Name->recordAttribute(Attr);
+
   Declaration *ParentDecl = SemaRef.getCurrentDecl();
   // FIXME: manage memory
   Declaration *TheDecl = new Declaration(ParentDecl, S, Dcl, InitExpr);
@@ -156,17 +162,22 @@ bool DeclarationBuilder::verifyDeclaratorChain(const Syntax *DeclExpr,
   while(Cur->isNestedNameSpecifier()) {
     TheDecl->NNSInfo.emplace_back();
     TheDecl->NNSInfo.back().Name = Cur->getAsNestedNameSpecifier();
+
+    NestedNameSpecifierDeclarator *NNS = Cur->getAsNestedNameSpecifier();
+    NNS->NNSInfo.Name = NNS;
     Cur = Cur->Next;
     if (ReportMissing(2))
       return true;
     if (Cur->isTemplateParameters()) {
       TheDecl->NNSInfo.back().Template = Cur->getAsTemplateParams();
+      NNS->NNSInfo.Template = Cur->getAsTemplateParams();
       Cur = Cur->Next;
       if (ReportMissing(2))
         return true;
     }
     if (Cur->isSpecialization()) {
       TheDecl->NNSInfo.back().SpecializationArgs = Cur->getAsSpecialization();
+      NNS->NNSInfo.SpecializationArgs = Cur->getAsSpecialization();
       Cur = Cur->Next;
       if (ReportMissing(2))
         return true;
@@ -183,12 +194,6 @@ bool DeclarationBuilder::verifyDeclaratorChain(const Syntax *DeclExpr,
                           clang::diag::err_expected_declarator_chain_sequence)
                           << 2;
     return true;
-  }
-  // Recording additional attributes associated with the name.
-  // This is to handle the special case of the . member access operator
-  // picking up the attributes from a nested name declaration with attributes.
-  for(const Syntax *NodeWithAttr : AdditionalNodesWithAttrs) {
-    TheDecl->IdDcl->recordAttributes(NodeWithAttr);
   }
 
   // Jump to the very end and make sure that we can properly do deduction.
@@ -221,6 +226,35 @@ bool DeclarationBuilder::verifyDeclaratorChain(const Syntax *DeclExpr,
     }
   }
 
+  // Checking for Nested Name Specifier
+  while(Cur->isNestedNameSpecifier()) {
+    TheDecl->NNSInfo.emplace_back();
+    TheDecl->NNSInfo.back().Name = Cur->getAsNestedNameSpecifier();
+
+    NestedNameSpecifierDeclarator *NNS = Cur->getAsNestedNameSpecifier();
+    NNS->NNSInfo.Name = NNS;
+    Cur = Cur->Next;
+    if (ReportMissing(2))
+      return true;
+    if (Cur->isTemplateParameters()) {
+      TheDecl->NNSInfo.back().Template = Cur->getAsTemplateParams();
+      NNS->NNSInfo.Template = Cur->getAsTemplateParams();
+      Cur = Cur->Next;
+      if (ReportMissing(2))
+        return true;
+    }
+    if (Cur->isSpecialization()) {
+      TheDecl->NNSInfo.back().SpecializationArgs = Cur->getAsSpecialization();
+      NNS->NNSInfo.SpecializationArgs = Cur->getAsSpecialization();
+      Cur = Cur->Next;
+      if (ReportMissing(2))
+        return true;
+    }
+  }
+
+  if (Cur == nullptr)
+    return false;
+
   if (Cur->isFunction()) {
     TheDecl->FunctionDcl = Cur->getAsFunction();
     Cur = Cur->Next;
@@ -239,8 +273,8 @@ bool DeclarationBuilder::verifyDeclaratorChain(const Syntax *DeclExpr,
     }
   }
 
-  // This is the last thing so after cur == nullptr if not then we have an
-  // invalid declarator
+  // Every declaration will end with an optional type. If there is another
+  // declarator chunk after this, the declaration is ill-formed.
   if (Cur->isType()) {
     TheDecl->TypeDcl = Cur->getAsType();
     Cur = Cur->Next;
@@ -427,9 +461,12 @@ bool DeclarationBuilder::checkEnumDeclaration(const Syntax *DeclExpr,
   }
 
   // TODO: It may be necessary to specifically include a test for TheDecl->Init
-  if (TheDecl->Op)
-    if (const auto *Call = dyn_cast<CallSyntax>(TheDecl->Op))
-      if (InitOperatorUsed != IK_Equals) {
+  if (TheDecl->Op) {
+    if (const auto *Call = dyn_cast<CallSyntax>(TheDecl->Op)) {
+      FusedOpKind Op = getFusedOpKind(SemaRef, Call);
+      bool AttributeOp = (Op == FOK_Postattr || Op == FOK_Preattr);
+
+      if ((InitOperatorUsed != IK_Equals) && !AttributeOp) {
         // This means we are not using the assignment operator, but we are using
         // something else like operator'!'. Indicating we cannot be an
         // enumeration declaration, and we are for some reason using function
@@ -439,13 +476,17 @@ bool DeclarationBuilder::checkEnumDeclaration(const Syntax *DeclExpr,
                              << 0;
         return true;
       }
+    }
+  }
+
   return false;
 }
+
 
 bool DeclarationBuilder::checkNestedNameSpecifiers(const Syntax *DeclExpr,
                                                    Declaration *TheDecl) {
   if (!EnableNestedNameSpecifiers) {
-    if (!TheDecl->NNSInfo.empty()) {
+    if (!TheDecl->NNSInfo.empty() && !TheDecl->declaresMethodPointer()) {
       if (RequiresDeclOrError)
         SemaRef.Diags.Report(TheDecl->IdDcl->getLoc(),
                             clang::diag::err_invalid_declarator_sequence)
