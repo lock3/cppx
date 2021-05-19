@@ -1537,6 +1537,8 @@ Syntax *Parser::parsePrimaryExpression() {
   case tok::BoolKeyword:
   case tok::TypeKeyword:
   case tok::NamespaceKeyword:
+  case tok::InplaceNewKeyword:
+  case tok::InplaceDeleteKeyword:
     // Built in type functions
   case tok::IntegerKeyword:
   case tok::RealKeyword:
