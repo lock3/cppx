@@ -187,10 +187,8 @@ namespace blue
     // Top-level
     Syntax *parseFile();
 
-    // Statements
-    Syntax *parseBlockStatement();
-    Syntax *parseDeclarationStatement();
-    Syntax *parseExpressionStatement();
+    // Expressions
+    Syntax *parseExpression();
 
     // Declarations
     Syntax *parseDeclaration();
@@ -205,17 +203,6 @@ namespace blue
     Syntax *parseParameter();
 
     // Expressions
-    Syntax *parseExpression();
-    Syntax *parseAssignmentExpression();
-    Syntax *parseImplicationExpression();
-    Syntax *parseLogicalOrExpression();
-    Syntax *parseLogicalAndExpression();
-    Syntax *parseEqualityExpression();
-    Syntax *parseRelationalExpression();
-    Syntax *parseShiftExpression();
-    Syntax *parseAdditiveExpression();
-    Syntax *parseMultiplicativeExpression();
-    Syntax *parseConversionExpression();
     Syntax *parsePrefixExpression();
     Syntax *parsePostfixExpression();
     Syntax *parseMemberExpression(Syntax *E);
@@ -231,6 +218,7 @@ namespace blue
     Syntax *parseTupleExpression();
     Syntax *parseArrayExpression();
     Syntax *parseBlockExpression();
+    Syntax *parseControlExpression();
 
     // Semantic actions
     Syntax *onLiteral(const Token &Tok);
@@ -258,13 +246,27 @@ namespace blue
     Syntax *parseDeclarator();
     Syntax *parseMappingDescriptor();
     Syntax *parseLeaveExpression();
-    Syntax *parseControlExpression();
+
+    Syntax *parseComputationExpression();
+    Syntax *parseAssignmentExpression();
+    Syntax *parseLogicalOrExpression();
+    Syntax *parseLogicalAndExpression();
+    Syntax *parseEqualityExpression();
+    Syntax *parseRelationalExpression();
+    Syntax *parseShiftExpression();
+    Syntax *parseAdditiveExpression();
+    Syntax *parseMultiplicativeExpression();
+    Syntax *parseCastExpression();
+
+    Syntax *parseRepetitionExpression();
     Syntax *parseConditionalExpression();
-    Syntax *parseStatementSeq();
-    Syntax *parseStatement();
+    Syntax *parseSelectionExpression();
+    Syntax *parseLetExpression();
+    Syntax *parseLambdaExpression();
+
+    Syntax *parseExpressionSeq();
     Syntax *parseExpressionList();
     Syntax *parseBlock();
-    Syntax *parseMatchExpression();
     Syntax *parseCaseList();
     Syntax *parseCase();
     Syntax *parseLoopExpression();
@@ -273,10 +275,7 @@ namespace blue
     Syntax *parseDoExpression();
     Syntax *parseRangeForExpression();
     Syntax *parseTraditionalForExpression();
-    Syntax *parseLetExpression();
-    Syntax *parseLambdaExpression();
     Syntax *parseCapture();
-    
 
     Syntax *parseTemplateConstructor();
     Syntax *parseArrayConstructor();
