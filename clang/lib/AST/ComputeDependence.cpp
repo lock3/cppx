@@ -529,6 +529,10 @@ ExprDependence clang::computeDependence(CppxTypeLiteral *E) {
   return ExprDependence::TypeValue;
 }
 
+ExprDependence clang::computeDependence(CppxCXXScopeSpecExpr *E) {
+  return ExprDependence::TypeValue;
+}
+
 ExprDependence clang::computeDependence(CppxPartialEvalExpr *E) {
   return ExprDependence::TypeValue;
 }

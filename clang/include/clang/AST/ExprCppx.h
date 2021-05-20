@@ -860,7 +860,7 @@ public:
                                     SourceLocation L);
 };
 
-// Placeholder for a wildcard or "whatever expression" 
+// Placeholder for a wildcard or "whatever expression"
 class CppxWildcardExpr : public Expr {
   SourceLocation Loc;
 
@@ -897,6 +897,76 @@ public:
   static CppxWildcardExpr *Create(const ASTContext &C, SourceLocation Loc);
 };
 
+
+/// This is used when constructing a known qualified expression.
+/// for example x.(a.b.c).y, this expression would be used for a.b.c.
+/// In the event that we have a qualified expression without the () syntax
+/// for example, a.b.c.y, we may have to back track and confirm that we are
+/// correctly elaborating the expression.
+class CppxCXXScopeSpecExpr : public Expr {
+  SourceLocation Loc;
+  CXXScopeSpec *SS;
+  Expr *CurExpr;
+  CppxCXXScopeSpecExpr(ASTContext &Ctx, SourceLocation Loc, Expr *E);
+public:
+
+  void setScopeSpec(CXXScopeSpec *S) {
+    SS = S;
+  }
+  const CXXScopeSpec &getScopeSpec() const { return *SS; }
+  CXXScopeSpec &getScopeSpec() { return *SS; }
+
+  void setLastExpr(Expr *E) { CurExpr = E; setType(E->getType()); }
+  Expr *getLastExpr() const { return CurExpr; }
+  Expr *getLastExpr() { return CurExpr; }
+
+  /// Retrieve the location of the literal.
+  SourceLocation getLocation() const {
+    if (CurExpr)
+      return CurExpr->getExprLoc();
+    return Loc;
+  }
+
+  SourceLocation getBeginLoc() const LLVM_READONLY {
+    if (SS->isSet())
+      return SS->getBeginLoc();
+    if (CurExpr)
+      return CurExpr->getExprLoc();
+    return Loc;
+  }
+
+  SourceLocation getEndLoc() const LLVM_READONLY {
+    if (SS->isSet())
+      return SS->getEndLoc();
+    if (CurExpr)
+      return CurExpr->getExprLoc();
+    return Loc;
+  }
+
+  void setLocation(SourceLocation Location) { Loc = Location; }
+
+  // Iterators
+  child_range children() {
+    Stmt *S1 = cast<Stmt>(CurExpr);
+    Stmt **S = &S1;
+    Stmt **E = S + 1;
+    return child_range(child_iterator(S), child_iterator(E));
+  }
+
+  const_child_range children() const {
+    Stmt *S1 = cast<Stmt>(CurExpr);
+    Stmt **S = &S1;
+    Stmt **E = S + 1;
+    return const_child_range(const_child_iterator(S), const_child_iterator(E));
+  }
+
+  static bool classof(const Stmt *T) {
+    return T->getStmtClass() == CppxCXXScopeSpecExprClass;
+  }
+
+  static CppxCXXScopeSpecExpr *Create(ASTContext &C, SourceLocation Loc,
+                                      Expr *Base);
+};
 } // namespace clang
 
 #endif // LLVM_CLANG_AST_EXPRCPPX_H

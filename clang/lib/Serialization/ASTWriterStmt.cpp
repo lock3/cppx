@@ -452,6 +452,11 @@ void ASTStmtWriter::VisitCppxTypeLiteral(CppxTypeLiteral *E) {
   llvm_unreachable("not implemented");
 }
 
+void ASTStmtWriter::VisitCppxCXXScopeSpecExpr(CppxCXXScopeSpecExpr *E) {
+  llvm_unreachable("not implemented");
+}
+
+
 void ASTStmtWriter::VisitCppxPartialEvalExpr(CppxPartialEvalExpr *E) {
   llvm_unreachable("not implemented");
 }

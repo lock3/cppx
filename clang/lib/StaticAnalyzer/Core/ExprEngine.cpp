@@ -1326,6 +1326,7 @@ void ExprEngine::Visit(const Stmt *S, ExplodedNode *Pred,
     }
     case Stmt::CppxPartialEvalExprClass:
     case Stmt::CppxTypeLiteralClass:
+    case Stmt::CppxCXXScopeSpecExprClass:
     case Stmt::CppxDeclRefExprClass:
       llvm_unreachable("Shouldn't be part of final AST analysis.");
     case Stmt::ParenExprClass:

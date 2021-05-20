@@ -9027,6 +9027,11 @@ TreeTransform<Derived>::TransformCppxTypeLiteral(CppxTypeLiteral *E) {
   TypeSourceInfo * T = TransformType(E->getValue());
   return new (SemaRef.Context) CppxTypeLiteral(K, T);
 }
+template<typename Derived>
+ExprResult
+TreeTransform<Derived>::TransformCppxCXXScopeSpecExpr(CppxCXXScopeSpecExpr *E) {
+  llvm_unreachable("CppxCXXScopeSpecExpr should never be part of template instantiation.");
+}
 
 
 template<typename Derived>

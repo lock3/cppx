@@ -51,6 +51,7 @@ public:
               llvm::SmallVectorImpl<clang::ParsedTemplateArgument> &ParsedArgs);
 
   clang::Expr *transformCppxLiteralType(clang::CppxTypeLiteral *E);
+  clang::Expr *transformCppxCXXScopeSpecExpr(clang::CppxCXXScopeSpecExpr *E);
   clang::QualType transformType(clang::QualType Ty);
   clang::QualType transformSubstTemplateTypeParmType(
                                  const clang::SubstTemplateTypeParmType *STTPT);

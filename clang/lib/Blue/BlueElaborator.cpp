@@ -4108,6 +4108,7 @@ handleDependentTypeNameLookup(Sema &SemaRef,
 }
 
 clang::Expr *Elaborator::elaborateQualifiedMemberAccess(const QualifiedMemberAccessSyntax *S) {
+  llvm::outs() << "We have qualified member access node.\n";
   const Syntax *LHS = S->getOperand(0);
   const Syntax *Qualifier = S->getOperand(1);
   const Syntax *RHS = S->getOperand(2);

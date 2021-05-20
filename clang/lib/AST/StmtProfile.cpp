@@ -2405,7 +2405,11 @@ void Stmt::ProcessODRHash(llvm::FoldingSetNodeID &ID,
 
 
 void StmtProfiler::VisitCppxTypeLiteral(const CppxTypeLiteral *E) {
-  VisitExpr(E);
+  // VisitExpr(E);
+}
+
+void StmtProfiler::VisitCppxCXXScopeSpecExpr(const CppxCXXScopeSpecExpr *E) {
+  // VisitExpr(E);
 }
 
 void StmtProfiler::VisitCppxPartialEvalExpr(const CppxPartialEvalExpr *E) {

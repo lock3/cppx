@@ -15188,6 +15188,11 @@ public:
   bool VisitCppxTypeLiteral(const CppxTypeLiteral *E) {
     return Success(E->getValue()->getType());
   }
+
+  bool VisitCppxCXXScopeSpecExpr(const CppxCXXScopeSpecExpr *E) {
+    return Success(E->getType());
+  }
+
   bool VisitCppxPartialEvalExpr(const CppxPartialEvalExpr *E) {
     return Success(E->getType());
   }
@@ -15886,6 +15891,7 @@ static ICEDiag CheckICE(const Expr* E, const Expr::EvalContext &Ctx) {
   case Expr::CXXConcatenateExprClass:
   case Expr::CXXFragmentExprClass:
   case Expr::CppxTypeLiteralClass:
+  case Expr::CppxCXXScopeSpecExprClass:
   case Expr::CppxPartialEvalExprClass:
   case Expr::CppxDeclRefExprClass:
   case Expr::CppxDerefOrPtrExprClass:

@@ -2667,6 +2667,17 @@ void StmtPrinter::VisitCppxTypeLiteral(CppxTypeLiteral *E) {
   T.print(OS, Policy);
 }
 
+void StmtPrinter::VisitCppxCXXScopeSpecExpr(CppxCXXScopeSpecExpr *E) {
+  if (E->getScopeSpec().isSet()) {
+
+    auto NNS = E->getScopeSpec().getScopeRep();
+    if (NNS) {
+      NNS->print(OS, Policy);
+      return;
+    }
+  }
+  OS << " (empty scope)";
+}
 
 void StmtPrinter::VisitCppxPartialEvalExpr(CppxPartialEvalExpr *E) {
   QualType T = E->getType();

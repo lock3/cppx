@@ -310,3 +310,4 @@ def CppxTemplateOrArrayExpr : StmtNode<Expr>;
 def CppxCallOrConstructorExpr : StmtNode<Expr>;
 def CppxDerefOrPtrExpr : StmtNode<Expr>;
 def CppxWildcardExpr : StmtNode<Expr>;
+def CppxCXXScopeSpecExpr : StmtNode<Expr>;

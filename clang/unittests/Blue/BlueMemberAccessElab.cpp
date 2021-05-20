@@ -29,7 +29,7 @@ C : type = {
   :B;
   i:int;
   foo:(inout this) -> void = {
-    this.B.i = 4;
+    this.(B).i = 4;
   }
 }
 
@@ -59,7 +59,7 @@ C : type = {
 
 foo:() = {
   v:C;
-  v.B.i = 4;
+  v.(B).i = 4;
 }
 )BLUE";
   auto ToMatch =
@@ -135,7 +135,7 @@ C : type = {
   :B[int];
   i:int;
   foo: (inout this) -> void = {
-    this.B[int].i = 4;
+    this.(B[int]).i = 4;
   }
 }
 )BLUE";
@@ -161,7 +161,7 @@ C : type = {
   :ns.B;
   i:int;
   foo: (inout this) -> void = {
-    this.ns.B.i = 4;
+    this.(ns.B).i = 4;
   }
 }
 )BLUE";
@@ -174,6 +174,27 @@ C : type = {
     ))
   );
   ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+
+
+TEST(BlueMemberAccess, NamespaceSpecifierNotInsideOfParens) {
+  StringRef Code = R"BLUE(
+ns:namespace = {
+  B : type = {
+    i:int;
+  }
+}
+
+C : type = {
+  :ns.B;
+  i:int;
+  foo: (inout this) -> void = {
+    this.ns.B.i = 4;
+  }
+}
+)BLUE";
+  BlueFailureTest(Code);
 }
 
 TEST(BlueMemberAccess, NamespaceSpecifierForAsPartOfNameDisambiguation_ImplicitThis) {
@@ -463,7 +484,7 @@ C : type = {
   :B;
   i:int;
   foo:(inout this) -> void = {
-    this.NS.Base.i = 4;
+    this.(NS.Base).i = 4;
   }
 }
 
@@ -494,7 +515,7 @@ C : type = {
   :B;
   i:int;
   foo:(inout this) -> void = {
-    this.A.Base.i = 4;
+    this.(A.Base).i = 4;
   }
 }
 
@@ -583,7 +604,7 @@ NS2 :namespace = NS;
 C : type = {
   :NS.B;
   foo:(inout this) -> void = {
-    this.NS2.B.i = 4;
+    this.(NS2.B).i = 4;
   }
 }
 
@@ -640,7 +661,7 @@ C : type = {
   :NS.B;
   foo:(inout this) -> void = {
     NS2 :namespace = NS;
-    this.NS2.B.i = 4;
+    this.(NS2.B).i = 4;
   }
 }
 
@@ -907,7 +928,7 @@ C : type = {
   :B[int];
   i:int;
   foo: (inout this) -> void = {
-    this.NS.TAlias[int].i = 5;
+    this.(NS.TAlias[int]).i = 5;
   }
 }
 )BLUE";

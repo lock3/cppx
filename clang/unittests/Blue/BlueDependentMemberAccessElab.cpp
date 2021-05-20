@@ -30,7 +30,7 @@ C : [T:type] -> type = {
   :B;
   i:int;
   foo:(inout this) -> void = {
-    this.B.i = 4;
+    this.(B).i = 4;
   }
 }
 foo:()->void = {
@@ -59,7 +59,7 @@ C : [T:type] -> type = {
   :B[T];
   i:int;
   foo:(inout this) -> void = {
-    this.B[T].i = 4;
+    this.(B[T]).i = 4;
   }
 }
 foo:()->void = {
@@ -121,7 +121,7 @@ C : type = {
 
 foo:() = {
   v:C;
-  v.B.i = 4;
+  v.(B).i = 4;
 }
 )BLUE";
   auto ToMatch =
@@ -152,7 +152,7 @@ C : [T:type] -> type = {
 }
 foo:()->void = {
   x:C[int];
-  x.B.i = 4;
+  x.(B).i = 4;
 }
 )BLUE";
   auto ToMatch =
@@ -182,7 +182,7 @@ C : [T:type] -> type = {
 }
 foo:()->void = {
   x:C[int];
-  x.B[int].i = 4;
+  x.(B[int]).i = 4;
 }
 )BLUE";
  auto ToMatch =
@@ -213,7 +213,7 @@ C : [T:type] -> type = {
   :ns.B[T];
   i:T;
   foo: (inout this) -> void = {
-    this.ns.B[T].i = 4;
+    this.(ns.B[T]).i = 4;
   }
 }
 foo:()->void = {
@@ -246,7 +246,7 @@ C : [T:type] -> type = {
   :ns.B[T];
   i:int;
   foo: (this) -> void = {
-    ns.B[T].i = 4;
+    ns.(B[T]).i = 4;
   }
 }
 
@@ -353,7 +353,7 @@ C : [T:type] -> type = {
   :B[T];
   i:int;
   foo: (inout this) -> void = {
-    this.B[T].bar();
+    this.(B[T]).bar();
   }
 }
 foo:()->void = {
@@ -405,7 +405,7 @@ C : [T:type] -> type = {
   Base :[X:type] -> type = B[X];
   i:int;
   foo:(inout this) -> void = {
-    this.Base[T].i = 4;
+    this.(Base[T]).i = 4;
   }
 }
 foo:()->void = {
@@ -468,7 +468,7 @@ C : [T:type] -> type = {
   :B[T];
   i:int;
   foo:(inout this) -> void = {
-    this.NS.Base[T].i = 4;
+    this.(NS.Base[T]).i = 4;
   }
 }
 foo:()->void = {
@@ -502,7 +502,7 @@ C : [T:type] -> type = {
   :B[T];
   i:int;
   foo:(inout this) -> void = {
-    this.A.Base[T].i = 4;
+    this.(A.Base[T]).i = 4;
   }
 }
 foo:()->void = {
@@ -638,7 +638,7 @@ NS2 :namespace = NS;
 C : [T:type] -> type = {
   :NS.B[T];
   foo:(inout this) -> void = {
-    this.NS2.B[T].i = 4;
+    this.(NS2.B[T]).i = 4;
   }
 }
 
@@ -706,7 +706,7 @@ C : [T:type] -> type = {
   :NS.B[T];
   foo:(inout this) -> void = {
     NS2 :namespace = NS;
-    this.NS2.B[T].i = 4;
+    this.(NS2.B[T]).i = 4;
   }
 }
 
@@ -993,7 +993,7 @@ C : [T:type] -> type = {
   TAlias : [X:type] -> type = B[X];
   i:int;
   foo: (inout this) -> void = {
-    this.TAlias[T].i = 5;
+    this.(TAlias[T]).i = 5;
   }
 }
 foo:()->void = {
@@ -1026,7 +1026,7 @@ C : [T:type] -> type = {
   :B[int];
   i:int;
   foo: (inout this) -> void = {
-    this.TAlias[int].i = 5;
+    this.(TAlias[int]).i = 5;
   }
 }
 foo:()->void = {
@@ -1061,7 +1061,7 @@ C : [T:type] -> type  = {
   :B[int];
   i:int;
   foo: (inout this) -> void = {
-    this.NS.TAlias[int].i = 5;
+    this.(NS.TAlias[int]).i = 5;
   }
 }
 foo:()->void = {
@@ -1160,7 +1160,7 @@ C : [T:type] -> type = {
   :B[int];
   i:int;
   foo: (inout this) -> void = {
-    this.B.i = 5;
+    this.(B).i = 5;
   }
 }
 foo:()->void = {
@@ -1358,7 +1358,7 @@ NS:namespace = {
 C : [T:type] -> type = {
   i:int;
   foo: (inout this) -> void = {
-    this.NS[int].y = 5;
+    this.(NS[int]).y = 5;
   }
 }
 foo:()->void = {
@@ -1378,7 +1378,7 @@ C : [T:type] -> type = {
   :B;
   i:int;
   foo: (inout this) -> void = {
-    this.B[int].i = 5;
+    this.(B[int]).i = 5;
   }
 }
 foo:()->void = {

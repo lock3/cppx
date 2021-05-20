@@ -361,6 +361,7 @@ CXCursor cxcursor::MakeCXCursor(const Stmt *S, const Decl *Parent,
   case Stmt::CXXFragmentExprClass:
   case Stmt::CppxPartialEvalExprClass:
   case Stmt::CppxTypeLiteralClass:
+  case Stmt::CppxCXXScopeSpecExprClass:
   case Stmt::CppxDeclRefExprClass:
   case Stmt::CppxTemplateOrArrayExprClass:
   case Stmt::CXXFragmentCaptureExprClass:
