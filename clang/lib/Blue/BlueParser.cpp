@@ -233,13 +233,14 @@ namespace
   {
     DescriptorClause DC;
     P.expectToken(tok::Colon);
-    if (P.nextTokenIs(tok::IsKeyword)) {
-      DC.Cons = P.parseConstraint();
-    } else if(P.nextTokenIsNot(tok::Equal)) {
-      DC.Type = P.parseDescriptor();
-      if (P.nextTokenIs(tok::IsKeyword))
-        DC.Cons = P.parseConstraint();
+    if(P.nextTokenIsNot(tok::Equal)) {
+      DC.Type = P.parsePrefixExpression();
+      if (P.nextTokenIs(tok::IsKeyword)) {
+        P.consumeToken();
+        DC.Cons = P.parsePrefixExpression();
+      }
     }
+
     return DC;
   }
 
@@ -266,7 +267,7 @@ namespace
         Clause.Init = new LiteralSyntax(P.consumeToken());
         P.expectToken(tok::Semicolon);
       } else {
-        Clause.Init = P.parseExpression();
+        Clause.Init = P.parseComputationExpression();
         P.expectToken(tok::Semicolon);
       }
     } else {
@@ -295,13 +296,16 @@ Syntax *Parser::parseConstraint()
 /// Parse a type expression.
 ///
 ///   descriptor:
-///     prefix-expression
+///     :
+///     : prefix-expression? is prefix-expression
 ///
 /// A descriptor specifies part of the signature of a declaration, including
 /// its template parameters, function parameters, array bounds, and type.
 Syntax *Parser::parseDescriptor()
 {
-  return parsePrefixExpression();
+  expectToken(tok::Colon);
+  // TODO: parse 'is' pattern
+  return nullptr;
 }
 
 Syntax *Parser::parseFile() {
@@ -396,6 +400,9 @@ Syntax *Parser::parseExpressionList()
 ///     leave-expression 
 ///     expression where ( parameter-group )
 Syntax *Parser::parseExpression() {
+  if (startsDefinition(*this))
+    return parseDeclaration();
+
   return parseControlExpression();
   // Syntax *E0 = parseLeaveExpression();
   // while (Token Op = matchToken(tok::WhereKeyword)) {
