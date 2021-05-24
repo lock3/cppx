@@ -1003,36 +1003,16 @@ clang::CppxTypeLiteral *Sema::buildAnyTypeExpr(clang::QualType KindTy,
 clang::TypeSourceInfo *
 Sema::getTypeSourceInfoFromExpr(clang::Expr *TyExpr,
                                 clang::SourceLocation Loc) {
-  if (!TyExpr) {
+  if (!TyExpr)
     return nullptr;
-  }
 
-  if (!TyExpr->getType()->isTypeOfTypes()) {
-    if (auto Partial = dyn_cast<clang::CppxPartialEvalExpr>(TyExpr)) {
-      clang::Expr *E2 = Partial->completeExpr();
-      if (E2) {
-        if (const clang::CppxTypeLiteral *Lit
-                                   = dyn_cast<clang::CppxTypeLiteral>(E2)) {
-          clang::QualType NewTy = Lit->getValue()->getType();
-          if (auto ElabTy = dyn_cast<clang::ElaboratedType>(NewTy)) {
-            return gold::BuildAnyTypeLoc(Context.CxxAST,
-                                         ElabTy->getNamedType(),
-                                         Loc);
-          }
-        }
-        return getTypeSourceInfoFromExpr(E2);
-      }
-    }
-    assert(false);
-    getCxxSema().Diags.Report(Loc, clang::diag::err_not_a_type);
-    return nullptr;
-  }
-
-  if (const clang::CppxTypeLiteral *Ty
-                                   = dyn_cast<clang::CppxTypeLiteral>(TyExpr)) {
+  if (auto Ty = dyn_cast<clang::CppxTypeLiteral>(TyExpr))
     return Ty->getValue();
-  }
 
+  if (auto SSE = dyn_cast<clang::CppxCXXScopeSpecExpr>(TyExpr))
+    return getTypeSourceInfoFromExpr(SSE->getLastExpr(), Loc);
+  llvm::outs() << " Failed to get correct type expression\n";
+  TyExpr->dump();
   llvm_unreachable("Invalid type expression evaluates to type of types.");
 }
 
@@ -1142,6 +1122,9 @@ clang::Decl *Sema::getDeclFromExpr(const clang::Expr *DeclExpr,
                           = dyn_cast<clang::CppxDeclRefExpr>(DeclExpr)) {
     return DecRef->getValue();
   }
+  if (auto SSE = dyn_cast<clang::CppxCXXScopeSpecExpr>(DeclExpr)) {
+    return getDeclFromExpr(SSE->getLastExpr(), Loc);
+  }
   llvm_unreachable("Unable to get declaration from expression.");
   // TODO: Change this error message to say that the expression doesn't contain
   // a declaration or something like that.
@@ -1159,9 +1142,180 @@ clang::CppxNamespaceDecl *Sema::getNSDeclFromExpr(const clang::Expr *DeclExpr,
     getCxxSema().Diags.Report(Loc, clang::diag::err_expected_namespace);
     return nullptr;
   }
+  if (auto SSE = dyn_cast<clang::CppxCXXScopeSpecExpr>(DeclExpr)) {
+    return getNSDeclFromExpr(SSE->getLastExpr(), Loc);
+  }
   getCxxSema().Diags.Report(Loc, clang::diag::err_expected_namespace);
   return nullptr;
 }
+
+
+clang::CppxCXXScopeSpecExpr *Sema::buildNNSScopeExpr(clang::Expr *BaseExpr) {
+  assert(BaseExpr && "Invalid expression");
+  using namespace clang;
+  QualType Ty = BaseExpr->getType();
+  if (isa<CppxCXXScopeSpecExpr>(BaseExpr)) {
+    llvm_unreachable("Cannot combine nested name specifiers yet.");
+  }
+  SourceLocation Loc = BaseExpr->getExprLoc();
+  if (Ty->isDependentType()) {
+    // I'm not sure what to do here.
+    llvm_unreachable("Dependent type expression cannot be used to construct a "
+                     "nested name specifier yet.");
+  }
+  if (Ty->isKindType() || Ty->isTemplateType() || Ty->isNamespaceType()) {
+    CXXScopeSpec *SS = new CXXScopeSpec();
+    auto SSE = CppxCXXScopeSpecExpr::Create(CxxAST, Loc);
+    SSE->setScopeSpec(SS);
+    if (extendScope(SSE, BaseExpr)) {
+      delete SS;
+      return nullptr;
+    }
+    return SSE;
+
+  }
+  CxxSema.Diags.Report(BaseExpr->getExprLoc(), clang::diag::err_blue_elaboration)
+      << "given expression is not a valid nested name space specifier";
+  return nullptr;
+}
+
+clang::CppxCXXScopeSpecExpr *Sema::buildGlobalScopeExpr(clang::SourceLocation Loc) {
+  using namespace clang;
+  CXXScopeSpec *SS = new CXXScopeSpec();
+  auto SSE = CppxCXXScopeSpecExpr::Create(CxxAST, Loc);
+  SS->MakeGlobal(CxxAST, Loc);
+  SSE->setScopeSpec(SS);
+  return SSE;
+}
+
+bool Sema::extendScope(clang::Expr *ScopeExpr, clang::Expr *NameExpr) {
+  assert(ScopeExpr && "invalid scope expression to extend.");
+  assert(NameExpr && "extension expression.");
+  if (isa<clang::CppxCXXScopeSpecExpr>(NameExpr))
+    llvm_unreachable("Cannot combine nested name specifiers yet.");
+
+  if (auto SSE = dyn_cast<clang::CppxCXXScopeSpecExpr>(ScopeExpr)) {
+    return extendScope(SSE, NameExpr);
+  }
+  CxxSema.Diags.Report(ScopeExpr->getExprLoc(), clang::diag::err_blue_elaboration)
+      << "invalid nested name ";
+  return true;
+}
+
+bool Sema::extendScope(clang::CppxCXXScopeSpecExpr *SSE, clang::Expr *NameExpr) {
+  clang::SourceLocation Loc = NameExpr->getExprLoc();
+  clang::QualType Ty = NameExpr->getType();
+  clang::SourceLocation EmptyLoc;
+
+  // In the event that the current scope expression evaluates to an incomplete
+  // template type we should emit an error because we haven't completed the
+  // template type yet.
+  // if (SSE->getType()->isTemplateType()) {
+  //   CxxSema.Diags.Report(SSE->getEndLoc(), clang::diag::err_blue_elaboration)
+  //       << "invalid use of an incomplete template type.";
+  //   return true;
+  // }
+  if (Ty->isDependentType()) {
+    // In the future it may be beneficial to verify that this isn't the first
+    // expression encountered, or something like that.
+    if (auto DepName = dyn_cast<clang::CppxDependentMemberAccessExpr>(NameExpr)) {
+      SSE->setLastExpr(DepName);
+      // CppxDependentMemberAccessExpr
+      auto DNI = DepName->getMemberNameInfo();
+      SSE->getScopeSpec().Extend(CxxAST, DNI.getName().getAsIdentifierInfo(),
+                                 DNI.getLoc(), Loc);
+      return false;
+    }
+    NameExpr->dump();
+    llvm_unreachable("Unknown/unhandled dependent member expression/not "
+                     "implemented yet.");
+  }
+  if (Ty->isKindType()) {
+    auto TInfo = getTypeSourceInfoFromExpr(NameExpr, Loc);
+    if (!TInfo)
+      return true;
+
+    SSE->getScopeSpec().Extend(CxxAST, EmptyLoc, TInfo->getTypeLoc(), Loc);
+    SSE->setLastExpr(NameExpr);
+    return false;
+  }
+  if (Ty->isTemplateType()) {
+    // We don't do anything here accept set the expression because we can't
+    // complete anything else.'
+    SSE->setLastExpr(NameExpr);
+    return false;
+  }
+  if (Ty->isNamespaceType()) {
+    clang::Decl *D = getDeclFromExpr(NameExpr, Loc);
+    if (!D)
+      return true;
+    if (auto NsD = dyn_cast<clang::NamespaceDecl>(D)) {
+      SSE->getScopeSpec().Extend(CxxAST, NsD, Loc, Loc);
+
+    } else if (auto NsAD = dyn_cast<clang::NamespaceAliasDecl>(D)) {
+      SSE->getScopeSpec().Extend(CxxAST, NsAD, Loc, Loc);
+
+    } else {
+      CxxSema.Diags.Report(Loc, clang::diag::err_blue_elaboration)
+        << "invalid scope specifier given";
+      return true;
+    }
+    SSE->setLastExpr(NameExpr);
+    return false;
+  }
+  CxxSema.Diags.Report(Loc, clang::diag::err_blue_elaboration)
+      << "invalid nested name specifier";
+  return true;
+}
+
+clang::Expr *Sema::completeScopeAsType(clang::Expr *E) {
+  assert(E && "invalid expression");
+  auto SSE = dyn_cast<clang::CppxCXXScopeSpecExpr>(E);
+  if (!SSE) {
+    CxxSema.Diags.Report(E->getExprLoc(), clang::diag::err_not_a_type);
+    return nullptr;
+  }
+  auto Ty = SSE->getType();
+  if (Ty->isKindType()) {
+    SSE->deleteScopeSpec();
+    return SSE->getLastExpr();
+  }
+  if (Ty->isDependentType()) {
+    SSE->deleteScopeSpec();
+    return buildTypeExprTypeFromExpr(SSE->getLastExpr(), SSE->getEndLoc());
+  }
+  CxxSema.Diags.Report(E->getExprLoc(), clang::diag::err_not_a_type);
+  return nullptr;
+}
+
+clang::Expr *Sema::completeScopeAsNamespace(clang::Expr *E) {
+  auto SSE = dyn_cast<clang::CppxCXXScopeSpecExpr>(E);
+  if (!SSE) {
+    CxxSema.Diags.Report(clang::SourceLocation(), clang::diag::err_blue_elaboration)
+      << "not a namespace";
+    return nullptr;
+  }
+  auto Ty = SSE->getType();
+  if (Ty->isNamespaceType()) {
+    SSE->deleteScopeSpec();
+    return SSE->getLastExpr();
+  }
+  CxxSema.Diags.Report(E->getExprLoc(), clang::diag::err_blue_elaboration)
+    << "not a namespace";
+  return nullptr;
+}
+
+// clang::Decl *Sema::completeScopeAsGiven(clang::Expr *E) {
+//   // auto SSE = dyn_cast<clang::CppxCXXScopeSpecExpr>(E);
+//   // if (!SSE) {
+//   //   CxxSema.Diags.Report(Loc, clang::diag::err_blue_elaboration)
+//   //     << "not a namespace";
+//   //   return nullptr;
+//   // }
+//   // auto Ty = SSE->getType();
+//   // if (SSE->get)
+// }
+
 
 static bool checkSimplNameMatchRedecl(Sema &SemaRef, Declaration *D) {
   auto otherPossibleDecls = SemaRef.getCurrentScope()->findDecl(D->Id);
@@ -1357,106 +1511,106 @@ Declaration *Sema::getDeclaration(clang::Decl *Cxx) {
   return Iter->second;
 }
 
-clang::CppxPartialEvalExpr *Sema::createPartialExpr(clang::SourceLocation Loc,
-                                                    bool IsWithinClass,
-                                                    bool AllowImplicitThis,
-                                                    clang::Expr *BaseExpr,
-                                           bool IsPartOfTemplateInstantiation) {
-  PartialNameAccessExprImpl *PartialImpl = new PartialNameAccessExprImpl(*this);
-  PartialImpl->BeginLocation = Loc;
-  PartialImpl->EndLocation = Loc;
-  auto Ret = clang::CppxPartialEvalExpr::Create(CxxAST, PartialImpl, Loc);
-  PartialImpl->setIncompleteExpr(Ret);
-  PartialImpl->setIsWithinClass(IsWithinClass);
-  PartialImpl->allowUseOfImplicitThis(AllowImplicitThis);
-  PartialImpl->setBaseExpr(BaseExpr);
-  PartialImpl->setIsInsideTemplateInstantiation(IsPartOfTemplateInstantiation);
-  return Ret;
-}
+// clang::CppxPartialEvalExpr *Sema::createPartialExpr(clang::SourceLocation Loc,
+//                                                     bool IsWithinClass,
+//                                                     bool AllowImplicitThis,
+//                                                     clang::Expr *BaseExpr,
+//                                            bool IsPartOfTemplateInstantiation) {
+//   PartialNameAccessExprImpl *PartialImpl = new PartialNameAccessExprImpl(*this);
+//   PartialImpl->BeginLocation = Loc;
+//   PartialImpl->EndLocation = Loc;
+//   auto Ret = clang::CppxPartialEvalExpr::Create(CxxAST, PartialImpl, Loc);
+//   PartialImpl->setIncompleteExpr(Ret);
+//   PartialImpl->setIsWithinClass(IsWithinClass);
+//   PartialImpl->allowUseOfImplicitThis(AllowImplicitThis);
+//   PartialImpl->setBaseExpr(BaseExpr);
+//   PartialImpl->setIsInsideTemplateInstantiation(IsPartOfTemplateInstantiation);
+//   return Ret;
+// }
 
-bool Sema::memberAccessNeedsPartialExpr(clang::Expr *LHS,
-                                        clang::IdentifierInfo *Id,
-                                        clang::SourceLocation IdLoc) {
+// bool Sema::memberAccessNeedsPartialExpr(clang::Expr *LHS,
+//                                         clang::IdentifierInfo *Id,
+//                                         clang::SourceLocation IdLoc) {
 
-  // Only go one level deep on pointers access.
-  clang::QualType LHSTy = LHS->getType();
+//   // Only go one level deep on pointers access.
+//   clang::QualType LHSTy = LHS->getType();
 
-  // we will need to handled depenedent types differently.
-  // During instantiation we will need to make sure that we use the partial type
-  // in order to correctly build the member access/disambiguation expression.
-  if (LHSTy->isDependentType())
-    return false;
+//   // we will need to handled depenedent types differently.
+//   // During instantiation we will need to make sure that we use the partial type
+//   // in order to correctly build the member access/disambiguation expression.
+//   if (LHSTy->isDependentType())
+//     return false;
 
-  LHSTy = LHSTy.getUnqualifiedType();
-  if (LHSTy->isPointerType())
-    LHSTy = LHSTy->getPointeeType();
+//   LHSTy = LHSTy.getUnqualifiedType();
+//   if (LHSTy->isPointerType())
+//     LHSTy = LHSTy->getPointeeType();
 
-  // This this may need to be dented as an error at some level.
-  if (LHSTy->isTemplateType())
-    return false;
+//   // This this may need to be dented as an error at some level.
+//   if (LHSTy->isTemplateType())
+//     return false;
 
-  // It may be necessary in the future to double check it's possible
-  // for a namespace to begin a look up for a base expression.
-  if (LHSTy->isTypeOfTypes() || LHSTy->isNamespaceType()) {
-    if (isElaboratingClass()) {
-      return true;
-    } else {
-      return false;
-    }
-  }
+//   // It may be necessary in the future to double check it's possible
+//   // for a namespace to begin a look up for a base expression.
+//   if (LHSTy->isTypeOfTypes() || LHSTy->isNamespaceType()) {
+//     if (isElaboratingClass()) {
+//       return true;
+//     } else {
+//       return false;
+//     }
+//   }
 
-  clang::SourceLocation LHSLoc = LHS->getExprLoc();
-  const auto *TST = LHSTy->getAs<clang::TemplateSpecializationType>();
-  if (!(LHSTy->isStructureOrClassType() || LHSTy->isUnionType()
-        || LHSTy->isEnumeralType()) && !TST) {
-    getCxxSema().Diags.Report(LHSLoc, clang::diag::err_invalid_type_for_name_spec)
-                              << LHSTy;
-    return false;
-  }
+//   clang::SourceLocation LHSLoc = LHS->getExprLoc();
+//   const auto *TST = LHSTy->getAs<clang::TemplateSpecializationType>();
+//   if (!(LHSTy->isStructureOrClassType() || LHSTy->isUnionType()
+//         || LHSTy->isEnumeralType()) && !TST) {
+//     getCxxSema().Diags.Report(LHSLoc, clang::diag::err_invalid_type_for_name_spec)
+//                               << LHSTy;
+//     return false;
+//   }
 
-  clang::TagDecl *TD = LHSTy->getAsTagDecl();
-  Declaration *DeclForTy = getDeclaration(TD);
-  if (!DeclForTy && isa<clang::ClassTemplateSpecializationDecl>(TD)) {
-    auto *CTSD = cast<clang::ClassTemplateSpecializationDecl>(TD);
-    auto *Primary = CTSD->getSpecializedTemplate();
-    DeclForTy = getDeclaration(Primary);
-  }
-  assert(DeclForTy && "Missing declaration for a type");
+//   clang::TagDecl *TD = LHSTy->getAsTagDecl();
+//   Declaration *DeclForTy = getDeclaration(TD);
+//   if (!DeclForTy && isa<clang::ClassTemplateSpecializationDecl>(TD)) {
+//     auto *CTSD = cast<clang::ClassTemplateSpecializationDecl>(TD);
+//     auto *Primary = CTSD->getSpecializedTemplate();
+//     DeclForTy = getDeclaration(Primary);
+//   }
+//   assert(DeclForTy && "Missing declaration for a type");
 
-  clang::DeclarationNameInfo DNI({Id}, IdLoc);
-  auto R = TD->lookup(DNI.getName());
-  if (R.size() != 0) {
-    for (clang::NamedDecl *ND : R) {
-      if (isa<clang::TagDecl>(ND) || isa<clang::TypeAliasDecl>(ND)
-          || isa<clang::TemplateDecl>(ND)
-          || isa<clang::TypeAliasTemplateDecl>(ND)
-          || isa<clang::CXXRecordDecl>(ND)) {
-        return true;
-      }
-    }
-    return false;
-  }
-  clang::LookupResult Previous(CxxSema, DNI, clang::Sema::LookupOrdinaryName);
-  if (lookupUnqualifiedName(Previous, getCurrentScope())) {
-    return false;
-  }
-  return !Previous.empty();
-}
+//   clang::DeclarationNameInfo DNI({Id}, IdLoc);
+//   auto R = TD->lookup(DNI.getName());
+//   if (R.size() != 0) {
+//     for (clang::NamedDecl *ND : R) {
+//       if (isa<clang::TagDecl>(ND) || isa<clang::TypeAliasDecl>(ND)
+//           || isa<clang::TemplateDecl>(ND)
+//           || isa<clang::TypeAliasTemplateDecl>(ND)
+//           || isa<clang::CXXRecordDecl>(ND)) {
+//         return true;
+//       }
+//     }
+//     return false;
+//   }
+//   clang::LookupResult Previous(CxxSema, DNI, clang::Sema::LookupOrdinaryName);
+//   if (lookupUnqualifiedName(Previous, getCurrentScope())) {
+//     return false;
+//   }
+//   return !Previous.empty();
+// }
 
-bool Sema::isThisValidInCurrentScope() {
-  Scope *CurScope = getCurrentScope();
-  while (CurScope) {
-    if (CurScope->getKind() == Scope::Function) {
-      return true;
-    }
-    if (CurScope->getKind() == Scope::Namespace
-        || CurScope->getKind() == Scope::Class) {
-      return false;
-    }
-    CurScope = CurScope->getParent();
-  }
-  return false;
-}
+// bool Sema::isThisValidInCurrentScope() {
+//   Scope *CurScope = getCurrentScope();
+//   while (CurScope) {
+//     if (CurScope->getKind() == Scope::Function) {
+//       return true;
+//     }
+//     if (CurScope->getKind() == Scope::Namespace
+//         || CurScope->getKind() == Scope::Class) {
+//       return false;
+//     }
+//     CurScope = CurScope->getParent();
+//   }
+//   return false;
+// }
 
 bool Sema::isElaboratingClass() const {
   return !ClassStack.empty();

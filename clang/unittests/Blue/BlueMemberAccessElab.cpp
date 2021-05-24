@@ -300,7 +300,7 @@ C : type = {
   :B;
   i:int;
   foo: (inout this) -> void = {
-    this.B.bar();
+    this.(B).bar();
   }
 }
 )BLUE";
@@ -319,13 +319,13 @@ C :[T:type] -> type = {
   i:int;
 
   foo:(this) -> void = {
-    this.B.i = 4;
+    this.(B).i = 4;
   }
 }
 
 
 )BLUE";
-  auto ToMatch = cppxDependentMemberAccessExpr();
+  auto ToMatch = cxxDependentScopeMemberExpr();
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
@@ -362,12 +362,12 @@ C : [T:type] -> type = {
   :B[T];
   i:int;
   foo:(this) -> void = {
-    this.B[T].i = 4;
+    this.(B[T]).i = 4;
   }
 }
 
 )BLUE";
-  auto ToMatch = cppxDependentMemberAccessExpr();
+  auto ToMatch = cxxDependentScopeMemberExpr();
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
@@ -381,12 +381,12 @@ C : [T:type] -> type = {
   :B[T];
   i:int;
   foo:(this) -> void = {
-    this.B[T].foo() = 4;
+    this.(B[T]).foo() = 4;
   }
 }
 
 )BLUE";
-  auto ToMatch = cppxDependentMemberAccessExpr();
+  auto ToMatch = cxxDependentScopeMemberExpr();
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
@@ -427,7 +427,7 @@ C : type = {
   Base :type = B;
   i:int;
   foo:(inout this) -> void = {
-    this.Base.i = 4;
+    this.(Base).i = 4;
   }
 }
 
@@ -454,7 +454,7 @@ C : type = {
   i:int;
   foo:(inout this) -> void = {
     Base :type = B;
-    this.Base.i = 4;
+    this.(Base).i = 4;
   }
 }
 
@@ -547,7 +547,7 @@ C : type = {
   : B;
   i:int;
   bar:(this) -> void = {
-    this.B.foo(1);
+    this.(B).foo(1);
   }
 }
 
@@ -868,7 +868,7 @@ C : type = {
   TAlias : [T:type] -> type = B[T];
   i:int;
   foo: (inout this) -> void = {
-    this.TAlias[int].i = 5;
+    this.(TAlias[int]).i = 5;
   }
 }
 )BLUE";
@@ -897,7 +897,7 @@ C : type = {
   :B[int];
   i:int;
   foo: (inout this) -> void = {
-    this.TAlias[int].i = 5;
+    this.(TAlias[int]).i = 5;
   }
 }
 )BLUE";
@@ -1008,7 +1008,7 @@ C : type = {
   :B[int];
   i:int;
   foo: (inout this) -> void = {
-    this.B.i = 5;
+    this.(B).i = 5;
   }
 }
 )BLUE";

@@ -211,15 +211,14 @@ CppxWildcardExpr *CppxWildcardExpr::Create(const ASTContext &C,
 }
 
 // -----------------------------------------------------------------------------
-CppxCXXScopeSpecExpr::CppxCXXScopeSpecExpr(ASTContext &Ctx, SourceLocation L, Expr *E)
+CppxCXXScopeSpecExpr::CppxCXXScopeSpecExpr(ASTContext &Ctx, SourceLocation L)
   :Expr(CppxCXXScopeSpecExprClass, Ctx.VoidTy, VK_LValue, OK_Ordinary),
-  Loc(L), SS(nullptr), CurExpr(E)
+  Loc(L), SS(nullptr), CurExpr(nullptr)
 { }
 
 CppxCXXScopeSpecExpr *CppxCXXScopeSpecExpr::Create(ASTContext &C,
-                                                   SourceLocation Loc,
-                                                   Expr *Base) {
-  return new (C) CppxCXXScopeSpecExpr(C, Loc, Base);
+                                                   SourceLocation Loc) {
+  return new (C) CppxCXXScopeSpecExpr(C, Loc);
 }
 
 

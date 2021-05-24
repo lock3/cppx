@@ -162,17 +162,18 @@ clang::Expr *DependentExprTransformer::transformCppxDependentMemberAccessExpr(
                          clang::diag::err_invalid_dependent_expr);
     return nullptr;
   }
-  clang::CppxPartialEvalExpr *PartialE = nullptr;
-  PartialE = dyn_cast<clang::CppxPartialEvalExpr>(Ret);
-  if (!PartialE) {
-    PartialE = SemaRef.createPartialExpr(E->getExprLoc(),
-                       isInsideOfClassContext(SemaRef.getCurClangDeclContext()),
-                       isCXXThisValidInContext(SemaRef.getCurClangDeclContext()),
-                              Ret, true);
-  }
+  // clang::CppxPartialEvalExpr *PartialE = nullptr;
+  // PartialE = dyn_cast<clang::CppxPartialEvalExpr>(Ret);
+  // if (!PartialE) {
+  //   PartialE = SemaRef.createPartialExpr(E->getExprLoc(),
+  //                      isInsideOfClassContext(SemaRef.getCurClangDeclContext()),
+  //                      isCXXThisValidInContext(SemaRef.getCurClangDeclContext()),
+  //                             Ret, true);
+  // }
+  llvm_unreachable("Working on it.");
   // Retrieving member information.
-  auto DNI = E->getMemberNameInfo();
-  return PartialE->appendName(DNI.getLoc(), DNI.getName().getAsIdentifierInfo());
+  // auto DNI = E->getMemberNameInfo();
+  // return PartialE->appendName(DNI.getLoc(), DNI.getName().getAsIdentifierInfo());
   // Attempting to do lookup for the next name?
 
   // if (Ret->getType()->isNamespaceType() || Ret->getType()->isTemplateType()) {

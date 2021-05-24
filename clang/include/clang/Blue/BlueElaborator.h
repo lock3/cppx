@@ -29,7 +29,7 @@ class QualType;
 class Sema;
 class Stmt;
 class NamedDecl;
-class CppxPartialEvalExpr;
+// class CppxPartialEvalExpr;
 } // namespace clang
 
 namespace blue
@@ -179,6 +179,7 @@ public:
   clang::Expr *elaborateListExpression(const ListSyntax *S);
   clang::Expr *elaborateSequenceExpression(const SequenceSyntax *S);
   clang::Expr *elaborateQualifiedMemberAccess(const QualifiedMemberAccessSyntax *S);
+
   clang::Expr *elaborateNestedLookupAccess(clang::Expr *Previous,
                                            const Syntax *Op,
                                            const Syntax *RHS);
@@ -217,8 +218,7 @@ public:
   /// Dispatching function, that determines based on the LHS's type how to
   /// process the RHS of the expression.
   clang::Expr *elaborateMemberAccess(clang::Expr *LHS, const InfixSyntax *S);
-  clang::Expr *elaboratePartialEvalMemberAccess(clang::CppxPartialEvalExpr *E,
-                                                const InfixSyntax *S);
+
   clang::Expr *elaborateTypeNameAccess(clang::Expr *LHS, const InfixSyntax *S);
   clang::Expr *elaborateNestedNamespaceAccess(clang::Expr *LHS, const InfixSyntax *S);
   clang::Expr *elaborateNNS(clang::NamedDecl *NS, const InfixSyntax *S);

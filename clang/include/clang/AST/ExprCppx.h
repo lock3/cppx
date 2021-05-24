@@ -907,16 +907,20 @@ class CppxCXXScopeSpecExpr : public Expr {
   SourceLocation Loc;
   CXXScopeSpec *SS;
   Expr *CurExpr;
-  CppxCXXScopeSpecExpr(ASTContext &Ctx, SourceLocation Loc, Expr *E);
+  CppxCXXScopeSpecExpr(ASTContext &Ctx, SourceLocation Loc);
 public:
 
+  void deleteScopeSpec() { delete SS; SS = nullptr;}
   void setScopeSpec(CXXScopeSpec *S) {
     SS = S;
   }
   const CXXScopeSpec &getScopeSpec() const { return *SS; }
   CXXScopeSpec &getScopeSpec() { return *SS; }
 
-  void setLastExpr(Expr *E) { CurExpr = E; setType(E->getType()); }
+  void setLastExpr(Expr *E) {
+    CurExpr = E;
+    setType(E->getType());
+  }
   Expr *getLastExpr() const { return CurExpr; }
   Expr *getLastExpr() { return CurExpr; }
 
@@ -949,14 +953,14 @@ public:
   child_range children() {
     Stmt *S1 = cast<Stmt>(CurExpr);
     Stmt **S = &S1;
-    Stmt **E = S + 1;
+    Stmt **E = S;
     return child_range(child_iterator(S), child_iterator(E));
   }
 
   const_child_range children() const {
     Stmt *S1 = cast<Stmt>(CurExpr);
     Stmt **S = &S1;
-    Stmt **E = S + 1;
+    Stmt **E = S;
     return const_child_range(const_child_iterator(S), const_child_iterator(E));
   }
 
@@ -964,8 +968,7 @@ public:
     return T->getStmtClass() == CppxCXXScopeSpecExprClass;
   }
 
-  static CppxCXXScopeSpecExpr *Create(ASTContext &C, SourceLocation Loc,
-                                      Expr *Base);
+  static CppxCXXScopeSpecExpr *Create(ASTContext &C, SourceLocation Loc);
 };
 } // namespace clang
 

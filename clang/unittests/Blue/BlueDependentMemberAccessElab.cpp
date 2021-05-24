@@ -424,35 +424,35 @@ foo:()->void = {
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
-// TEST(BlueDependentMemberAccess, BaseClassThroughLocalAlias_InsideCurrentCall) {
-//   StringRef Code = R"BLUE(
-// B : [T:type] -> type = {
-//   i:int;
-// }
+TEST(BlueDependentMemberAccess, BaseClassThroughLocalAlias_InsideCurrentCall) {
+  StringRef Code = R"BLUE(
+B : [T:type] -> type = {
+  i:int;
+}
 
-// C : [T:type] -> type = {
-//   :B[T];
-//   i:int;
-//   foo:(inout this) -> void = {
-//     Base :[X:type] -> type = B[X];
-//     this.Base.i = 4;
-//   }
-// }
-// foo:()->void = {
-//   x:C[int];
-//   x.foo();
-// }
-// )BLUE";
-//   auto ToMatch = memberExpr(
-//     member(hasName("i")),
-//     has(implicitCastExpr(
-//       has(
-//         cxxThisExpr(hasType(asString("struct C *")))
-//       )
-//     ))
-//   );
-//   ASSERT_TRUE(matches(Code.str(), ToMatch));
-// }
+C : [T:type] -> type = {
+  :B[T];
+  i:int;
+  foo:(inout this) -> void = {
+    Base :[X:type] -> type = B[X];
+    this.Base.i = 4;
+  }
+}
+foo:()->void = {
+  x:C[int];
+  x.foo();
+}
+)BLUE";
+  auto ToMatch = memberExpr(
+    member(hasName("i")),
+    has(implicitCastExpr(
+      has(
+        cxxThisExpr(hasType(asString("struct C *")))
+      )
+    ))
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
 
 TEST(BlueDependentMemberAccess, BaseClassThroughLocalAlias_InsideUnrelatedNamespace) {
   StringRef Code = R"BLUE(
@@ -522,70 +522,70 @@ foo:()->void = {
 }
 
 
-// TEST(BlueDependentMemberAccess, BaseClassThroughLocalAlias_InsideCurrentFunction) {
-//   StringRef Code = R"BLUE(
+TEST(BlueDependentMemberAccess, BaseClassThroughLocalAlias_InsideCurrentFunction) {
+  StringRef Code = R"BLUE(
 
-// A : type = {
-//   Base : [T:type] -> type = B[T];
-// }
+A : type = {
+  Base : [T:type] -> type = B[T];
+}
 
-// B : [T:type] -> type = {
-//   i:int;
-// }
+B : [T:type] -> type = {
+  i:int;
+}
 
-// C : [T:type] -> type = {
-//   :B[T];
-//   i:int;
-//   foo:(inout this) -> void = {
-//     Ty:[U:type]->type = B[U];
-//     this.Ty[T].i = 4;
-//   }
-// }
-// foo:()->void = {
-//   x:C[int];
-//   x.foo();
-// }
-// )BLUE";
-//   auto ToMatch = memberExpr(
-//     member(hasName("i")),
-//     has(implicitCastExpr(
-//       has(
-//         cxxThisExpr(hasType(asString("struct C<int> *")))
-//       )
-//     ))
-//   );
-//   ASSERT_TRUE(matches(Code.str(), ToMatch));
-// }
+C : [T:type] -> type = {
+  :B[T];
+  i:int;
+  foo:(inout this) -> void = {
+    Ty:[U:type]->type = B[U];
+    this.Ty[T].i = 4;
+  }
+}
+foo:()->void = {
+  x:C[int];
+  x.foo();
+}
+)BLUE";
+  auto ToMatch = memberExpr(
+    member(hasName("i")),
+    has(implicitCastExpr(
+      has(
+        cxxThisExpr(hasType(asString("struct C<int> *")))
+      )
+    ))
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
 
-// TEST(BlueDependentMemberAccess, CallToOverload_InsideOfBaseClass) {
-//   StringRef Code = R"BLUE(
-// B: [T:type] -> type = {
-//   foo:(this, i:int)->int = {
-//     return 3;
-//   }
+TEST(BlueDependentMemberAccess, CallToOverload_InsideOfBaseClass) {
+  StringRef Code = R"BLUE(
+B: [T:type] -> type = {
+  foo:(this, i:int)->int = {
+    return 3;
+  }
 
-//   foo:(this, f:float32)->float32 = {
-//     return 3;
-//   }
-// }
+  foo:(this, f:float32)->float32 = {
+    return 3;
+  }
+}
 
-// C : [T:type] -> type = {
-//   : B[T];
-//   i:int;
-//   bar:(this) -> void = {
-//     this.B[T].foo(1);
-//   }
-// }
-// foo:()->void = {
-//   x:C[int];
-//   x.foo();
-// }
-// )BLUE";
-//   auto ToMatch = callExpr(
-//     callee(cxxMethodDecl(hasName("foo")))
-//   );
-//   ASSERT_TRUE(matches(Code.str(), ToMatch));
-// }
+C : [T:type] -> type = {
+  : B[T];
+  i:int;
+  bar:(this) -> void = {
+    this.B[T].foo(1);
+  }
+}
+foo:()->void = {
+  x:C[int];
+  x.foo();
+}
+)BLUE";
+  auto ToMatch = callExpr(
+    callee(cxxMethodDecl(hasName("foo")))
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
 
 TEST(BlueDependentMemberAccess, NestedNameSpecifier_Declaration) {
   StringRef Code = R"BLUE(
@@ -1117,21 +1117,21 @@ foo:()->void = {
   BlueFailureTest(Code);
 }
 
-// TEST(BlueDependentMemberAccess, BaseTypeErr_VariableFoundIsNotAMember_Parameter) {
-//   StringRef Code = R"BLUE(
-// C : [T:type] -> type = {
-//   i:int;
-//   foo: (inout this, x:int) -> void = {
-//     this.x = 5;
-//   }
-// }
-// foo:()->void = {
-//   x:C[int];
-//   x.foo();
-// }
-// )BLUE";
-//   BlueFailureTest(Code);
-// }
+TEST(BlueDependentMemberAccess, BaseTypeErr_VariableFoundIsNotAMember_Parameter) {
+  StringRef Code = R"BLUE(
+C : [T:type] -> type = {
+  i:int;
+  foo: (inout this, x:int) -> void = {
+    this.x = 5;
+  }
+}
+foo:()->void = {
+  x:C[int];
+  x.foo();
+}
+)BLUE";
+  BlueFailureTest(Code);
+}
 
 TEST(BlueDependentMemberAccess, BaseTypeErr_VariableFoundIsNotAMember_Global) {
   StringRef Code = R"BLUE(

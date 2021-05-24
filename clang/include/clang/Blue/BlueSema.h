@@ -195,6 +195,7 @@ private:
   clang::FunctionDecl *InplaceNewFnDcl = nullptr;
 public:
   ///}
+
   clang::CppxTypeLiteral *buildTypeExpr(clang::QualType Ty,
                                         clang::SourceLocation Loc);
   clang::CppxTypeLiteral *buildTypeExpr(clang::TypeSourceInfo *TInfo);
@@ -235,10 +236,6 @@ public:
   clang::TypeSourceInfo *getTypeSourceInfoFromExpr(clang::Expr *TyExpr,
                              clang::SourceLocation Loc=clang::SourceLocation());
 
-  /// This simply checks and extracts the QualType from a type expression.
-  /// This can return a QualType where .isNull() is true,
-  // clang::QualType getQualTypeFromTypeExpr(clang::Expr *TyExpr);
-
 
   clang::ParsedType getParsedTypeFromExpr(clang::Expr *TyExpr,
                              clang::SourceLocation Loc=clang::SourceLocation());
@@ -258,6 +255,32 @@ public:
   /// resulting namespace or nullptr if invalid
   clang::CppxNamespaceDecl *getNSDeclFromExpr(const clang::Expr *DeclExpr,
                                               clang::SourceLocation Loc);
+
+  /// Functions used to construct and update CXXScopeSpec base expressions.
+  ///{
+  clang::CppxCXXScopeSpecExpr *buildNNSScopeExpr(clang::Expr *BaseExpr);
+
+  clang::CppxCXXScopeSpecExpr *buildGlobalScopeExpr(clang::SourceLocation Loc);
+
+  /// Returns true in the event of failure.
+  bool extendScope(clang::Expr *ScopeExpr, clang::Expr *NextNameExpr);
+private:
+  bool extendScope(clang::CppxCXXScopeSpecExpr *ScopeExpr, clang::Expr *NextNameExpr);
+public:
+  // bool extendScope(clang::Expr *ScopeExpr, clang::IdentifierInfo *II,
+  //                  clang::SourceLocation Loc);
+
+  // clang::TypeSourceInfo *completeScopeAsType(clang::Expr *E);
+  // clang::TypeSourceInfo *completeScopeAsNamespace(clang::Expr *E);
+
+  clang::Expr *completeScopeAsType(clang::Expr *E);
+  clang::Expr *completeScopeAsNamespace(clang::Expr *E);
+
+  /// This can be a namespace alias, namespace, type, incomplete template,
+  /// or type alias. The result type depends on the current state of
+  /// the expression.
+  clang::Expr *completeScopeAsGiven(clang::Expr *E);
+  ///}
 
   /// This function dispatches to other functions to handle other declarations
   /// It is the job of this function to determine of the declaration should be
@@ -302,14 +325,14 @@ public:
 //===----------------------------------------------------------------------===//
 public:
 
-  clang::CppxPartialEvalExpr *createPartialExpr(clang::SourceLocation Loc,
-                                                bool IsWithinClass,
-                                                bool allowImplicitThis,
-                                                clang::Expr *BaseExpr,
-                                    bool IsPartOfTemplateInstantiation = false);
-  bool memberAccessNeedsPartialExpr(clang::Expr *LHS, clang::IdentifierInfo *Id,
-                                    clang::SourceLocation IdLoc);
-  bool isThisValidInCurrentScope();
+  // clang::CppxPartialEvalExpr *createPartialExpr(clang::SourceLocation Loc,
+  //                                               bool IsWithinClass,
+  //                                               bool allowImplicitThis,
+  //                                               clang::Expr *BaseExpr,
+  //                                   bool IsPartOfTemplateInstantiation = false);
+  // bool memberAccessNeedsPartialExpr(clang::Expr *LHS, clang::IdentifierInfo *Id,
+  //                                   clang::SourceLocation IdLoc);
+  // bool isThisValidInCurrentScope();
 //===----------------------------------------------------------------------===//
 //                               RAII Objects                                 //
 //===----------------------------------------------------------------------===//
