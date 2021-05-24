@@ -4421,20 +4421,14 @@ clang::Expr *Elaborator::elaborateLambdaExpression(const ControlSyntax *S) {
 
   CxxSema.PushLambdaScope();
   llvm::SmallVector<clang::ParmVarDecl *, 4> Params;
-  const EnclosureSyntax *Mapping =
-    dyn_cast_or_null<EnclosureSyntax>(LambdaHead->getOperand(1));
+  const ListSyntax *Mapping =
+    dyn_cast_or_null<ListSyntax>(LambdaHead->getOperand(1));
   const Syntax *MappingTerm = Mapping;
   if (!Mapping)
     MappingTerm = S;
   Sema::ScopeRAII ParamScope(SemaRef, Scope::Parameter, MappingTerm);
   if (Mapping) {
-    if (!Mapping->getTerm())
-      return nullptr;
-    const ListSyntax *ParamList = dyn_cast<ListSyntax>(Mapping->getTerm());
-    if (!ParamList)
-      return nullptr;
-
-    for (const Syntax *Arg : ParamList->children()) {
+    for (const Syntax *Arg : Mapping->children()) {
       clang::Decl *D = elaborateParameter(Arg);
       if (!D)
         continue;
