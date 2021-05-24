@@ -213,6 +213,21 @@ bool startsDefinition(Parser &P)
   return startsDefinition(P, 0);
 }
 
+static inline bool isRepetitionKeyword(tok::TokenKind K) {
+  switch (K) {
+  case tok::ForKeyword:
+  case tok::WhileKeyword:
+  case tok::DoKeyword:
+    return true;
+  default:
+    return false;
+  }
+}
+
+static inline bool isAnonymousLambda(tok::TokenKind L1, tok::TokenKind L2) {
+  return L1 == tok::Colon && L2 == tok::LeftParen;
+}
+
 namespace
 {
   struct DescriptorClause
@@ -249,6 +264,25 @@ namespace
     Syntax *Init = {};
   };
 
+  inline bool isComputationIntro(Parser &P) {
+    if (P.nextTokenIs(tok::LeftBrace))
+      return true;
+    if (P.nextTokenIs(tok::IfKeyword))
+      return true;
+    if (P.nextTokenIs(tok::SwitchKeyword))
+      return true;
+    if (isRepetitionKeyword(P.getLookahead()))
+      return true;
+    if (P.nextTokenIs(tok::LambdaKeyword))
+      return true;
+    if (isAnonymousLambda(P.getLookahead(), P.getLookahead(1)))
+      return true;
+    if (P.nextTokenIs(tok::LetKeyword))
+      return true;
+
+    return false;
+  }
+
   //   initializer-clause: 
   //     ; 
   //     = expression ; 
@@ -267,8 +301,10 @@ namespace
         Clause.Init = new LiteralSyntax(P.consumeToken());
         P.expectToken(tok::Semicolon);
       } else {
+        bool RequiresSemicolon = !isComputationIntro(P);
         Clause.Init = P.parseComputationExpression();
-        P.expectToken(tok::Semicolon);
+        if (RequiresSemicolon)
+          P.expectToken(tok::Semicolon);
       }
     } else {
       // FIXME: if the next token is `{`, consider hinting to include `=`
@@ -415,22 +451,19 @@ Syntax *Parser::parseExpression() {
 }
 
 Syntax *Parser::parseControlExpression() {
-  return parseComputationExpression();
-}
-
-static inline bool isRepetitionKeyword(tok::TokenKind K) {
-  switch (K) {
-  case tok::ForKeyword:
-  case tok::WhileKeyword:
-  case tok::DoKeyword:
-    return true;
-  default:
-    return false;
+  switch (getLookahead()) {
+  case tok::ReturnKeyword:
+  case tok::ThrowKeyword: {
+    Token KW = consumeToken();
+    Syntax *S = parseComputationExpression();
+    expectToken(tok::Semicolon);
+    return new PrefixSyntax(KW, S);
   }
-}
+  default:
+    break;
+  }
 
-static inline bool isAnonymousLambda(tok::TokenKind L1, tok::TokenKind L2) {
-  return L1 == tok::Colon && L2 == tok::LeftParen;
+  return parseComputationExpression();
 }
 
 /// computation-expression:
@@ -550,6 +583,7 @@ static bool isCapture(Parser &P)
 Syntax *Parser::parseLambdaExpression()
 {
   Token Ctrl = requireToken(tok::LambdaKeyword);
+  expectToken(tok::Colon);
 
   Syntax *Cap = nullptr;
   if (nextTokenIs(tok::LeftBrace))
@@ -563,13 +597,17 @@ Syntax *Parser::parseLambdaExpression()
   }
 
   Syntax *Desc = nullptr;
-  if (nextTokenIs(tok::LeftParen) || nextTokenIs(tok::LeftBracket))
-    Desc = parseMappingDescriptor();
+  if (nextTokenIs(tok::LeftParen)) {
+    consumeToken();
+    Desc = parseParameterList();
+    expectToken(tok::RightParen);
+  }
+    // Desc = parseMappingDescriptor();
 
   Syntax *TrailingReturn = nullptr;
   if (nextTokenIs(tok::MinusGreater)) {
     consumeToken();
-    TrailingReturn = parseDescriptor();
+    TrailingReturn = parsePrefixExpression();
   }
 
   Syntax *Cons = nullptr;
@@ -1268,16 +1306,15 @@ Syntax *Parser::parseParameter()
   Syntax *Id = parseIdExpression();
 
   // ... And optional declarative information
-  Syntax *Type = nullptr;
-  Syntax *Init = nullptr;
-  if (matchToken(tok::Colon)) {
-    if (nextTokenIsNot(tok::Equal))
-      Type = parseDescriptor();
+  DescriptorClause DC;
+  InitializerClause IC;
+  if (nextTokenIs(tok::Colon)) {
+    DC = parseDescriptorClause(*this);
     if (matchToken(tok::Equal))
-      Init = parseExpression();
+      IC = parseInitializerClause(*this);
   }
 
-  DeclarationSyntax *Ret = new DeclarationSyntax(Id, Type, nullptr, Init);
+  DeclarationSyntax *Ret = new DeclarationSyntax(Id, DC.Type, DC.Cons, IC.Init);
   copyParamSpecs(Ret, ParamSpecs);
   return Ret;
 }

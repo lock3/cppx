@@ -316,7 +316,10 @@ struct MultiarySyntax : Syntax
     if (NumTerms == 0)
       return clang::SourceLocation();
 
-    return Terms[0]->getLocation();
+    for (unsigned I = 0; I < NumTerms; ++I)
+      if (Terms[I])
+        return Terms[I]->getLocation();
+    return clang::SourceLocation();
   }
 
   /// The location of the end of the term.

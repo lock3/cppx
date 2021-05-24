@@ -22,7 +22,7 @@ using namespace blue;
 TEST(BlueLambda, TrailingReturn) {
   StringRef Code = R"BLUE(
 main : () -> int = {
-  fn := lambda(x : int) -> int => {
+  fn := lambda:(x : int) -> int => {
      return x;
   };
 
@@ -39,7 +39,7 @@ main : () -> int = {
 TEST(BlueLambda, ImplicitReturn) {
   StringRef Code = R"BLUE(
 main : () -> int = {
-  fn := lambda(x : int) => {
+  fn := lambda:(x : int) => {
      return x;
   };
 
