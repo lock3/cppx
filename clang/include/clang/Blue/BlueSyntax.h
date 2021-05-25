@@ -158,7 +158,7 @@ struct KarySyntax : Syntax
 
   /// The location of the beginning of the term.
   clang::SourceLocation getBeginLocation() const {
-    return getBeginLocation();
+    return getLocation();
   }
 
   /// The location of the end of the term.

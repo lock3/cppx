@@ -301,7 +301,7 @@ namespace
   //     ; 
   //     = expression ; 
   //     = block-statement
-  InitializerClause parseInitializerClause(Parser &P)
+  InitializerClause parseInitializerClause(Parser &P, bool Parameter = false)
   {
     InitializerClause Clause;
     if (P.nextTokenIs(tok::Equal)) {
@@ -315,7 +315,7 @@ namespace
         Clause.Init = new LiteralSyntax(P.consumeToken());
         P.expectToken(tok::Semicolon);
       } else {
-        bool RequiresSemicolon = !isComputationIntro(P);
+        bool RequiresSemicolon = !isComputationIntro(P) && !Parameter;
         Clause.Init = P.parseComputationExpression();
         if (RequiresSemicolon)
           P.expectToken(tok::Semicolon);
@@ -455,7 +455,8 @@ Syntax *Parser::parseDefinition() {
     return new DeclarationSyntax(Bindings, nullptr, nullptr, Init, AccessSpecifier);
   }
 
-  Syntax *Decl = parseIdExpression();
+  // Syntax *Decl = parseIdExpression();
+  Syntax *Decl = parseDeclarator();
   DescriptorClause DC = parseDescriptorClause(*this);
   InitializerClause IC;
   if (nextTokenIsNot(tok::Semicolon))
@@ -548,7 +549,115 @@ Syntax *Parser::parseComputationExpression() {
 }
 
 Syntax *Parser::parseRepetitionExpression() {
-  return nullptr;
+  switch (getLookahead()) {
+  case tok::ForKeyword:
+    return parseForExpression();
+  case tok::WhileKeyword:
+    return parseWhileExpression();
+  case tok::DoKeyword:
+    return parseDoExpression();
+  default:
+    llvm_unreachable("invalid repetition expression");
+  }
+}
+
+/// Parse a for loop.
+///
+///   loop-expression:
+///     for ( declarator descriptor-clause in expression ) block-expression
+///
+/// The declaration in the parameter list is similar to normal parameters
+/// except that the `=` is replaced by `in`.
+///
+/// TODO: Can we generalize the syntax for multiple parameters? What would
+/// it mean? There are a few options (zip vs. cross). Note that these
+/// don't group like other parameters.
+Syntax *Parser::parseForExpression()
+{
+  // FIXME: differentiate two types of for expressions.
+  return parseTraditionalForExpression();
+}
+
+Syntax *Parser::parseRangeForExpression() {
+  Token Ctrl = requireToken(tok::ForKeyword);
+  expectToken(tok::LeftParen);
+  Syntax *Id = parseIdExpression();
+  DescriptorClause DC = parseDescriptorClause(*this);
+  expectToken(tok::InKeyword);
+  Syntax *Init = parseExpression();
+  Syntax *Decl = new DeclarationSyntax(Id, DC.Type, DC.Cons, Init);
+  expectToken(tok::RightParen);
+  Syntax *Body = parseBlockExpression();
+  return new ControlSyntax(Ctrl, Decl, Body);
+}
+
+Syntax *Parser::parseTraditionalForExpression() {
+  Token Keyword = requireToken(tok::ForKeyword);
+  expectToken(tok::LeftParen);
+
+  Syntax *Decl = nullptr;
+  if (!nextTokenIs(tok::Semicolon))
+    Decl = parseDeclaration();
+  if (nextTokenIs(tok::Semicolon))
+    consumeToken();
+
+  Syntax *Condition = nullptr;
+  if (!nextTokenIs(tok::Semicolon))
+    Condition = parseEqualityExpression();
+
+  expectToken(tok::Semicolon);
+
+  Syntax *Increment = nullptr;
+  if (!nextTokenIs(tok::RightParen))
+    Increment = parseAssignmentExpression();
+  expectToken(tok::RightParen);
+
+  Syntax *Head = new TripleSyntax(Decl, Condition, Increment);
+  Syntax *Body = parseBlockExpression();
+  return new ControlSyntax(Keyword, Head, Body);
+}
+
+///   loop-expression:
+///     while ( expression ) block-expression
+Syntax *Parser::parseWhileExpression()
+{
+  Token ctrl = requireToken(tok::WhileKeyword);
+  expectToken(tok::LeftParen);
+  Syntax* s0 = parseExpression();
+  expectToken(tok::RightParen);
+  Syntax* s1 = parseBlockExpression();
+  return new ControlSyntax(ctrl, s0, s1);
+}
+
+/// Parse a do/do-while expression.
+///
+///   loop-expression:
+///     do block-expression while ( condition )
+///     do block-expression
+///
+/// Note that the "head" of the do expression appears after the body
+/// of the loop (if it appears at all).
+Syntax *Parser::parseDoExpression()
+{
+  Token Ctrl = requireToken(tok::DoKeyword);
+  Syntax *S1 = parseBlockExpression();
+  Syntax *S0 = nullptr;
+
+  if (matchToken(tok::WhileKeyword)) {
+    expectToken(tok::LeftParen);
+    S0 = parseComputationExpression();
+    expectToken(tok::RightParen);
+  } else {
+    Diags.Report(getInputLocation(), clang::diag::err_expected) <<
+      getSpelling(tok::WhileKeyword);
+    // a do-while in our do-while parsing algorithm !
+    do
+      consumeToken();
+    while (nextTokenIsNot(tok::Semicolon));
+    expectToken(tok::Semicolon);
+  }
+
+  return new ControlSyntax(Ctrl, S0, S1);
 }
 
 /// Parse a let expression.
@@ -1120,13 +1229,11 @@ Syntax *Parser::parsePostfixExpression() {
           Syntax *Member = parseIdExpression();
           E0 = new QualifiedMemberAccessSyntax(Dot, LParen, RParen, E0, QualIdE, Member);
         } else {
-          // we are missing the ending R Paren
           Diags.Report(getInputLocation(), clang::diag::err_expected) <<
                        getSpelling(tok::RightParen);
-          // Don't change the current expression
+          // Continue parsing the expression.
         }
       } else {
-
         Syntax *Member = parseIdExpression();
         E0 = new InfixSyntax(Dot, E0, Member);
       }
@@ -1140,9 +1247,9 @@ Syntax *Parser::parsePostfixExpression() {
       E0 = new PostfixSyntax(Is, E0);
     } else if (Token As = matchToken(tok::AsKeyword)) {
       E0 = new PostfixSyntax(As, E0);
+    } else {
+      break;
     }
-
-    break;
   }
 
   return E0;
@@ -1338,12 +1445,14 @@ Syntax *Parser::parseParameter()
     ParamSpecs.push_back(ParamSpec);
 
   // Match unnamed variants.
-  if (matchToken(tok::Colon)) {
-    Syntax *Type = parseDescriptor();
-    Syntax *Init = nullptr;
-    if (matchToken(tok::Equal))
-      Init = parseExpression();
-    return new DeclarationSyntax(nullptr, Type, nullptr, Init);
+  if (nextTokenIs(tok::Colon)) {
+    DescriptorClause DC;
+    InitializerClause IC;
+
+    DC = parseDescriptorClause(*this);
+    if (nextTokenIs(tok::Equal))
+      IC = parseInitializerClause(*this, /*Parameter=*/true);
+    return new DeclarationSyntax(nullptr, DC.Type, nullptr, IC.Init);
   }
 
   // Match the identifier...
@@ -1354,8 +1463,8 @@ Syntax *Parser::parseParameter()
   InitializerClause IC;
   if (nextTokenIs(tok::Colon)) {
     DC = parseDescriptorClause(*this);
-    if (matchToken(tok::Equal))
-      IC = parseInitializerClause(*this);
+    if (nextTokenIs(tok::Equal))
+      IC = parseInitializerClause(*this, /*Parameter=*/true);
   }
 
   DeclarationSyntax *Ret = new DeclarationSyntax(Id, DC.Type, DC.Cons, IC.Init);
@@ -1500,9 +1609,6 @@ Syntax *Parser::parseBraceInitializer() {
   return parseBlockExpression();
 }
 
-#if 0
-
-
 /// Parse a declarator.
 ///
 ///   declarator:
@@ -1526,7 +1632,7 @@ Syntax *Parser::parseDeclarator() {
   return Ret;
 }
 
-
+#if 0
 
 /// Parse an expression.
 ///
@@ -1636,104 +1742,6 @@ Syntax *Parser::parseLoopExpression()
   assert(false);
 }
 
-/// Parse a for loop.
-///
-///   loop-expression:
-///     for ( declarator descriptor-clause in expression ) block-expression
-///
-/// The declaration in the parameter list is similar to normal parameters
-/// except that the `=` is replaced by `in`.
-///
-/// TODO: Can we generalize the syntax for multiple parameters? What would
-/// it mean? There are a few options (zip vs. cross). Note that these
-/// don't group like other parameters.
-Syntax *Parser::parseForExpression()
-{
-  // FIXME: differentiate two types of for expressions.
-  return parseTraditionalForExpression();
-}
-
-Syntax *Parser::parseRangeForExpression() {
-  Token ctrl = requireToken(tok::ForKeyword);
-  expectToken(tok::LeftParen);
-  Syntax* id = parseDeclarator();
-  DescriptorClause dc = parseDescriptorClause(*this);
-  expectToken(tok::InKeyword);
-  Syntax* init = parseExpression();
-  Syntax* decl = new DeclarationSyntax(id, dc.Type, dc.Cons, init);
-  expectToken(tok::RightParen);
-  Syntax* body = parseBlockExpression();
-  return new ControlSyntax(ctrl, decl, body);
-}
-
-Syntax *Parser::parseTraditionalForExpression() {
-  Token Keyword = requireToken(tok::ForKeyword);
-  expectToken(tok::LeftParen);
-
-  Syntax *Decl = nullptr;
-  if (!nextTokenIs(tok::Semicolon))
-    Decl = parseDeclaration();
-  if (nextTokenIs(tok::Semicolon))
-    consumeToken();
-
-  Syntax *Condition = nullptr;
-  if (!nextTokenIs(tok::Semicolon))
-    Condition = parseEqualityExpression();
-
-  expectToken(tok::Semicolon);
-
-  Syntax *Increment = nullptr;
-  if (!nextTokenIs(tok::RightParen))
-    Increment = parseAssignmentExpression();
-  expectToken(tok::RightParen);
-
-  Syntax *Head = new TripleSyntax(Decl, Condition, Increment);
-  Syntax *Body = parseBlockExpression();
-  return new ControlSyntax(Keyword, Head, Body);
-}
-
-///   loop-expression:
-///     while ( expression ) block-expression
-Syntax *Parser::parseWhileExpression()
-{
-  Token ctrl = requireToken(tok::WhileKeyword);
-  expectToken(tok::LeftParen);
-  Syntax* s0 = parseExpression();
-  expectToken(tok::RightParen);
-  Syntax* s1 = parseBlockExpression();
-  return new ControlSyntax(ctrl, s0, s1);
-}
-
-/// Parse a do/do-while expression.
-///
-///   loop-expression:
-///     do block-expression while ( condition )
-///     do block-expression
-///
-/// Note that the "head" of the do expression appears after the body
-/// of the loop (if it appears at all).
-Syntax *Parser::parseDoExpression()
-{
-  Token Ctrl = requireToken(tok::DoKeyword);
-  Syntax *S1 = parseBlockExpression();
-  Syntax *S0 = nullptr;
-
-  if (matchToken(tok::WhileKeyword)) {
-    expectToken(tok::LeftParen);
-    S0 = parseComputationExpression();
-    expectToken(tok::RightParen);
-  } else {
-    Diags.Report(getInputLocation(), clang::diag::err_expected) <<
-      getSpelling(tok::WhileKeyword);
-    // a do-while in our do-while parsing algorithm !
-    do
-      consumeToken();
-    while (nextTokenIsNot(tok::Semicolon));
-    expectToken(tok::Semicolon);
-  }
-
-  return new ControlSyntax(Ctrl, S0, S1);
-}
 
 
 
