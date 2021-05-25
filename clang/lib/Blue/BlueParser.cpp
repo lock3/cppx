@@ -582,8 +582,9 @@ static bool isCapture(Parser &P)
 /// stored in a triple.
 Syntax *Parser::parseLambdaExpression()
 {
-  Token Ctrl = requireToken(tok::LambdaKeyword);
-  expectToken(tok::Colon);
+  if (nextTokenIs(tok::LambdaKeyword))
+    consumeToken();
+  Token Ctrl = expectToken(tok::Colon);
 
   Syntax *Cap = nullptr;
   if (nextTokenIs(tok::LeftBrace))

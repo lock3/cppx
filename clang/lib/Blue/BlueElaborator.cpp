@@ -3826,7 +3826,7 @@ clang::Expr *Elaborator::elaborateInfixExpression(const InfixSyntax *S) {
 
 clang::Expr *Elaborator::elaborateControlExpression(const ControlSyntax *S) {
   switch (S->getControl().getKind()) {
-  case tok::LambdaKeyword:
+  case tok::Colon:
     return elaborateLambdaExpression(S);
   default:
     break;
@@ -4413,7 +4413,7 @@ clang::Expr *BuildReferenceToDecl(Sema &SemaRef,
 }
 
 clang::Expr *Elaborator::elaborateLambdaExpression(const ControlSyntax *S) {
-  assert(S->getControl().hasKind(tok::LambdaKeyword) && "non-lambda");
+  assert(S->getControl().hasKind(tok::Colon) && "non-lambda");
   assert(isa<QuadrupleSyntax>(S->getHead()) && "invalid lambda control");
   const QuadrupleSyntax *LambdaHead = cast<QuadrupleSyntax>(S->getHead());
 
