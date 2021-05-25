@@ -24,7 +24,7 @@ TEST(BlueLambda, TrailingReturn) {
 main : () -> int = {
   fn := lambda:(x : int) -> int => {
      return x;
-  };
+  }
 
   test := fn(42);
 }
@@ -41,7 +41,7 @@ TEST(BlueLambda, TrailingReturnNoKW) {
 main : () -> int = {
   fn := :(x : int) -> int => {
      return x;
-  };
+  }
 
   test := fn(42);
 }
@@ -58,7 +58,7 @@ TEST(BlueLambda, ImplicitReturn) {
 main : () -> int = {
   fn := lambda:(x : int) => {
      return x;
-  };
+  }
 
   test := fn(42);
 }
@@ -75,7 +75,7 @@ TEST(BlueLambda, ImplicitReturnNoKW) {
 main : () -> int = {
   fn := :(x : int) => {
      return x;
-  };
+  }
 
   test := fn(42);
 }

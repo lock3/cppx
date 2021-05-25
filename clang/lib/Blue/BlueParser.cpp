@@ -161,19 +161,22 @@ static bool startsDefinition(Parser &P, std::size_t La)
         || P.nthTokenIs(La, tok::ProtectedKeyword)) {
       return true;
     }
-  }
 
-  // Check for bindings.
-  if (P.nthTokenIs(La, tok::LeftParen)) {
-    ++La;
-    while (P.nthTokenIsNot(La, tok::RightParen)) {
-      if (P.nthTokenIs(La, tok::EndOfFile))
-        return false;
+    if (P.nthTokenIs(La, tok::UsingKeyword))
+      return true;
+
+    // Check for bindings.
+    if (P.nthTokenIs(La, tok::LeftParen)) {
+      ++La;
+      while (P.nthTokenIsNot(La, tok::RightParen)) {
+        if (P.nthTokenIs(La, tok::EndOfFile))
+          return false;
+
+        ++La;
+      }
 
       ++La;
     }
-
-    ++La;
   }
 
   // Check for unnamed definitions.
@@ -414,9 +417,9 @@ Syntax *Parser::parseDeclaration() {
   Token Intro;
   Syntax *Pars = nullptr;
   if (nextTokenIs(tok::UsingKeyword)) {
-    // Pars = parsePrefixExpression();
-    // expectToken(tok::Semicolon);
-    // return Pars;
+    Pars = parsePrefixExpression();
+    expectToken(tok::Semicolon);
+    return Pars;
   }
 
   Pars = parseDefinition();
@@ -456,7 +459,9 @@ Syntax *Parser::parseDefinition() {
   }
 
   // Syntax *Decl = parseIdExpression();
-  Syntax *Decl = parseDeclarator();
+  Syntax *Decl = nullptr;
+  if (nextTokenIsNot(tok::Colon))
+    Decl = parseDeclarator();
   DescriptorClause DC = parseDescriptorClause(*this);
   InitializerClause IC;
   if (nextTokenIsNot(tok::Semicolon))
@@ -642,6 +647,9 @@ Syntax *Parser::parseDoExpression()
   Token Ctrl = requireToken(tok::DoKeyword);
   Syntax *S1 = parseBlockExpression();
   Syntax *S0 = nullptr;
+
+  if (nextTokenIs(tok::Semicolon))
+    consumeToken();
 
   if (matchToken(tok::WhileKeyword)) {
     expectToken(tok::LeftParen);
@@ -893,9 +901,12 @@ Syntax *Parser::parseConditionalExpression()
 
 Syntax *Parser::parseExpressionSeq() {
   llvm::SmallVector<Syntax *, 4> SS;
-  do
+  do {
     parseItem(*this, &Parser::parseExpression, SS);
-  while (nextTokenIsNot(tok::RightBrace));
+    // Non-declaration expressions will still have their semicolon unconsumed.
+    if (nextTokenIs(tok::Semicolon))
+      consumeToken();
+  } while (nextTokenIsNot(tok::RightBrace));
 
   if (SS.size() == 1 && isa<ListSyntax>(SS.front()))
     return SS.front();
