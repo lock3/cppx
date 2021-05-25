@@ -238,6 +238,8 @@ namespace blue
     // BLUEL3 PARSING
     Syntax *parseDeclSequence(SyntaxSeq &SS);
     Syntax *parseDefinition();
+    Syntax *parseBinding();
+    Syntax *parseBindingList();
     Syntax *parseConstraint();
     Syntax *parsePattern();
     Syntax *parsePatternList();

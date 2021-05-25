@@ -162,6 +162,20 @@ static bool startsDefinition(Parser &P, std::size_t La)
       return true;
     }
   }
+
+  // Check for bindings.
+  if (P.nthTokenIs(La, tok::LeftParen)) {
+    ++La;
+    while (P.nthTokenIsNot(La, tok::RightParen)) {
+      if (P.nthTokenIs(La, tok::EndOfFile))
+        return false;
+
+      ++La;
+    }
+
+    ++La;
+  }
+
   // Check for unnamed definitions.
   if (P.nthTokenIs(La, tok::Colon))
     return true;
@@ -315,6 +329,37 @@ namespace
   }
 } // namespace
 
+// Returns a list for `SS`.
+static Syntax *makeParameterList(Parser &P, SyntaxSeq &SS)
+{
+  // This only happens when an error occurred.
+  if (SS.empty())
+    return nullptr;
+
+  return new ListSyntax(AllocateSeq(SS), SS.size());
+}
+
+
+Syntax *Parser::parseBinding() {
+  Token Id = expectToken(tok::Identifier);
+  Syntax *Decl = new IdentifierSyntax(Id);
+
+  if (Token Op = matchToken(tok::IsKeyword)) {
+    Syntax *Cons = parsePrefixExpression();
+    return new InfixSyntax(Op, Decl, Cons);
+  }
+
+  return Decl;
+}
+
+Syntax *Parser::parseBindingList() {
+  llvm::SmallVector<Syntax *, 4> SS;
+  parseItem(*this, &Parser::parseBinding, SS);
+  while (matchToken(tok::Comma))
+    parseItem(*this, &Parser::parseBinding, SS);
+  return makeParameterList(*this, SS);
+}
+
 /// Parse a constraint.
 ///
 ///   constraint-clause:
@@ -399,8 +444,16 @@ Syntax *Parser::parseDefinition() {
     AccessSpecifier = consumeToken();
   }
 
-  if (nextTokenIs(tok::LeftParen))
-    llvm_unreachable("unimplemented");
+  if (nextTokenIs(tok::LeftParen)) {
+    consumeToken();
+    Syntax *Bindings = parseBindingList();
+    expectToken(tok::RightParen);
+    expectToken(tok::Colon);
+    expectToken(tok::Equal);
+    Syntax *Init = parseExpression();
+    expectToken(tok::Semicolon);
+    return new DeclarationSyntax(Bindings, nullptr, nullptr, Init, AccessSpecifier);
+  }
 
   Syntax *Decl = parseIdExpression();
   DescriptorClause DC = parseDescriptorClause(*this);
@@ -1232,16 +1285,6 @@ Syntax *Parser::parseParameterGroup()
   while (matchToken(tok::Semicolon));
 
   return makeParameterGroup(*this, SS);
-}
-
-// Returns a list for `SS`.
-static Syntax *makeParameterList(Parser &P, SyntaxSeq &SS)
-{
-  // This only happens when an error occurred.
-  if (SS.empty())
-    return nullptr;
-
-  return new ListSyntax(AllocateSeq(SS), SS.size());
 }
 
 /// Parse an parameter-list.
