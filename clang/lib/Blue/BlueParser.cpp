@@ -377,21 +377,6 @@ Syntax *Parser::parseConstraint()
   return parsePattern();
 }
 
-/// Parse a type expression.
-///
-///   descriptor:
-///     :
-///     : prefix-expression? is prefix-expression
-///
-/// A descriptor specifies part of the signature of a declaration, including
-/// its template parameters, function parameters, array bounds, and type.
-Syntax *Parser::parseDescriptor()
-{
-  expectToken(tok::Colon);
-  // TODO: parse 'is' pattern
-  return nullptr;
-}
-
 Syntax *Parser::parseFile() {
   Syntax *Decls = nullptr;
 
@@ -458,7 +443,6 @@ Syntax *Parser::parseDefinition() {
     return new DeclarationSyntax(Bindings, nullptr, nullptr, Init, AccessSpecifier);
   }
 
-  // Syntax *Decl = parseIdExpression();
   Syntax *Decl = nullptr;
   if (nextTokenIsNot(tok::Colon))
     Decl = parseDeclarator();
@@ -773,7 +757,6 @@ Syntax *Parser::parseLambdaExpression()
     Desc = parseParameterList();
     expectToken(tok::RightParen);
   }
-    // Desc = parseMappingDescriptor();
 
   Syntax *TrailingReturn = nullptr;
   if (nextTokenIs(tok::MinusGreater)) {
@@ -790,17 +773,6 @@ Syntax *Parser::parseLambdaExpression()
 
   Syntax *Head = new QuadrupleSyntax(Cap, Desc, Cons, TrailingReturn);
   return new ControlSyntax(Ctrl, Head, Body);
-}
-
-/// Parse a mapping descriptor.
-///
-///   mapping-descriptor:
-///     [ parameter-group ] prefix-expression
-///     ( parameter-group ) prefix-expression
-Syntax* Parser::parseMappingDescriptor()
-{
-  assert(nextTokenIs(tok::LeftParen) || nextTokenIs(tok::LeftBracket));
-  return parsePrefixExpression();
 }
 
 /// Parse a lambda capture.
@@ -1642,138 +1614,5 @@ Syntax *Parser::parseDeclarator() {
 
   return Ret;
 }
-
-#if 0
-
-/// Parse an expression.
-///
-///   expression:
-///     leave-expression 
-///     expression where ( parameter-group )
-Syntax *Parser::parseExpression() {
-  Syntax *E0 = parseLeaveExpression();
-  while (Token Op = matchToken(tok::WhereKeyword)) {
-    // Syntax* E1 = parseParenEnclosed(&Parser::parse_parameter_group);
-    Syntax *E1 = nullptr;
-    E0 = new InfixSyntax(Op, E0, E1);
-  }
-
-  return E0;
-}
-
-/// Parse a leave-expression.
-///
-///   leave-expression:
-///     control-expression
-///     return control-expression
-///     throw control-expression
-Syntax *Parser::parseLeaveExpression()
-{
-  switch (getLookahead()) {
-  case tok::ReturnKeyword:
-  case tok::ThrowKeyword: {
-    Token KW = consumeToken();
-    Syntax *S = parseControlExpression();
-    return new PrefixSyntax(KW, S);
-  }
-  default:
-    break;
-  }
-
-  return parseControlExpression();
-}
-
-/// Parse a control-expression.
-///
-///   control-expression:
-///     assignment-expression
-///     conditional-expression
-///     case-expression
-///     loop-expression
-///     lambda-expression
-///     let-expression
-Syntax *Parser::parseControlExpression()
-{
-  switch (getLookahead()) {
-  case tok::IfKeyword:
-    return parseConditionalExpression();
-  case tok::CaseKeyword:
-  case tok::SwitchKeyword:
-    return parseMatchExpression();
-  case tok::ForKeyword:
-  case tok::WhileKeyword:
-  case tok::DoKeyword:
-    return parseLoopExpression();
-  case tok::LambdaKeyword:
-    return parseLambdaExpression();
-  case tok::LetKeyword:
-    return parseLetExpression();
-  default:
-    break;
-  }
-
-  return parseAssignmentExpression();
-}
-
-/// Parse a match-expression.
-///
-///   match-expression:
-///     case ( expression ) case-list
-///     switch ( expression ) case-list
-Syntax *Parser::parseMatchExpression()
-{
-  assert(nextTokenIs(tok::CaseKeyword) || nextTokenIs(tok::SwitchKeyword));
-  Token Ctrl = consumeToken();
-  expectToken(tok::LeftParen);
-  Syntax *S0 = parseExpression();
-  expectToken(tok::RightParen);
-  Syntax *S1 = parseCaseList();
-  return new ControlSyntax(Ctrl, S0, S1);
-}
-
-/// Parse a loop expression.
-///
-///   loop-expression:
-///     for ( declarator type-clause in expression ) block-expression
-///     while ( expression ) block-expression
-///     do block-expression while ( condition )
-///     do block-expression
-Syntax *Parser::parseLoopExpression()
-{
-  switch (getLookahead()) {
-  case tok::ForKeyword:
-    return parseForExpression();
-  case tok::WhileKeyword:
-    return parseWhileExpression();
-  case tok::DoKeyword:
-    return parseDoExpression();
-  default:
-    break;
-  }
-  assert(false);
-}
-
-
-
-
-
-
-/// Parse an implication.
-///
-///   implication-expression:
-///     logical-or-expression
-///     logical-or-expression -> implication-expression
-Syntax *Parser::parseImplicationExpression()
-{
-  Syntax *E0 = parseLogicalOrExpression();
-  if (Token Op = matchToken(tok::MinusGreater)) {
-    Syntax *E1 = parseImplicationExpression();
-    return new InfixSyntax(Op, E0, E1);
-  }
-
-  return E0;
-}
-
-#endif
 
 } // namespace blue
