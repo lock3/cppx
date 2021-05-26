@@ -964,6 +964,9 @@ clang::CppxNamespaceDecl *Sema::getNSDeclFromExpr(const clang::Expr *DeclExpr,
 }
 
 static bool checkSimplNameMatchRedecl(Sema &SemaRef, Declaration *D) {
+  if (!D->Id)
+    return false;
+
   auto otherPossibleDecls = SemaRef.getCurrentScope()->findDecl(D->Id);
   otherPossibleDecls.erase(D);
   if (!otherPossibleDecls.empty()) {

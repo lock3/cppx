@@ -118,6 +118,7 @@ bool decomposeNNS(Sema &SemaRef, llvm::SmallVectorImpl<const Syntax *> &NNSChain
 Declaration *Elaborator::createDeclaration(const Syntax *Def,
                                            Declarator *Dcl,
                                            const Syntax *Init) {
+  clang::DiagnosticsEngine &Diags = SemaRef.getCxxSema().Diags;
   if (const DeclarationSyntax *DS = dyn_cast<DeclarationSyntax>(Def)) {
     if (declaratorChainIsForNamespace(Dcl))
       return createNamespaceDecl(DS, Dcl, Init);
@@ -129,6 +130,19 @@ Declaration *Elaborator::createDeclaration(const Syntax *Def,
     }
   }
 
+  // For bindings, we need to determine any explicit types before
+  // we create our declaration.
+  if (const InfixSyntax *IS = dyn_cast<InfixSyntax>(Def)) {
+    if (!IS->getOperation().hasKind(tok::IsKeyword)) {
+      unsigned DiagID =
+        Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                              "expected 'is'");
+      Diags.Report(IS->getOperation().getLocation(), DiagID);
+    }
+
+    Dcl = getDeclarator(IS->getRhs());
+  }
+
   Declaration *TheDecl =
     new Declaration(SemaRef.getCurrentDecl(), Def, Dcl, Init);
 
@@ -138,6 +152,17 @@ Declaration *Elaborator::createDeclaration(const Syntax *Def,
         TheDecl->Id = &SemaRef.getCxxAST().Idents.get({Id->getSpelling()});
     }
   } else if (const IdentifierSyntax *Id = dyn_cast<IdentifierSyntax>(Def)) {
+    TheDecl->Id = &SemaRef.getCxxAST().Idents.get({Id->getSpelling()});
+  } else if (const InfixSyntax *IS = dyn_cast<InfixSyntax>(Def)) {
+    const IdentifierSyntax *Id = dyn_cast<IdentifierSyntax>(IS->getLhs());
+    if (!Id) {
+      unsigned DiagID =
+        Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                              "expected name");
+      Diags.Report(IS->getLhs()->getLocation(), DiagID);
+      return nullptr;
+    }
+
     TheDecl->Id = &SemaRef.getCxxAST().Idents.get({Id->getSpelling()});
   }
 
@@ -271,12 +296,11 @@ clang::Decl *Elaborator::elaborateFile(const Syntax *S) {
   const SequenceSyntax *Declarations =
     cast<SequenceSyntax>(Top->getDeclarations());
 
-  for (const Syntax *SS : Declarations->children()) {
-      identifyDeclaration(SS);
-  }
+  for (const Syntax *SS : Declarations->children())
+    identifyDeclaration(SS);
 
   for (const Syntax *SS : Declarations->children())
-      elaborateDecl(SS);
+    elaborateDecl(SS);
 
   for (const Syntax *SS : Declarations->children())
     elaborateDefinition(SS);
@@ -289,6 +313,13 @@ clang::Decl *Elaborator::elaborateFile(const Syntax *S) {
 
 Declaration *Elaborator::buildDeclaration(const DeclarationSyntax *S) {
   Declarator *Dcl = getDeclarator(S->getType());
+
+  if (const ListSyntax *L = dyn_cast_or_null<ListSyntax>(S->getDeclarator())) {
+    for (const Syntax *SS : L->children())
+      createDeclaration(SS, Dcl, S->getInitializer());
+    return nullptr;
+  }
+
   return createDeclaration(S, Dcl, S->getInitializer());
 }
 
@@ -319,19 +350,24 @@ clang::Decl *Elaborator::elaborateDecl(const Syntax *S) {
     return elaborateDefDecl(cast<DeclarationSyntax>(S));
   case Syntax::Prefix:
     return elaboratePrefixDecl(cast<PrefixSyntax>(S));
+  case Syntax::Infix:
+  case Syntax::Identifier:
+    return elaborateBindingDecl(S);
   default:
     break;
   }
-  llvm_unreachable("Invalid declaration?\n");
-  // TODO: Remove this eventaully, when we are not doing elaboration.
-  // This will allow us to pretend to evaluate expressions inside the global
-  // scope of a probram.
+
   return nullptr;
-  // llvm_unreachable("invalid declaration");
 }
 
 
 clang::Decl *Elaborator::elaborateDefDecl(const DeclarationSyntax *S) {
+  if (const ListSyntax *L = dyn_cast_or_null<ListSyntax>(S->getDeclarator())) {
+    for (const Syntax *SS : L->children())
+      elaborateDecl(SS);
+    return nullptr;
+  }
+
   Declaration *D = SemaRef.getCurrentScope()->findDecl(S);
   if (!D)
     return nullptr;
@@ -343,7 +379,6 @@ static clang::Decl *handleNamespaceAliasDecl(Sema &SemaRef,
                                              Declaration *D,
                                              const BinarySyntax *Arg,
                                              clang::SourceLocation UsingLoc) {
-  // clang::SourceLocation ArgLoc = Arg->getLocation();
   clang::DiagnosticsEngine &Diags = SemaRef.getCxxSema().Diags;
   const Syntax *Name = Arg->getOperand(0);
   const Syntax *Init = Arg->getOperand(1);
@@ -535,6 +570,9 @@ static clang::Decl *handleUsing(Sema &SemaRef,
 
 clang::Decl *Elaborator::elaboratePrefixDecl(const PrefixSyntax *S) {
   Declaration *D = SemaRef.getCurrentScope()->findDecl(S);
+  if (!D)
+    return nullptr;
+
   if (S->getOperation().hasKind(tok::UsingKeyword)) {
     clang::Decl *Ret = handleUsing(SemaRef, D, S->getOperand(),
                                    S->getOperation().getLocation());
@@ -544,6 +582,14 @@ clang::Decl *Elaborator::elaboratePrefixDecl(const PrefixSyntax *S) {
 
   // Reaching this point could only be an error on our part.
   llvm_unreachable("invalid prefix declaration");
+}
+
+clang::Decl *Elaborator::elaborateBindingDecl(const Syntax *S) {
+  Declaration *D = SemaRef.getCurrentScope()->findDecl(S);
+  if (!D)
+    return nullptr;
+
+  return elaborateDeclarationTyping(D);
 }
 
 clang::Decl *Elaborator::elaborateDeclarationTyping(Declaration *D) {
@@ -1264,7 +1310,7 @@ static inline clang::StorageClass getDefaultVariableStorageClass(Sema &SemaRef) 
 }
 
 clang::Decl *Elaborator::makeObjectDecl(Declaration *D, clang::Expr *Ty) {
-  auto *Def = cast<DeclarationSyntax>(D->Def);
+  const Syntax *Def = D->Def;
   if (!Def)
     return nullptr;
 
@@ -3329,6 +3375,14 @@ clang::Expr *Elaborator::elaborateLiteralExpression(const LiteralSyntax *S) {
 }
 
 void Elaborator::elaborateDefinition(const Syntax *S) {
+  if (const DeclarationSyntax *D = dyn_cast<DeclarationSyntax>(S)) {
+    if (const auto *L = dyn_cast_or_null<ListSyntax>(D->getDeclarator())) {
+      for (const Syntax *SS : L->children())
+        elaborateDefinition(SS);
+      return;
+    }
+  }
+
   auto Decl = SemaRef.getCurrentScope()->findDecl(S);
   if (!Decl)
     return;
@@ -3357,39 +3411,8 @@ void Elaborator::elaborateVarDef(Declaration *D) {
   if (!D->getCxx())
     return;
 
-
-  // If this isn't early elaboration then we have to actually track it.
-  // if (!IsEarly)
-  //   ElabTracker.init(D);
-
-  // Sema::OptionalInitScope<Sema::ResumeScopeRAII> OptResumeScope(SemaRef);
-  // clang::Expr *InitExpr = nullptr;
-  // clang::VarDecl *VD = nullptr;
-  // Sema::DeclInitializationScope ClangInitScope(SemaRef, D);
-  // bool NeedsConstEvaluation = false;
-  // if (D->defines<clang::VarTemplateDecl>()) {
-  //   if (SemaRef.checkForRedefinition<clang::VarTemplateDecl>(D))
-  //     return;
-
-  //   // We need to attempt to re-enter the template context for this variable.
-  //   OptResumeScope.Init(D->SavedScope, D->Op);
-  //   clang::VarTemplateDecl *VTD = cast<clang::VarTemplateDecl>(D->Cxx);
-  //   VD = VTD->getTemplatedDecl();
-  // } else {
-  //   if (SemaRef.checkForRedefinition<clang::VarDecl>(D))
-  //     return;
-  //   VD = cast<clang::VarDecl>(D->Cxx);
-  // }
-
-  // if (VD->isConstexpr())
-  //   NeedsConstEvaluation = true;
   clang::VarDecl *VD = cast<clang::VarDecl>(D->getCxx());
-  auto *Def = D->asDef();
-  if (!Def)
-    return;
   if (!D->getInitializer()) {
-    // if (isa<clang::ParmVarDecl>(VD))
-    //   return;
     // FIXME: We probably want to synthesize some kind of initializer here.
     // Not quite sure how we want to do this.
     //
@@ -3407,20 +3430,6 @@ void Elaborator::elaborateVarDef(Declaration *D) {
     getCxxSema().FinalizeDeclaration(VD);
     return;
   }
-  // if (D->defines<clang::VarTemplateDecl>()) {
-  //   // I may need to revisit this in the furture becaus this might not be
-  //   // the right thing to do in this case.
-  //   VD->setInit(InitExpr);
-  // } else {
-
-  // if (D->isDeclaredWithinClass() && !VD->isInlineSpecified()
-  //     && (!VD->getType().isConstant(Context.CxxAST) && !VD->isConstexpr())) {
-  //   SemaRef.Diags.Report(D->IdDcl->getLoc(),
-  //                       clang::diag::err_in_class_initializer_non_const);
-  //   return;
-  // }
-  // if (auto LS = dyn_cast<ListSyntax>(Def->getInitializer())) {
-  // }
   clang::Expr *InitExpr = nullptr;;
   if (auto CtorArgs = dyn_cast<EnclosureSyntax>(D->getInitializer())) {
     if (CtorArgs->getOperand()) {

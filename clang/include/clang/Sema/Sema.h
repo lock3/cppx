@@ -85,7 +85,7 @@ namespace gold {
 }
 
 namespace blue {
-  class Declaration;
+  struct Declaration;
   class Declarator;
   class Sema;
 }

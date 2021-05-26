@@ -31,7 +31,7 @@ class Decl;
 namespace blue {
 
 class Declarator;
-class Declaration;
+struct Declaration;
 class Sema;
 
 class ElaboratingClass;
