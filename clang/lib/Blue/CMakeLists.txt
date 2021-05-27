@@ -11,7 +11,6 @@ add_clang_library(blue
   BlueTokens.cpp
   BlueLexer.cpp
   BlueParser.cpp
-  BluePartialExpr.cpp
   BlueScope.cpp
   BlueSema.cpp
   BlueSyntax.cpp

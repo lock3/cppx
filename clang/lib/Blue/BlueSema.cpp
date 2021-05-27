@@ -30,7 +30,6 @@
 
 #include "clang/Blue/BlueDependentExprTransformer.h"
 #include "clang/Blue/BlueElaborator.h"
-#include "clang/Blue/BluePartialExpr.h"
 #include "clang/Blue/BlueScope.h"
 #include "clang/Blue/BlueSyntax.h"
 
