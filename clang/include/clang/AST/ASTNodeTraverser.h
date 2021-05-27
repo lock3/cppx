@@ -530,6 +530,10 @@ public:
   void VisitCppxTypeLiteral(const CppxTypeLiteral *E) {
     Visit(E->getValue()->getType());
   }
+  void VisitCppxCXXScopeSpecExpr(const CppxCXXScopeSpecExpr *E) {
+    if (E->getLastExpr())
+      Visit(E->getLastExpr());
+  }
 
   void VisitCppxPartialEvalExpr(const CppxPartialEvalExpr *E) {
     // Visit(E->getType());

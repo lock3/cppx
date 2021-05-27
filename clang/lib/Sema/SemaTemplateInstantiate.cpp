@@ -31,6 +31,7 @@
 #include "clang/Sema/TemplateInstCallback.h"
 #include "llvm/Support/TimeProfiler.h"
 #include "clang/Gold/GoldSema.h"
+#include "clang/Blue/BlueSema.h"
 
 using namespace clang;
 using namespace sema;
@@ -1133,13 +1134,24 @@ namespace {
     ExprResult RebuildCppxTemplateOrArrayExpr(Expr *Base, ArrayRef<Expr *> Args) {
       auto E = clang::CppxTemplateOrArrayExpr::Create(SemaRef.getASTContext(),
                                                        Base, Args);
-      assert(SemaRef.getGoldSema() && "invalid without gold language support");
-      auto Ret = SemaRef.getGoldSema()->TransformCppxTemplateOrArrayExpr(
-          TemplateArgs, Loc, Entity, E);
-      if (!Ret) {
-        return ExprError();
+      if (SemaRef.getGoldSema()) {
+        assert(SemaRef.getGoldSema() && "invalid without gold language support");
+        auto Ret = SemaRef.getGoldSema()->TransformCppxTemplateOrArrayExpr(
+            TemplateArgs, Loc, Entity, E);
+        if (!Ret)
+          return ExprError();
+
+        return Ret;
+      } else if (SemaRef.getBlueSema()) {
+        auto Ret = SemaRef.getBlueSema()->TransformCppxTemplateOrArrayExpr(
+            TemplateArgs, Loc, Entity, E);
+        if (!Ret)
+          return ExprError();
+
+        return Ret;
+      } else {
+        llvm_unreachable("RebuildCppxTemplateOrArrayExpr not supported with current language.");
       }
-      return Ret;
     }
 
     ExprResult RebuildCppxDependentMemberAccessExpr(Expr *BaseE,
@@ -1150,24 +1162,45 @@ namespace {
       auto E = clang::CppxDependentMemberAccessExpr::Create(
         SemaRef.getASTContext(), BaseE, BaseType, OperatorLoc, MemberNameInfo,
         NameExpr);
-      assert(SemaRef.getGoldSema() && "invalid without gold language support");
-      auto Ret = SemaRef.getGoldSema()->TransformCppxDependentMemberAccessExpr(
-          TemplateArgs, Loc, Entity, E);
-      if (!Ret) {
-        return ExprError();
+      if (SemaRef.getGoldSema()) {
+        assert(SemaRef.getGoldSema() && "invalid without gold language support");
+        auto Ret = SemaRef.getGoldSema()->TransformCppxDependentMemberAccessExpr(
+            TemplateArgs, Loc, Entity, E);
+        if (!Ret)
+          return ExprError();
+        return Ret;
+
+      } else if (SemaRef.getBlueSema()) {
+        auto Ret = SemaRef.getBlueSema()->TransformCppxDependentMemberAccessExpr(
+            TemplateArgs, Loc, Entity, E);
+        if (!Ret)
+          return ExprError();
+        return Ret;
+      } else {
+        llvm_unreachable("RebuildCppxDependentMemberAccessExpr not supported with current language.");
       }
-      return Ret;
     }
 
 
     ExprResult TransformCppxDerefOrPtrExpr(CppxDerefOrPtrExpr *E) {
-      assert(SemaRef.getGoldSema() && "invalid without gold language support");
-      auto Ret = SemaRef.getGoldSema()->TransformCppxDerefOrPtrExpr(
-          TemplateArgs, Loc, Entity, E);
-      if (!Ret) {
-        return ExprError();
+      if (SemaRef.getGoldSema()) {
+        assert(SemaRef.getGoldSema() && "invalid without gold language support");
+        auto Ret = SemaRef.getGoldSema()->TransformCppxDerefOrPtrExpr(
+            TemplateArgs, Loc, Entity, E);
+        if (!Ret) {
+          return ExprError();
+        }
+        return Ret;
+      } else if (SemaRef.getBlueSema()) {
+        auto Ret = SemaRef.getBlueSema()->TransformCppxDerefOrPtrExpr(
+            TemplateArgs, Loc, Entity, E);
+        if (!Ret)
+          return ExprError();
+        return Ret;
+
+      } else {
+        llvm_unreachable("TransformCppxDerefOrPtrExpr not supported with current language.");
       }
-      return Ret;
     }
 
     // Handling this specially because I have to evaluate the inner type twice,
@@ -1251,9 +1284,17 @@ namespace {
 
     QualType TransformCppxTypeExprType(TypeLocBuilder &TLB,
                                        CppxTypeExprTypeLoc TL) {
-      assert(SemaRef.getGoldSema() && "invalid without gold language support");
-      return SemaRef.getGoldSema()->TransformCppxTypeExprType(TemplateArgs, Loc,
+      if (SemaRef.getGoldSema()) {
+
+        assert(SemaRef.getGoldSema() && "invalid without gold language support");
+        return SemaRef.getGoldSema()->TransformCppxTypeExprType(TemplateArgs, Loc,
                                                               Entity,TLB, TL);
+      } else if (SemaRef.getBlueSema()) {
+        return SemaRef.getBlueSema()->TransformCppxTypeExprType(TemplateArgs, Loc,
+                                                                Entity, TLB, TL);
+      } else {
+        llvm_unreachable("TransformCppxTypeExprType not supported with current language.");
+      }
     }
 
     /// Rebuild a DeclRefExpr for a VarDecl reference.

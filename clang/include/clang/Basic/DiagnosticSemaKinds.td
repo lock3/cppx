@@ -11718,5 +11718,8 @@ def err_invalid_type_operand : Error<
 def err_prefix_caret_on_non_type : Error<
   "invalid use of '^ expr' expr does not evaluate to a type">;
 
+def err_cannot_access_through_nested_name : Error<
+  "unable to access function through an object">;
+
 } // end of Blue category
 } // end of sema component.

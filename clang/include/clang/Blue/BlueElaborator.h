@@ -21,7 +21,6 @@
 #include "clang/AST/TemplateBase.h"
 
 namespace clang {
-
 class CppxTypeLiteral;
 class Decl;
 class DiagnosticsEngine;
@@ -30,7 +29,7 @@ class QualType;
 class Sema;
 class Stmt;
 class NamedDecl;
-
+// class CppxPartialEvalExpr;
 } // namespace clang
 
 namespace blue
@@ -66,6 +65,9 @@ public:
   Declaration *createNamespaceDecl(const DeclarationSyntax *Def,
                                    Declarator *Dcl,
                                    const Syntax *Init);
+  Declaration *createNamespaceAliasDecl(const DeclarationSyntax *Def,
+                                        Declarator *Dcl,
+                                        const Syntax *Init);
   Declaration *createUsingDecl(const PrefixSyntax *Def,
                                Declarator *Dcl,
                                const Syntax *Init);
@@ -85,7 +87,7 @@ public:
 
   clang::Decl *elaborateDeclarationTyping(Declaration *D);
   void elaborateTemplateParameters(OptionalScopeRAII &TemplateScope,
-                                   OptioanlClangScopeRAII &ClangTemplateScope,
+                                   OptionalClangScopeRAII &ClangTemplateScope,
                                    Declaration *D, Declarator *Dcl);
   void buildTemplateParams(const ListSyntax *Params,
                            llvm::SmallVectorImpl<clang::NamedDecl *> &Res);
@@ -94,6 +96,7 @@ public:
   clang::Decl *elaborateTypeAliasOrVariableTemplate(Declaration *D);
 
   Declaration *elaborateTemplateParameter(const Syntax *Parm);
+  Declaration *elaborateTemplateTemplateParameter(Declaration *D);
 
   void elaborateParameters(const ListSyntax *S);
 
@@ -131,7 +134,10 @@ public:
   clang::Decl *makeTemplateDecl(Declaration *D);
   clang::Decl *makeFieldDecl(Declaration *D, clang::Expr *Ty);
   clang::Decl *makeNamespace(Declaration *D);
-
+  clang::Decl *makeNamespaceAlias(Declaration *D);
+private:
+  clang::Decl *completeNamespaceAlias(Declaration *D, clang::Expr *NSExpr);
+public:
 
   bool buildMethod(Declaration *Fn, clang::DeclarationName const &Name,
                    clang::FunctionDecl **FD, clang::TypeSourceInfo *Ty,
@@ -154,8 +160,6 @@ public:
   void elaborateFieldInit(Declaration *D);
   void elaborateFunctionDef(Declaration *D);
 
-  
-
   clang::Expr *elaborateExpression(const Syntax *S);
   clang::Expr *elaborateConstantExpression(const Syntax *S);
   clang::Expr *doElaborateConstantExpression(const Syntax *S);
@@ -176,6 +180,7 @@ public:
   clang::Expr *elaborateListExpression(const ListSyntax *S);
   clang::Expr *elaborateSequenceExpression(const SequenceSyntax *S);
   clang::Expr *elaborateQualifiedMemberAccess(const QualifiedMemberAccessSyntax *S);
+
   clang::Expr *elaborateNestedLookupAccess(clang::Expr *Previous,
                                            const Syntax *Op,
                                            const Syntax *RHS);
@@ -199,7 +204,7 @@ public:
   void elaborateTemplateArgs(const EnclosureSyntax *Enc, const ListSyntax *ArgList,
                              clang::TemplateArgumentListInfo &TemplateArgs,
                    llvm::SmallVectorImpl<clang::TemplateArgument> &ActualArgs);
-  clang::Expr *elabortateTemplateInstantiationWithArgs(const EnclosureSyntax *Enc, clang::Expr *Base,
+  clang::Expr *elaborateTemplateInstantiationWithArgs(const EnclosureSyntax *Enc, clang::Expr *Base,
                                                     const ListSyntax *ArgList);
   clang::Expr *elaborateClassTemplateSelection(clang::Expr *IdExpr,
                                                const EnclosureSyntax *Enc,
@@ -208,7 +213,8 @@ public:
   bool elaborateClassTemplateArguments(const EnclosureSyntax *Enc,
                                        const ListSyntax *Args,
                                        clang::TemplateArgumentListInfo &ArgInfo,
-              llvm::SmallVectorImpl<clang::ParsedTemplateArgument> &ParsedArgs);
+              llvm::SmallVectorImpl<clang::ParsedTemplateArgument> &ParsedArgs,
+                            llvm::SmallVectorImpl<clang::Expr *> &OnlyExprArgs);
 
   /// Dispatching function, that determines based on the LHS's type how to
   /// process the RHS of the expression.
@@ -218,6 +224,9 @@ public:
   clang::Expr *elaborateNestedNamespaceAccess(clang::Expr *LHS, const InfixSyntax *S);
   clang::Expr *elaborateNNS(clang::NamedDecl *NS, const InfixSyntax *S);
   clang::Expr *elaborateMemberAccessOp(clang::Expr *LHS, const InfixSyntax *S);
+
+  clang::Expr *elaboratorInplaceNew(const CallSyntax *Call);
+  clang::Expr *elaboratorInplaceDelete(const CallSyntax *Call);
 
   clang::Expr *elaborateIntegerMetaFunction(const BinarySyntax *S);
   clang::Expr *elaborateCharacterMetaFunction(const BinarySyntax *S);

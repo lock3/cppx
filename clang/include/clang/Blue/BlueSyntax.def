@@ -84,8 +84,6 @@ def_non_leaf_end(Ternary, Triple)
 def_abstract(Quaternary, Syntax)
 def_non_leaf_start(Quaternary, Declaration)
   def_syntax(Declaration, Syntax)
-// def_non_leaf_end(Quaternary, Declaration)
-// def_non_leaf_start(Quaternary, Quadruple)
   def_syntax(Quadruple, Quaternary)
 def_non_leaf_end(Quaternary, Quadruple)
 

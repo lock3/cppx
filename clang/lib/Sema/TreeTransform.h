@@ -6919,7 +6919,6 @@ QualType TreeTransform<Derived>::TransformCppxTypeExprType(
   QualType T = TL.getType();
   TLB.pushTypeSpec(T).setNameLoc(TL.getNameLoc());
   return T;
-  // llvm_unreachable("Working on type expression transformation.");
 }
 
 template<typename Derived>
@@ -9029,12 +9028,49 @@ TreeTransform<Derived>::TransformCppxTypeLiteral(CppxTypeLiteral *E) {
   return new (SemaRef.Context) CppxTypeLiteral(K, T);
 }
 
+template<typename Derived>
+ExprResult
+TreeTransform<Derived>::TransformCppxCXXScopeSpecExpr(CppxCXXScopeSpecExpr *E) {
+  // We have run into a problem where by the current referenced is missing?
+  if (!E->getLastExpr()) {
+    llvm_unreachable("invalid AST construction");
+  }
+  auto SSE = CppxCXXScopeSpecExpr::Create(SemaRef.Context, E->getExprLoc());
+  CXXScopeSpec *SS = new CXXScopeSpec();
+  // *SS = ;
+  SSE->setScopeSpec(SS);
+  auto NNSLoc = getDerived().TransformNestedNameSpecifierLoc(
+                E->getScopeSpec().getWithLocInContext(SemaRef.getASTContext()),
+            QualType(), nullptr);
+  SS->Adopt(NNSLoc);
+  auto LastExpr = getDerived().TransformExpr(E->getLastExpr()).get();
+  if (!LastExpr) {
+    return ExprError();
+  }
+  // TODO: I'm not sure if we need this or not?
+  // auto Ty = LastExpr->getType();
+  // if (!Ty->isKindType() && !Ty->isNamespaceType()) {
+  //   E->dump();
+  //   SemaRef.Diags.Report(E->getLocation(),
+  //                        clang::diag::err_blue_elaboration)
+  //                        << "invalid scope specifier";
+  //   return ExprError();
+  // }
+  SSE->setLastExpr(LastExpr);
+  return SSE;
+}
+
 
 template<typename Derived>
 ExprResult
 TreeTransform<Derived>::TransformCppxPartialEvalExpr(CppxPartialEvalExpr *E) {
-  return new (SemaRef.Context) CppxPartialEvalExpr(E->getType(), E->getImpl(),
-                                                   E->getLocation());
+  if (SemaRef.getLangOpts().Gold)
+    return new (SemaRef.Context) CppxPartialEvalExpr(E->getType(), E->getImpl(),
+                                                     E->getLocation());
+  if (SemaRef.getLangOpts().Blue)
+    return new (SemaRef.Context) CppxPartialEvalExpr(E->getType(), E->getBImpl(),
+                                                     E->getLocation());
+  llvm_unreachable("Unsupported language operation not implemented yet.");
 }
 
 template<typename Derived>
@@ -14336,6 +14372,8 @@ TreeTransform<Derived>::TransformCppxDependentMemberAccessExpr(
       // a NNS scope, or something like it.
       if (auto TyExpr = dyn_cast<clang::CppxTypeLiteral>(Base.get())) {
         BaseType = TyExpr->getValue()->getType();
+      } else if (auto SSE = dyn_cast<CppxCXXScopeSpecExpr>(Base.get())) {
+        BaseType = cast<CppxTypeLiteral>(SSE->getLastExpr())->getValue()->getType();
       } else {
         llvm_unreachable("Non-CppxTypeLiteral based type expression "
                          "not implemented yet.");
@@ -14357,6 +14395,12 @@ TreeTransform<Derived>::TransformCppxDependentMemberAccessExpr(
     = getDerived().TransformDeclarationNameInfo(E->getMemberNameInfo());
   if (!NameInfo.getName())
     return ExprError();
+  if (SemaRef.getLangOpts().Blue) {
+    if (auto PE = dyn_cast<clang::CppxPartialEvalExpr>(Base.get())) {
+      return PE->appendName(NameInfo.getLoc(),
+                            NameInfo.getName().getAsIdentifierInfo());
+    }
+  }
   return getDerived().RebuildCppxDependentMemberAccessExpr(Base.get(),
                                                            BaseType,
                                                            E->getOperatorLoc(),
@@ -14369,19 +14413,20 @@ template<typename Derived>
 ExprResult
 TreeTransform<Derived>::TransformCppxTemplateOrArrayExpr(
                                                    CppxTemplateOrArrayExpr *E) {
-  ExprResult Base((Expr*) nullptr);
-  Expr *OldBase;
-  OldBase = E->getBase();
-  Base = getDerived().TransformExpr(OldBase);
-  if (Base.isInvalid())
-    return ExprError();
-
   // Transforming the arguments
   bool ArgsChanged = false;
   llvm::SmallVector<Expr *, 16> TransformedAguments;
   if (getDerived().TransformExprs(E->getArgs(), E->getNumArgs(),
                                   /*IsCall*/false, TransformedAguments,
                                   &ArgsChanged))
+    return ExprError();
+
+  ExprResult Base((Expr*) nullptr);
+  Expr *OldBase;
+  OldBase = E->getBase();
+
+  Base = getDerived().TransformExpr(OldBase);
+  if (Base.isInvalid())
     return ExprError();
 
   return getDerived().RebuildCppxTemplateOrArrayExpr(Base.get(),

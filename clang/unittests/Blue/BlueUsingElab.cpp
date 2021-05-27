@@ -45,13 +45,26 @@ using ns._;
 }
 
 
-TEST(BlueUsingDirective, NamespaceAlias) {
+TEST(BlueUsingDirective, NamespaceAlias_WithKeyword) {
   StringRef Code = R"(
 ns:namespace = {
   x:int = 7;
 }
 
-using N = ns;
+N : namespace = ns;
+)";
+
+  auto ToMatch = namespaceAliasDecl(hasName("N"));
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(BlueUsingDirective, NamespaceAlias_WithoutKeyword) {
+  StringRef Code = R"(
+ns:namespace = {
+  x:int = 7;
+}
+
+N : namespace = ns;
 )";
 
   auto ToMatch = namespaceAliasDecl(hasName("N"));
@@ -64,8 +77,8 @@ ns:namespace = {
   x:int = 7;
 }
 
-using N = ns;
-foo:()={
+N := ns;
+foo:() = {
   N.x = 5;
 }
 )";

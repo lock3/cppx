@@ -19,6 +19,7 @@
 #include "clang/Basic/Specifiers.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ErrorHandling.h"
+// #include "clang/AST/Decl.h"
 #include <cassert>
 #include <cstddef>
 #include <cstring>
@@ -48,6 +49,12 @@ CppxDeclRefExpr::Create(ASTContext &Context, QualType KindTy, ValueType D,
 
 CppxPartialEvalExpr *CppxPartialEvalExpr::Create(ASTContext &Ctx,
                                                  gold::CppxPartialExprBase *E,
+                                                 SourceLocation Loc) {
+  return new (Ctx) CppxPartialEvalExpr(Ctx.VoidTy, E, Loc);
+}
+
+CppxPartialEvalExpr *CppxPartialEvalExpr::Create(ASTContext &Ctx,
+                                             blue::CppxPartialNameAccessBase *E,
                                                  SourceLocation Loc) {
   return new (Ctx) CppxPartialEvalExpr(Ctx.VoidTy, E, Loc);
 }
@@ -202,5 +209,17 @@ CppxWildcardExpr *CppxWildcardExpr::Create(const ASTContext &C,
                                            SourceLocation Loc) {
   return new (C) CppxWildcardExpr(C, Loc);
 }
+
+// -----------------------------------------------------------------------------
+CppxCXXScopeSpecExpr::CppxCXXScopeSpecExpr(ASTContext &Ctx, SourceLocation L)
+  :Expr(CppxCXXScopeSpecExprClass, Ctx.VoidTy, VK_LValue, OK_Ordinary),
+  Loc(L), SS(nullptr), CurExpr(nullptr)
+{ }
+
+CppxCXXScopeSpecExpr *CppxCXXScopeSpecExpr::Create(ASTContext &C,
+                                                   SourceLocation Loc) {
+  return new (C) CppxCXXScopeSpecExpr(C, Loc);
+}
+
 
 } // namespace clang

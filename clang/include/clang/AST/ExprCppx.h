@@ -53,7 +53,7 @@ namespace gold {
   /// of AST expression naturally, because it was never meant to do this.
   /// So that being said we have to create a new way to collect and apply arguments
   /// to an incomplete expression, in some way, while hiding what that expression
-  /// actually is and perfoming actions when possible to actually create a
+  /// actually is and preforming actions when possible to actually create a
   /// partially evaluated expression.
   ///
   /// The draw back to using this is that we may have to create a hierarchy
@@ -97,6 +97,68 @@ namespace gold {
     /// This is always true.
     static bool classof(const CppxPartialExprBase *) { return true; }
   };
+}
+
+namespace blue {
+
+  class Syntax;
+  using ExprList = llvm::SmallVectorImpl<clang::Expr *>;
+
+  enum class PartialExprKind : std::size_t;
+  class CppxPartialNameAccessBase {
+    PartialExprKind Kind;
+    clang::Expr *IncompleteExprValue = nullptr;
+    bool IsInTemplate = false;
+  public:
+    CppxPartialNameAccessBase(PartialExprKind K)
+      :Kind(K)
+    { }
+    virtual ~CppxPartialNameAccessBase() = default;
+
+    clang::SourceLocation BeginLocation;
+    clang::SourceLocation EndLocation;
+
+    void setIncompleteExpr(clang::Expr *E) {
+      IncompleteExprValue = E;
+    }
+
+    void setIsInsideTemplateInstantiation(bool DuringInstantiation) {
+      IsInTemplate = DuringInstantiation;
+    }
+    bool getIsInTemplateInstantiation() {
+      return IsInTemplate;
+    }
+
+    clang::Expr *getIncompleteExpr() const { return IncompleteExprValue; }
+
+    clang::SourceLocation beginLoc() const { return BeginLocation; }
+    clang::SourceLocation endLoc() const { return EndLocation; }
+
+    PartialExprKind getKind() const { return Kind; }
+
+    virtual clang::Expr *setIsWithinClass(bool IsInClassScope) = 0;
+    virtual clang::Expr *allowUseOfImplicitThis(bool AllowImplicitThis) = 0;
+    virtual clang::Expr *setBaseExpr(clang::Expr *) = 0;
+
+
+
+    /// Return true if the given arguments can be handled applied to the
+    /// partial expression, this could be template parameters or array access.
+    virtual clang::Expr *appendName(clang::SourceLocation L, clang::IdentifierInfo *Id) = 0;
+    virtual clang::Expr *appendElementExpr(clang::SourceLocation B,
+                                           clang::SourceLocation E,
+                              clang::TemplateArgumentListInfo &TemplateArgs,
+                llvm::SmallVectorImpl<clang::ParsedTemplateArgument> &ActualArgs,
+                llvm::SmallVectorImpl<clang::Expr *> &OnlyExprArgs) = 0;
+
+
+    /// This is used to generate the complete expression.
+    virtual clang::Expr *completeExpr() = 0;
+
+    static bool classof(const CppxPartialNameAccessBase *) { return true; }
+  private:
+  };
+
 }
 
 namespace clang {
@@ -204,7 +266,17 @@ public:
 class CppxPartialEvalExpr : public Expr {
   /// The location associated with the expression being constructed.
   // SourceLocation Loc;
-  gold::CppxPartialExprBase *Impl = nullptr;
+  union Partial {
+    gold::CppxPartialExprBase *GImpl;
+    blue::CppxPartialNameAccessBase *BImpl;
+  } PImpl;
+
+  enum class Tag {
+    NotSet,
+    BlueLang,
+    GoldLang
+  };
+  Tag PartialKind = Tag::NotSet;
   SourceLocation Loc;
 
   explicit CppxPartialEvalExpr(EmptyShell Empty)
@@ -215,57 +287,94 @@ public:
   CppxPartialEvalExpr(QualType ResultTy, gold::CppxPartialExprBase *E,
                       SourceLocation L)
     :Expr(CppxPartialEvalExprClass, ResultTy, VK_RValue, OK_Ordinary),
-    Impl(E), Loc(L)
-  { }
+    PImpl(), PartialKind(Tag::GoldLang), Loc(L)
+  {
+    PImpl.GImpl = E;
+  }
+
+  CppxPartialEvalExpr(QualType ResultTy, blue::CppxPartialNameAccessBase* E,
+                      SourceLocation L)
+    :Expr(CppxPartialEvalExprClass, ResultTy, VK_RValue, OK_Ordinary),
+    PImpl(), PartialKind(Tag::BlueLang), Loc(L)
+  {
+    PImpl.BImpl = E;
+  }
 
   SourceLocation getBeginLoc() const LLVM_READONLY {
-    assert(Impl && "Implementation not set.");
-    return Impl->beginLoc();
+    switch(PartialKind) {
+      case Tag::GoldLang:
+        return PImpl.GImpl->beginLoc();
+      case Tag::BlueLang:
+        return PImpl.BImpl->beginLoc();
+      default:
+        llvm_unreachable("Invalid partial expression not set.");
+    }
   }
 
   SourceLocation getEndLoc() const LLVM_READONLY {
-    assert(Impl && "Implementation not set.");
-    return Impl->endLoc();
+    switch(PartialKind) {
+      case Tag::GoldLang:
+        return PImpl.GImpl->endLoc();
+      case Tag::BlueLang:
+        return PImpl.BImpl->endLoc();
+      default:
+        llvm_unreachable("Invalid partial expression not set.");
+    }
   }
 
   /// Retrieve the location of the literal.
-  SourceLocation getLocation() const { return Loc;}
+  SourceLocation getLocation() const { return Loc ;}
   void setLocation(SourceLocation Location) { Loc = Location; }
 
-  gold::CppxPartialExprBase *getImpl() const { return Impl; }
-  void setImpl(gold::CppxPartialExprBase *Base) { Impl = Base; }
+  gold::CppxPartialExprBase *getImpl() const {
+    assert(PartialKind == Tag::GoldLang && "invalid language set");
+    return PImpl.GImpl;
+  }
+  void setImpl(gold::CppxPartialExprBase *Base) {
+    PartialKind = Tag::GoldLang;
+    PImpl.GImpl = Base;
+  }
+
+  blue::CppxPartialNameAccessBase *getBImpl() const {
+    assert(PartialKind == Tag::BlueLang && "invalid language set");
+    return PImpl.BImpl;
+  }
+  void setBImpl(blue::CppxPartialNameAccessBase *Base) {
+    PartialKind = Tag::BlueLang;
+    PImpl.BImpl = Base;
+  }
 
   bool canAcceptElementArgs(const gold::ExprList &Args) const {
-    assert(Impl && "Implementation not set.");
-    return Impl->canAcceptElementArgs(Args);
+    assert(PartialKind == Tag::GoldLang && "Implementation not set.");
+    return PImpl.GImpl->canAcceptElementArgs(Args);
   }
 
   bool canAcceptFunctionArgs(const gold::ExprList &Args) const {
-    assert(Impl && "Implementation not set.");
-    return Impl->canAcceptFunctionArgs(Args);
+    assert(PartialKind == Tag::GoldLang && "Implementation not set.");
+    return PImpl.GImpl->canAcceptFunctionArgs(Args);
   }
 
   // Application functions.
   void applyElementArgs(const gold::ExprList &Args) {
-    assert(Impl && "Implementation not set.");
-    Impl->applyElementArgs(Args);
+    assert(PartialKind == Tag::GoldLang && "Implementation not set.");
+    PImpl.GImpl->applyElementArgs(Args);
   }
 
   void applyFunctionArgs(const gold::ExprList &Args) {
-    assert(Impl && "Implementation not set.");
-    Impl->applyFunctionArgs(Args);
+    assert(PartialKind == Tag::GoldLang && "Implementation not set.");
+    PImpl.GImpl->applyFunctionArgs(Args);
   }
 
   bool isCompletable() {
-    assert(Impl && "Implementation not set.");
-    return Impl->isCompletable();
+    assert(PartialKind == Tag::GoldLang && "Implementation not set.");
+    return PImpl.GImpl->isCompletable();
   }
   clang::Expr *forceCompleteExpr() {
-    assert(Impl && "Implementation not set.");
-    if (Impl->isCompletable()){
-      return Impl->completeExpr();
+    assert(PartialKind == Tag::GoldLang && "Implementation not set.");
+    if (PImpl.GImpl->isCompletable()){
+      return PImpl.GImpl->completeExpr();
     }
-    Impl->diagnoseIncompleteReason();
+    PImpl.GImpl->diagnoseIncompleteReason();
     return nullptr;
   }
 
@@ -276,12 +385,58 @@ public:
     return const_child_range(const_child_iterator(), const_child_iterator());
   }
 
+
+  /// Return true if the given arguments can be handled applied to the
+  /// partial expression, this could be template parameters or array access.
+  clang::Expr *appendName(clang::SourceLocation L, IdentifierInfo *Id) {
+    assert(PartialKind == Tag::BlueLang && "Incorrect language.");
+    return PImpl.BImpl->appendName(L, Id);
+  }
+
+  clang::Expr *appendElementExpr(clang::SourceLocation Beginning,
+                                 clang::SourceLocation EndingLoc,
+                                 clang::TemplateArgumentListInfo &TemplateArgs,
+                   llvm::SmallVectorImpl<clang::ParsedTemplateArgument> &ActualArgs,
+                   llvm::SmallVectorImpl<clang::Expr *> &OnlyExprArgs) {
+    assert(PartialKind == Tag::BlueLang && "Incorrect language.");
+    return PImpl.BImpl->appendElementExpr(Beginning, EndingLoc, TemplateArgs,
+                                          ActualArgs, OnlyExprArgs);
+  }
+
+  /// This is used to generate the complete expression that is represented
+  /// by a derived version of this class.
+  clang::Expr *completeExpr() {
+    assert(PartialKind == Tag::BlueLang && "Incorrect language.");
+    return PImpl.BImpl->completeExpr();
+  }
+
+  /// This is true when we are both inside of a class and the initial expression
+  /// is not a CXXThisExpr.
+  clang::Expr *allowUseOfImplicitThis(bool AllowImplicitThis) {
+    assert(PartialKind == Tag::BlueLang && "Incorrect language.");
+    return PImpl.BImpl->allowUseOfImplicitThis(AllowImplicitThis);
+  }
+
+  clang::Expr *setIsWithinClass(bool IsInClassScope) {
+    assert(PartialKind == Tag::BlueLang && "Incorrect language.");
+    return PImpl.BImpl->setIsWithinClass(IsInClassScope);
+  }
+
+  clang::Expr *setBaseExpr(clang::Expr *E) {
+    assert(PartialKind == Tag::BlueLang && "Incorrect language.");
+    return PImpl.BImpl->setBaseExpr(E);
+  }
+
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == CppxPartialEvalExprClass;
   }
 
   static CppxPartialEvalExpr *Create(ASTContext &Ctx,
                                      gold::CppxPartialExprBase *E,
+                                     SourceLocation Loc);
+
+  static CppxPartialEvalExpr *Create(ASTContext &Ctx,
+                                     blue::CppxPartialNameAccessBase *E,
                                      SourceLocation Loc);
 };
 
@@ -705,7 +860,7 @@ public:
                                     SourceLocation L);
 };
 
-// Placeholder for a wildcard or "whatever expression" 
+// Placeholder for a wildcard or "whatever expression"
 class CppxWildcardExpr : public Expr {
   SourceLocation Loc;
 
@@ -742,6 +897,79 @@ public:
   static CppxWildcardExpr *Create(const ASTContext &C, SourceLocation Loc);
 };
 
+
+/// This is used when constructing a known qualified expression.
+/// for example x.(a.b.c).y, this expression would be used for a.b.c.
+/// In the event that we have a qualified expression without the () syntax
+/// for example, a.b.c.y, we may have to back track and confirm that we are
+/// correctly elaborating the expression.
+class CppxCXXScopeSpecExpr : public Expr {
+  SourceLocation Loc;
+  CXXScopeSpec *SS;
+  Expr *CurExpr;
+  CppxCXXScopeSpecExpr(ASTContext &Ctx, SourceLocation Loc);
+public:
+
+  void deleteScopeSpec() { delete SS; SS = nullptr;}
+  void setScopeSpec(CXXScopeSpec *S) {
+    SS = S;
+  }
+  const CXXScopeSpec &getScopeSpec() const { return *SS; }
+  CXXScopeSpec &getScopeSpec() { return *SS; }
+
+  void setLastExpr(Expr *E) {
+    CurExpr = E;
+    setType(E->getType());
+  }
+  Expr *getLastExpr() const { return CurExpr; }
+  Expr *getLastExpr() { return CurExpr; }
+
+  /// Retrieve the location of the literal.
+  SourceLocation getLocation() const {
+    if (CurExpr)
+      return CurExpr->getExprLoc();
+    return Loc;
+  }
+
+  SourceLocation getBeginLoc() const LLVM_READONLY {
+    if (SS->isSet())
+      return SS->getBeginLoc();
+    if (CurExpr)
+      return CurExpr->getExprLoc();
+    return Loc;
+  }
+
+  SourceLocation getEndLoc() const LLVM_READONLY {
+    if (SS->isSet())
+      return SS->getEndLoc();
+    if (CurExpr)
+      return CurExpr->getExprLoc();
+    return Loc;
+  }
+
+  void setLocation(SourceLocation Location) { Loc = Location; }
+
+  // Iterators
+  child_range children() {
+    Stmt *S1 = cast<Stmt>(CurExpr);
+    Stmt **S = &S1;
+    Stmt **E = S;
+    return child_range(child_iterator(S), child_iterator(E));
+  }
+
+  const_child_range children() const {
+    Stmt *S1 = cast<Stmt>(CurExpr);
+    Stmt **S = &S1;
+    Stmt **E = S;
+    return const_child_range(const_child_iterator(S), const_child_iterator(E));
+  }
+
+  static bool classof(const Stmt *T) {
+    return T->getStmtClass() == CppxCXXScopeSpecExprClass;
+  }
+
+  static CppxCXXScopeSpecExpr *Create(ASTContext &C, SourceLocation Loc);
+};
 } // namespace clang
 
 #endif // LLVM_CLANG_AST_EXPRCPPX_H

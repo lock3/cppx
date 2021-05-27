@@ -1209,6 +1209,9 @@ Syntax *Parser::parsePostfixExpression() {
         Token LParen = matchToken(tok::LeftParen);
         Syntax *QualIdE = parsePrefixExpression();
         if (Token RParen = matchToken(tok::RightParen)) {
+          if (nextTokenIs(tok::Dot)) {
+            consumeToken();
+          }
           Syntax *Member = parseIdExpression();
           E0 = new QualifiedMemberAccessSyntax(Dot, LParen, RParen, E0, QualIdE, Member);
         } else {
@@ -1275,6 +1278,8 @@ Syntax *Parser::parsePrimaryExpression() {
   case tok::BoolKeyword:
   case tok::TypeKeyword:
   case tok::NamespaceKeyword:
+  case tok::InplaceNewKeyword:
+  case tok::InplaceDeleteKeyword:
     // Built in type functions
   case tok::IntegerKeyword:
   case tok::RealKeyword:
