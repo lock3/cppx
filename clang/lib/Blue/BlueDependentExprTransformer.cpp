@@ -170,256 +170,143 @@ clang::Expr *DependentExprTransformer::transformCppxDependentMemberAccessExpr(
   //                      isCXXThisValidInContext(SemaRef.getCurClangDeclContext()),
   //                             Ret, true);
   // }
-  llvm_unreachable("Working on it.");
+  // llvm_unreachable("Working on it.");
   // Retrieving member information.
   // auto DNI = E->getMemberNameInfo();
   // return PartialE->appendName(DNI.getLoc(), DNI.getName().getAsIdentifierInfo());
   // Attempting to do lookup for the next name?
 
-  // if (Ret->getType()->isNamespaceType() || Ret->getType()->isTemplateType()) {
-  //   // Create a partial expression here and attempt to append the new name to it.
-  //   llvm_unreachable("Start of partial expression lookup is incomplete.");
-  // }
+  if (Ret->getType()->isNamespaceType() || Ret->getType()->isTemplateType()) {
+    // Create a partial expression here and attempt to append the new name to it.
+    llvm_unreachable("Start of partial expression lookup is incomplete.");
+  }
+  clang::QualType Ty;
+  bool NeedsArrow = false;
+  if (Ret->getType()->isTypeOfTypes()) {
+    clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(Ret,
+                                                             Ret->getExprLoc());
+    if (!TInfo) {
+      return nullptr;
+    }
 
-  // clang::QualType Ty;
-  // bool NeedsArrow = false;
-  // if (Ret->getType()->isTypeOfTypes()) {
-  //   clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(Ret,
-  //                                                            Ret->getExprLoc());
-  //   if (!TInfo)
-  //     return nullptr;
+    Ty = TInfo->getType();
+    Ty = transformType(Ty);
+  } else {
+    Ty = Ret->getType();
+    Ty = transformType(Ty);
+    if (Ty.isNull())
+      return nullptr;
 
-  //   Ty = TInfo->getType();
-  //   Ty = transformType(Ty);
-  // } else {
-  //   Ty = Ret->getType();
-  //   Ty = transformType(Ty);
-  //   if (Ty.isNull())
-  //     return nullptr;
+    if (Ty->isPointerType()) {
+      Ty = Ty->getPointeeType();
+      NeedsArrow = true;
+    }
+    // Doing a 2ndary transformation of the inner type of a pointer because this
+    // may be the actual dependent type.
+    Ty = transformType(Ty);
+    if (Ty.isNull())
+      return nullptr;
+  }
+  // Getting innner most unqualified type for look up.
+  Ty = Ty.getCanonicalType();
 
-  //   if (Ty->isPointerType()){
-  //     Ty = Ty->getPointeeType();
-  //     NeedsArrow = true;
-  //   }
-  //   // Doing a 2ndary transformation of the inner type of a pointer because this
-  //   // may be the actual dependent type.
-  //   Ty = transformType(Ty);
-  //   if (Ty.isNull())
-  //     return nullptr;
-  // }
-  // // Getting innner most unqualified type for look up.
-  // Ty = Ty.getCanonicalType();
+  // Handling errors from pointer type.
+  if (Ty.isNull()) {
+    SemaRef.getCxxSema().Diags.Report(Ret->getExprLoc(),
+                         clang::diag::err_not_a_type);
+    return nullptr;
+  }
+  if (auto TSTTy = dyn_cast<clang::TemplateSpecializationType>(Ty)) {
+    Ty = TSTTy->desugar();
+  }
+  if (!isa<clang::TagType>(Ty)) {
+    SemaRef.getCxxSema().Diags.Report(Ret->getExprLoc(),
+                       clang::diag::err_typecheck_member_reference_struct_union)
+                         << Ty;
+    return nullptr;
+  }
 
-  // // Handling errors from pointer type.
-  // if (Ty.isNull()) {
-  //   SemaRef.getCxxSema().Diags.Report(Ret->getExprLoc(),
-  //                        clang::diag::err_not_a_type);
-  //   return nullptr;
-  // }
-  // if (auto TSTTy = dyn_cast<clang::TemplateSpecializationType>(Ty)) {
-  //   Ty = TSTTy->desugar();
-  // }
-  // if (!isa<clang::TagType>(Ty)) {
-  //   SemaRef.getCxxSema().Diags.Report(Ret->getExprLoc(),
-  //                      clang::diag::err_typecheck_member_reference_struct_union)
-  //                        << Ty;
-  //   return nullptr;
-  // }
-
-  // clang::TagDecl *TD = Ty->getAsTagDecl();
-  // clang::SourceLocation Loc(E->getExprLoc());
-  // clang::SourceRange Range(Loc, Loc);
-  // if (isa<clang::ClassTemplateSpecializationDecl>(TD)) {
-  //   if (SemaRef.getCxxSema().RequireCompleteType(Loc, Ty,
-  //                                  clang::diag::err_incomplete_nested_name_spec,
-  //                                               Range))
-  //     return nullptr;
-  // }
+  clang::TagDecl *TD = Ty->getAsTagDecl();
+  clang::SourceLocation Loc(E->getExprLoc());
+  clang::SourceRange Range(Loc, Loc);
+  if (isa<clang::ClassTemplateSpecializationDecl>(TD)) {
+    if (SemaRef.getCxxSema().RequireCompleteType(Loc, Ty,
+                                   clang::diag::err_incomplete_nested_name_spec,
+                                                Range)){
+      return nullptr;
+    }
+  }
   // clang::TagDecl *NextTD = handleNestedNameQualifier(*this, SemaRef, E, Ty,
   //                                                    TD);
   // if (!NextTD)
   //   return nullptr;
 
-  // if (!Ret->getType()->isTypeOfTypes()) {
-  //   clang::CXXScopeSpec SS;
-  //   clang::SourceLocation Loc;
-  //   clang::tok::TokenKind AccessTokenKind = clang::tok::TokenKind::period;
-  //   if (NeedsArrow)
-  //     AccessTokenKind = clang::tok::TokenKind::arrow;
+  if (!Ret->getType()->isTypeOfTypes()) {
+    clang::CXXScopeSpec SS;
+    clang::SourceLocation Loc;
+    clang::tok::TokenKind AccessTokenKind = clang::tok::TokenKind::period;
+    if (NeedsArrow)
+      AccessTokenKind = clang::tok::TokenKind::arrow;
 
-  //   bool MayBePseudoDestructor = false;
-  //   clang::ParsedType ObjectTy;
-  //   Ret = SemaRef.getCxxSema().ActOnStartCXXMemberReference(nullptr, Ret, Loc,
-  //                                                           AccessTokenKind,
-  //                                                           ObjectTy,
-  //                                                  MayBePseudoDestructor).get();
-  //   if (!Ret)
-  //     return nullptr;
-  // }
+    bool MayBePseudoDestructor = false;
+    clang::ParsedType ObjectTy;
+    Ret = SemaRef.getCxxSema().ActOnStartCXXMemberReference(nullptr, Ret, Loc,
+                                                            AccessTokenKind,
+                                                            ObjectTy,
+                                                   MayBePseudoDestructor).get();
+    if (!Ret)
+      return nullptr;
+  }
 
   // TD = NextTD;
 
   // auto ClsDcl = dyn_cast<clang::CXXRecordDecl>(TD);
-  // clang::DeclarationName MemberName = E->getMember();
-  // // const OpInfoBase *OpInfo = getCxxSema().OpInfo.getOpInfo(MemberName.getAsString());
-  // clang::DeclarationNameInfo DNI(MemberName, Ret->getExprLoc());
-  // clang::LookupResult R(SemaRef.getCxxSema(), DNI,
-  //                       clang::Sema::LookupMemberName,
-  //                       clang::Sema::NotForRedeclaration);
-  // // if (OpInfo) {
-  // //   clang::OverloadedOperatorKind UnaryOpKind = OpInfo->getUnaryOverloadKind();
-  // //   clang::OverloadedOperatorKind BinaryOpKind = OpInfo->getBinaryOverloadKind();
-
-  // //   clang::DeclarationName DN = Context.CxxAST.DeclarationNames
-  // //                                              .getCXXOperatorName(UnaryOpKind);
-  // //   if (ClsDcl) {
-
-  // //     clang::LookupResult UnaryR(SemaRef.getCxxSema(), {DN, Ret->getExprLoc()},
-  // //                               clang::Sema::LookupMemberName,
-  // //                               clang::Sema::NotForRedeclaration);
-  // //     SemaRef.getCxxSema().LookupQualifiedName(UnaryR, ClsDcl, false);
-  // //     for (clang::NamedDecl *ND : UnaryR.asUnresolvedSet()) {
-  // //       if (!ND->isCXXClassMember())
-  // //         continue;
-
-  // //       if (clang::CXXMethodDecl *MD
-  // //                 = dyn_cast_or_null<clang::CXXMethodDecl>(ND->getAsFunction())) {
-  // //         if (!MD->isOverloadedOperator())
-  // //           continue;
-  // //         if (MD->getOverloadedOperator() == UnaryOpKind) {
-  // //           if (OpInfo->isUnary()) {
-  // //             if (MD->getNumParams() == 0)
-  // //               addIfNotDuplicate(R, MD);
-  // //           } else {
-  // //             addIfNotDuplicate(R, MD);
-  // //           }
-  // //         }
-  // //       }
-  // //     }
-  // //   } else {
-  //     // auto UnaryOps = TD->lookup(DN);
-  //     // for (clang::NamedDecl *ND : UnaryOps) {
-  //     //   if (!ND->isCXXClassMember())
-  //     //     continue;
-
-  //     //   if (clang::CXXMethodDecl *MD
-  //     //           = dyn_cast_or_null<clang::CXXMethodDecl>(ND->getAsFunction())) {
-  //     //     if (!MD->isOverloadedOperator())
-  //     //       continue;
-  //     //     if (MD->getOverloadedOperator() == UnaryOpKind) {
-  //     //       if (OpInfo->isUnary()) {
-  //     //         if (MD->getNumParams() == 0)
-  //     //           addIfNotDuplicate(R, MD);
-  //     //       } else {
-  //     //         addIfNotDuplicate(R, MD);
-  //     //       }
-  //     //     }
-  //     //   }
-  //     // }
-  //   // }
-
-  // //   clang::DeclarationName DN2 = Context.CxxAST.DeclarationNames
-  // //                                             .getCXXOperatorName(BinaryOpKind);
-  // //   if (ClsDcl) {
-  // //     clang::LookupResult BinR(SemaRef.getCxxSema(), {DN2, Ret->getExprLoc()},
-  // //                             clang::Sema::LookupMemberName,
-  // //                             clang::Sema::NotForRedeclaration);
-  // //     SemaRef.getCxxSema().LookupQualifiedName(BinR, ClsDcl, false);
-
-  // //     // auto BinaryOps = TD->lookup(DN2);
-  // //     R.setLookupNameInfo(clang::DeclarationNameInfo(DN, Ret->getExprLoc()));
-  // //     for (clang::NamedDecl *ND : BinR.asUnresolvedSet()) {
-  // //       if (!ND->isCXXClassMember())
-  // //         continue;
-
-  // //       if (clang::CXXMethodDecl *MD
-  // //                 = dyn_cast_or_null<clang::CXXMethodDecl>(ND->getAsFunction())) {
-  // //         if (!MD->isOverloadedOperator())
-  // //           continue;
-  // //         if (MD->getOverloadedOperator() == BinaryOpKind)
-  // //           if (OpInfo->isBinary()) {
-  // //             if (MD->getNumParams() == 1) {
-  // //             addIfNotDuplicate(R, MD);
-  // //           }
-  // //         }
-  // //       }
-  // //     }
-  // //   } else {
-  // //     auto UnaryOps = TD->lookup(DN);
-  // //     for (clang::NamedDecl *ND : UnaryOps) {
-  // //       if (!ND->isCXXClassMember())
-  // //         continue;
-
-  // //       if (clang::CXXMethodDecl *MD
-  // //                 = dyn_cast_or_null<clang::CXXMethodDecl>(ND->getAsFunction())) {
-  // //         if (!MD->isOverloadedOperator())
-  // //           continue;
-  // //         if (MD->getOverloadedOperator() == UnaryOpKind) {
-  // //           if (OpInfo->isUnary()) {
-  // //             if (MD->getNumParams() == 0)
-  // //               addIfNotDuplicate(R, MD);
-  // //           } else {
-  // //             addIfNotDuplicate(R, MD);
-  // //           }
-  // //         }
-  // //       }
-  // //     }
-  // //   }
-
-  // //   if (R.empty()) {
-  // //     unsigned DiagID =
-  // //       SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
-  // //                                     "expected operator but did not find it");
-  // //     SemaRef.Diags.Report(E->getExprLoc(), DiagID);
-  // //     return nullptr;
-  // //   }
-  // // }
-  // // If we didnt't find any operators then default to searching within
-  // // the current TagDecl context.
-  // if (R.empty()) {
-  //   if (ClsDcl) {
-  //     SemaRef.getCxxSema().LookupQualifiedName(R, ClsDcl, false);
-  //     for(auto D : R.asUnresolvedSet()) {
-  //       R.addDecl(D, D->getAccess());
-  //     }
-  //   } else {
-  //     auto Members = TD->lookup(MemberName);
-  //     for(auto D : Members) {
-  //       R.addDecl(D, D->getAccess());
-  //     }
-  //   }
-
+  clang::DeclarationName MemberName = E->getMember();
+  clang::DeclarationNameInfo DNI(MemberName, Ret->getExprLoc());
+  clang::LookupResult R(SemaRef.getCxxSema(), DNI,
+                        clang::Sema::LookupMemberName,
+                        clang::Sema::NotForRedeclaration);
+  // if (ClsDcl) {
+    // SemaRef.getCxxSema().LookupQualifiedName(R, ClsDcl, false);
+    // for(auto D : R.asUnresolvedSet()) {
+    //   R.addDecl(D, D->getAccess());
+    // }
+  // } else {
+  auto Members = TD->lookup(MemberName);
+  for(auto D : Members) {
+    R.addDecl(D, D->getAccess());
+  }
   // }
 
-  // R.resolveKind();
-  // switch (R.getResultKind()) {
-  // case clang::LookupResult::FoundOverloaded: {
-  //   clang::SourceLocation Loc = Ret->getExprLoc();
-  //   return buildUnresolvedCall(Ret, dyn_cast<clang::CXXRecordDecl>(TD), R, Loc);
-  // }
+  R.resolveKind();
+  switch (R.getResultKind()) {
+  case clang::LookupResult::FoundOverloaded: {
+    clang::SourceLocation Loc = Ret->getExprLoc();
+    return buildUnresolvedCall(Ret, dyn_cast<clang::CXXRecordDecl>(TD), R, Loc);
+  }
 
-  // case clang::LookupResult::Found:
-  //   return buildMemberAccessExpr(Ret, Ty, R.getFoundDecl(),
-  //                                dyn_cast<clang::CXXRecordDecl>(TD),
-  //                                R, Ret->getExprLoc(), NeedsArrow);
-  // case clang::LookupResult::NotFoundInCurrentInstantiation: {
-  // case clang::LookupResult::NotFound:
-  //   SemaRef.getCxxSema().Diags.Report(Ret->getExprLoc(),
-  //                         clang::diag::err_no_member)
-  //                         << DNI.getName().getAsString() << Ty;
-  //   return nullptr;
-  // }
-  // case clang::LookupResult::FoundUnresolvedValue:
-  //   // This logically can never happen.
-  //   llvm_unreachable("FoundUnresolvedValue can never happen because everything "
-  //                    "that is dependent should have aleady been evaluated.");
+  case clang::LookupResult::Found:
+    return buildMemberAccessExpr(Ret, Ty, R.getFoundDecl(),
+                                 dyn_cast<clang::CXXRecordDecl>(TD),
+                                 R, Ret->getExprLoc(), NeedsArrow);
+  case clang::LookupResult::NotFoundInCurrentInstantiation: {
+  case clang::LookupResult::NotFound:
+    SemaRef.getCxxSema().Diags.Report(Ret->getExprLoc(),
+                          clang::diag::err_no_member)
+                          << DNI.getName().getAsString() << Ty;
+    return nullptr;
+  }
+  case clang::LookupResult::FoundUnresolvedValue:
+    // This logically can never happen.
+    llvm_unreachable("FoundUnresolvedValue can never happen because everything "
+                     "that is dependent should have aleady been evaluated.");
 
-  // case clang::LookupResult::Ambiguous:
-  //   SemaRef.getCxxSema().DiagnoseAmbiguousLookup(R);
-  //   return nullptr;
-  // }
+  case clang::LookupResult::Ambiguous:
+    SemaRef.getCxxSema().DiagnoseAmbiguousLookup(R);
+    return nullptr;
+  }
 
-  // llvm_unreachable("Incomplete elaboration of lookup results.");
+  llvm_unreachable("Incomplete elaboration of lookup results.");
 }
 
 clang::Expr *DependentExprTransformer::transformCppxTemplateOrArrayExpr(
@@ -792,6 +679,39 @@ clang::Expr *DependentExprTransformer::buildUnresolvedCall(clang::Expr *LHS,
             LHS->getExprLoc());
   auto NNSWithLoc = SS.getWithLocInContext(Context.CxxAST);
   if (LHS->getType()->isTypeOfTypes()) {
+    clang::QualType CurThisTy = SemaRef.getCxxSema().getCurrentThisType();
+    if (!CurThisTy.isNull()) {
+      clang::QualType CurrentClass = CurThisTy->getPointeeType();
+      clang::QualType ThisPtrTy = SemaRef.getCxxSema().getCurrentThisType();
+      if (ThisPtrTy.isNull()) {
+          error(Loc) << "invalid this pointer type";
+          return nullptr;
+      }
+      assert (!CurrentClass.isNull() && "invalid pointee type.");
+      // clang::CXXScopeSpec SS;
+      if (auto SSExpr = dyn_cast<clang::CppxCXXScopeSpecExpr>(LHS)) {
+        SS = SSExpr->getScopeSpec();
+      }
+      auto ImpliciThisExpr = SemaRef.getCxxSema().BuildCXXThisExpr(Loc,
+                                                            ThisPtrTy, true);
+      if (SemaRef.getCxxSema().IsDerivedFrom(Loc, CurrentClass, TInfo->getType())
+          || CurrentClass == TInfo->getType()) {
+        // if (isa<clang::UnresolvedLookupExpr>(E) || isa<clang::DeclRefExpr>(E)) {
+          clang::UnqualifiedId UnqualId;
+          clang::IdentifierInfo *MemberId = Overloads.getLookupName().getAsIdentifierInfo();
+          UnqualId.setIdentifier(MemberId, Loc);
+          clang::tok::TokenKind AccessTokenKind = clang::tok::TokenKind::arrow;
+          clang::ExprResult Access =
+            SemaRef.getCxxSema().ActOnMemberAccessExpr(nullptr, ImpliciThisExpr,
+              Loc, AccessTokenKind, SS, clang::SourceLocation(), UnqualId, nullptr);
+          if (Access.isInvalid())
+            return nullptr;
+
+          return Access.get();
+        // }
+      }
+    }
+    // llvm_unreachable("Working on it.");
     return clang::UnresolvedLookupExpr::Create(
           Context.CxxAST, RD, NNSWithLoc,
           Overloads.getLookupNameInfo(), /*ADL=*/false,
@@ -829,20 +749,60 @@ clang::Expr *DependentExprTransformer::buildMemberAccessExpr(
     clang::CXXRecordDecl *RD, clang::LookupResult &Overloads,
     clang::SourceLocation Loc, bool IsArrow, bool UnresolvedUsing) {
   // If we are a type literal.
-  if (isa<clang::CppxTypeLiteral>(LHS)) {
+  if (isa<clang::CppxTypeLiteral>(LHS) || isa<clang::CppxCXXScopeSpecExpr>(LHS)) {
+    auto *TInfo = SemaRef.getTypeSourceInfoFromExpr(LHS, LHS->getExprLoc());
+    if (!TInfo)
+      return nullptr;
+    clang::CXXScopeSpec SS;
+    if (auto SSE = dyn_cast<clang::CppxCXXScopeSpecExpr>(LHS)) {
+      SS = SSE->getScopeSpec();
+    }
+    clang::IdentifierInfo *MemberId = Dcl->getIdentifier();
     // This is to handle type lookup.
     if (auto InnerTy = dyn_cast<clang::TypeDecl>(Dcl)) {
       return SemaRef.buildTypeExprFromTypeDecl(InnerTy, Loc);
     } else if (auto TemplateDcl = dyn_cast<clang::TemplateDecl>(Dcl)) {
         return SemaRef.buildTemplateType(TemplateDcl, Loc);
     } else if (auto FieldDcl = dyn_cast<clang::FieldDecl>(Dcl)) {
+      // Checking to see if we are derived from the current thing or not.
+      clang::SourceLocation Loc = LHS->getExprLoc();
+      clang::QualType CurThisTy = SemaRef.getCxxSema().getCurrentThisType();
+      if (!CurThisTy.isNull()) {
+
+        clang::QualType CurrentClass = CurThisTy->getPointeeType();
+        clang::QualType ThisPtrTy = SemaRef.getCxxSema().getCurrentThisType();
+        if (ThisPtrTy.isNull()) {
+          error(Loc) << "unable to get this expression from current context";
+          return nullptr;
+        }
+        assert (!CurrentClass.isNull() && "invalid pointee type.");
+        auto ImpliciThisExpr = SemaRef.getCxxSema().BuildCXXThisExpr(Loc,
+                                                              ThisPtrTy, true);
+        if (SemaRef.getCxxSema().IsDerivedFrom(Loc, CurrentClass, TInfo->getType())
+            || CurrentClass == TInfo->getType()) {
+          if (isa<clang::CXXMethodDecl>(Dcl) || isa<clang::FieldDecl>(Dcl)) {
+            clang::UnqualifiedId UnqualId;
+            UnqualId.setIdentifier(MemberId, Loc);
+            clang::tok::TokenKind AccessTokenKind = clang::tok::TokenKind::arrow;
+            clang::ExprResult Access =
+              SemaRef.getCxxSema().ActOnMemberAccessExpr(nullptr, ImpliciThisExpr,
+                                                         Loc, AccessTokenKind, SS,
+                                                         clang::SourceLocation(),
+                                                          UnqualId, nullptr);
+            if (Access.isInvalid())
+              return nullptr;
+
+            return Access.get();
+          }
+        }
+      }
       clang::QualType ResultType = FieldDcl->getType();
       clang::ExprValueKind ValueKind = SemaRef.getCxxSema()
               .getValueKindForDeclReference(ResultType, FieldDcl, Loc);
       clang::DeclRefExpr *DRE =
         SemaRef.getCxxSema().BuildDeclRefExpr(FieldDcl, ResultType, ValueKind,
                                               Overloads.getLookupNameInfo(),
-                                              clang::NestedNameSpecifierLoc(),
+                                              SS.getWithLocInContext(SemaRef.getCxxAST()),
                                               FieldDcl, clang::SourceLocation(),
                                               nullptr);
       return DRE;
@@ -877,6 +837,10 @@ clang::Expr *DependentExprTransformer::buildMemberAccessExpr(
       llvm_unreachable("Cannot access this through . operator.");
     }
   }
+}
+
+clang::DiagnosticBuilder DependentExprTransformer::error(clang::SourceLocation Loc) {
+  return SemaRef.getCxxSema().Diags.Report(Loc, clang::diag::err_blue_elaboration);
 }
 
 } // end namespace gold.

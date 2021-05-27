@@ -264,9 +264,9 @@ public:
 
   /// Returns true in the event of failure.
   bool extendScope(clang::Expr *ScopeExpr, clang::Expr *NextNameExpr);
-private:
+
   bool extendScope(clang::CppxCXXScopeSpecExpr *ScopeExpr, clang::Expr *NextNameExpr);
-public:
+
   // bool extendScope(clang::Expr *ScopeExpr, clang::IdentifierInfo *II,
   //                  clang::SourceLocation Loc);
 

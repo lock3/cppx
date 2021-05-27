@@ -724,26 +724,26 @@ C : type = {
 }
 
 
-TEST(BlueMemberAccess, PointerToAMemberOfAnotherClass_WithOverload) {
-  StringRef Code = R"BLUE(
-B : type = {
-  foo:() -> void = {
-  }
-  foo:(i:int)-> void = {
-  }
-}
-C : type = {
-  foo:(inout this) -> void = {
-    memberPtr : auto = ^B.foo;
-  }
-}
+// TEST(BlueMemberAccess, PointerToAMemberOfAnotherClass_WithOverload) {
+//   StringRef Code = R"BLUE(
+// B : type = {
+//   foo:() -> void = {
+//   }
+//   foo:(i:int)-> void = {
+//   }
+// }
+// C : type = {
+//   foo:(inout this) -> void = {
+//     memberPtr : auto = ^B.foo;
+//   }
+// }
 
-)BLUE";
-  // FIXME: I don't know how to write a member function pointer in blue/what
-  // they actually look like
-  auto ToMatch = varDecl(hasName("memberPtr"), hasType(asString("long long int")));
-  ASSERT_TRUE(matches(Code.str(), ToMatch));
-}
+// )BLUE";
+//   // FIXME: I don't know how to write a member function pointer in blue/what
+//   // they actually look like
+//   auto ToMatch = varDecl(hasName("memberPtr"), hasType(asString("long long int")));
+//   ASSERT_TRUE(matches(Code.str(), ToMatch));
+// }
 
 TEST(BlueMemberAccess, PointerToAMemberOfAnotherClass_Field) {
   StringRef Code = R"BLUE(
@@ -1215,16 +1215,3 @@ C : type = {
 )BLUE";
   BlueFailureTest(Code);
 }
-
-
-// --------------------- Dependent Name Cases ----------------------------------
-// TODO: Appending a name to a template (IE, template without any arguments)
-// TODO: Create a test for referencing a template by name only, without any
-//      template arguments.
-// TODO: Create the same tests for dependent names.
-// TODO: Test this inside of a template.
-// TODO: Test with multiple overloads as the result of a templated base class
-
-// ------------------- This I'm not sure about yet -----------------------------
-// TODO: Set up a reference to a template variable? This may not be possible if
-//      the variable template can't be a member yet.

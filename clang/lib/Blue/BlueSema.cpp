@@ -328,6 +328,7 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
 
     if (!Found.empty()) {
       for (auto *FoundDecl : Found) {
+
         // Skipping this particular declaration to avoid triggering
         // double early elaboration.
         // if (FoundDecl == NotThisOne)
@@ -409,18 +410,23 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
           // a specialization.
           using Specialization = clang::ClassTemplateSpecializationDecl;
           using Record = clang::CXXRecordDecl;
-          if (auto *CD = dyn_cast<Specialization>(FoundDecl->getCxx())) {
-            ND = CD->getSpecializedTemplate();
-          } else if (auto *RD = dyn_cast<Record>(FoundDecl->getCxx())) {
-            ND = RD->getDescribedClassTemplate();
-            // FIXME: if ND is null, this is not recoverable.
-            if (ND)
-              ND = cast<clang::NamedDecl>(ND->getCanonicalDecl());
-            else
+          clang::Decl *CurCxx = FoundDecl->getCxx();
+          if (auto *RD = dyn_cast<Record>(CurCxx)) {
+            if (RD->isInjectedClassName()) {
               ND = RD;
+            } else if (auto *CD = dyn_cast<Specialization>(RD)) {
+              ND = CD->getSpecializedTemplate();
+            } else {
+              ND = RD->getDescribedClassTemplate();
+              // FIXME: if ND is null, this is not recoverable.
+              if (ND)
+                ND = cast<clang::NamedDecl>(ND->getCanonicalDecl());
+              else
+                ND = RD;
+            }
           }
         } else {
-          // Getting the cannonical declaration so hopefully this will prevent
+          // Getting the canonical declaration so hopefully this will prevent
           // us from returning the same thing more then once.
           if (auto *RD = dyn_cast<clang::CXXRecordDecl>(FoundDecl->getCxx())) {
             ND = cast<clang::NamedDecl>(RD->getCanonicalDecl());

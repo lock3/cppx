@@ -9027,10 +9027,37 @@ TreeTransform<Derived>::TransformCppxTypeLiteral(CppxTypeLiteral *E) {
   TypeSourceInfo * T = TransformType(E->getValue());
   return new (SemaRef.Context) CppxTypeLiteral(K, T);
 }
+
 template<typename Derived>
 ExprResult
 TreeTransform<Derived>::TransformCppxCXXScopeSpecExpr(CppxCXXScopeSpecExpr *E) {
-  llvm_unreachable("CppxCXXScopeSpecExpr should never be part of template instantiation.");
+  // We have run into a problem where by the current referenced is missing?
+  if (!E->getLastExpr()) {
+    llvm_unreachable("invalid AST construction");
+  }
+  auto SSE = CppxCXXScopeSpecExpr::Create(SemaRef.Context, E->getExprLoc());
+  CXXScopeSpec *SS = new CXXScopeSpec();
+  // *SS = ;
+  SSE->setScopeSpec(SS);
+  auto NNSLoc = getDerived().TransformNestedNameSpecifierLoc(
+                E->getScopeSpec().getWithLocInContext(SemaRef.getASTContext()),
+            QualType(), nullptr);
+  SS->Adopt(NNSLoc);
+  auto LastExpr = getDerived().TransformExpr(E->getLastExpr()).get();
+  if (!LastExpr) {
+    return ExprError();
+  }
+  // TODO: I'm not sure if we need this or not?
+  // auto Ty = LastExpr->getType();
+  // if (!Ty->isKindType() && !Ty->isNamespaceType()) {
+  //   E->dump();
+  //   SemaRef.Diags.Report(E->getLocation(),
+  //                        clang::diag::err_blue_elaboration)
+  //                        << "invalid scope specifier";
+  //   return ExprError();
+  // }
+  SSE->setLastExpr(LastExpr);
+  return SSE;
 }
 
 
@@ -14345,6 +14372,8 @@ TreeTransform<Derived>::TransformCppxDependentMemberAccessExpr(
       // a NNS scope, or something like it.
       if (auto TyExpr = dyn_cast<clang::CppxTypeLiteral>(Base.get())) {
         BaseType = TyExpr->getValue()->getType();
+      } else if (auto SSE = dyn_cast<CppxCXXScopeSpecExpr>(Base.get())) {
+        BaseType = cast<CppxTypeLiteral>(SSE->getLastExpr())->getValue()->getType();
       } else {
         llvm_unreachable("Non-CppxTypeLiteral based type expression "
                          "not implemented yet.");

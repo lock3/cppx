@@ -246,7 +246,7 @@ C : [T:type] -> type = {
   :ns.B[T];
   i:int;
   foo: (this) -> void = {
-    ns.(B[T]).i = 4;
+    ns.B[T].i = 4;
   }
 }
 
@@ -435,7 +435,7 @@ C : [T:type] -> type = {
   i:int;
   foo:(inout this) -> void = {
     Base :[X:type] -> type = B[X];
-    this.Base.i = 4;
+    this.(Base).i = 4;
   }
 }
 foo:()->void = {
@@ -443,15 +443,7 @@ foo:()->void = {
   x.foo();
 }
 )BLUE";
-  auto ToMatch = memberExpr(
-    member(hasName("i")),
-    has(implicitCastExpr(
-      has(
-        cxxThisExpr(hasType(asString("struct C *")))
-      )
-    ))
-  );
-  ASSERT_TRUE(matches(Code.str(), ToMatch));
+  BlueFailureTest(Code);
 }
 
 TEST(BlueDependentMemberAccess, BaseClassThroughLocalAlias_InsideUnrelatedNamespace) {
@@ -546,46 +538,39 @@ foo:()->void = {
   x.foo();
 }
 )BLUE";
-  auto ToMatch = memberExpr(
-    member(hasName("i")),
-    has(implicitCastExpr(
-      has(
-        cxxThisExpr(hasType(asString("struct C<int> *")))
-      )
-    ))
-  );
-  ASSERT_TRUE(matches(Code.str(), ToMatch));
+  BlueFailureTest(Code);
 }
 
-TEST(BlueDependentMemberAccess, CallToOverload_InsideOfBaseClass) {
-  StringRef Code = R"BLUE(
-B: [T:type] -> type = {
-  foo:(this, i:int)->int = {
-    return 3;
-  }
+// FIXME: This is a problem that may need to be revisited in the future.
+// TEST(BlueDependentMemberAccess, CallToOverload_InsideOfBaseClass) {
+//   StringRef Code = R"BLUE(
+// B: [T:type] -> type = {
+//   foo:(this, i:int)->int = {
+//     return 3;
+//   }
 
-  foo:(this, f:float32)->float32 = {
-    return 3;
-  }
-}
+//   foo:(this, f:float32)->float32 = {
+//     return 3;
+//   }
+// }
 
-C : [T:type] -> type = {
-  : B[T];
-  i:int;
-  bar:(this) -> void = {
-    this.B[T].foo(1);
-  }
-}
-foo:()->void = {
-  x:C[int];
-  x.foo();
-}
-)BLUE";
-  auto ToMatch = callExpr(
-    callee(cxxMethodDecl(hasName("foo")))
-  );
-  ASSERT_TRUE(matches(Code.str(), ToMatch));
-}
+// C : [T:type] -> type = {
+//   : B[T];
+//   i:int;
+//   bar:(this) -> void = {
+//     this.B[T].foo(1);
+//   }
+// }
+// foo:()->void = {
+//   x:C[int];
+//   x.foo();
+// }
+// )BLUE";
+//   auto ToMatch = callExpr(
+//     callee(cxxMethodDecl(hasName("foo")))
+//   );
+//   ASSERT_TRUE(matches(Code.str(), ToMatch));
+// }
 
 TEST(BlueDependentMemberAccess, NestedNameSpecifier_Declaration) {
   StringRef Code = R"BLUE(
@@ -779,7 +764,6 @@ foo:()->void = {
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
-
 // TEST(BlueDependentMemberAccess, PointerToAMemberOfAnotherClass_WithOverload) {
 //   StringRef Code = R"BLUE(
 // B : type = {
@@ -793,7 +777,6 @@ foo:()->void = {
 //     memberPtr : auto = ^B.foo;
 //   }
 // }
-
 // )BLUE";
 //   // FIXME: I don't know how to write a member function pointer in blue/what
 //   // they actually look like
@@ -854,8 +837,8 @@ foo:()->void = {
 TEST(BlueDependentMemberAccess, TemplateArgument_ClassNameAsTemplateTemplateParameter) {
   StringRef Code = R"BLUE(
 
-A :[X:[T:type] ->type] ->type = {
-  Ty : type = X[T].IntegerType;
+A :[X:[T:type] ->type, OtherT:type] ->type = {
+  Ty : type = X[OtherT].X;
 }
 
 B : [T:type] -> type = {
@@ -867,7 +850,7 @@ C : [T:type] -> type = {
   X : type = int64;
   i:int;
   foo: (inout this) -> void = {
-    var:A[C].Ty;
+    var:A[C, int].Ty;
   }
 }
 foo:()->void = {
@@ -878,7 +861,7 @@ foo:()->void = {
   auto ToMatch =
     varDecl(
       hasName("var"),
-      hasType(asString("A<B>::Ty"))
+      hasType(asString("A<C, int>::Ty"))
     );
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
@@ -887,7 +870,7 @@ TEST(BlueDependentMemberAccess, ClassTemplate_PointerToMySelf) {
   StringRef Code = R"BLUE(
 
 C : [T:type] -> type = {
-  child : ^C = nullptr;
+  child : ^C = null;
 }
 
 foo:()->void = {
@@ -895,12 +878,10 @@ foo:()->void = {
 }
 
 )BLUE";
-// FIXME: I need to figure out that this is supposed to evaluate to as far as
-//        the textual type name.
   auto ToMatch =
-    varDecl(
-      hasName("var"),
-      hasType(asString("A<B>::Ty"))
+    fieldDecl(
+      hasName("child"),
+      hasType(asString("struct C<int> *"))
     );
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
@@ -936,7 +917,7 @@ foo:()->void = {
   auto ToMatch =
     varDecl(
       hasName("var"),
-      hasType(asString("A::Ty"))
+      hasType(asString("A<A2>::Ty"))
     );
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
@@ -1005,7 +986,7 @@ foo:()->void = {
     member(hasName("i")),
     has(implicitCastExpr(
       has(
-        cxxThisExpr(hasType(asString("struct C *")))
+        cxxThisExpr(hasType(asString("struct C<int> *")))
       )
     ))
   );
@@ -1038,7 +1019,7 @@ foo:()->void = {
     member(hasName("i")),
     has(implicitCastExpr(
       has(
-        cxxThisExpr(hasType(asString("struct C *")))
+        cxxThisExpr(hasType(asString("struct C<int> *")))
       )
     ))
   );
@@ -1073,7 +1054,7 @@ foo:()->void = {
     member(hasName("i")),
     has(implicitCastExpr(
       has(
-        cxxThisExpr(hasType(asString("struct C *")))
+        cxxThisExpr(hasType(asString("struct C<int> *")))
       )
     ))
   );

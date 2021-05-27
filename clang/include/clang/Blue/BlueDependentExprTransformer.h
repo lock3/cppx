@@ -72,6 +72,7 @@ public:
                                      clang::SourceLocation Loc,
                                      bool IsArrow,
                                      bool UnresolvedUsing = false);
+  clang::DiagnosticBuilder error(clang::SourceLocation Loc);
 
 };
 }
