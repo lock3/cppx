@@ -80,7 +80,7 @@ TEST(BlueClass, Access_PrivateMemberFunctions) {
   StringRef Code = R"(
 c : type = {
   private foo: (in this) -> int = {
-    return 4
+    return 4;
   }
 }
 )";
@@ -94,7 +94,7 @@ TEST(BlueClass, Access_ProtectedMemberFunctions) {
   StringRef Code = R"(
 c : type = {
   protected foo:() -> int={
-    return 4
+    return 4;
   }
 })";
   DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
@@ -107,7 +107,7 @@ TEST(BlueClass, Access_PublicMemberFunctions) {
   StringRef Code = R"(
 c : type = {
   public foo:(in this) -> int = {
-    return 4
+    return 4;
   }
 })";
   DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
@@ -135,7 +135,7 @@ TEST(BlueClass, Access_PrivateMemberFunctionTemplate) {
   StringRef Code = R"(
 c : type = {
   private foo: [T:type] -> (in this, i:T) -> int= {
-    return 4
+    return 4;
   }
 })";
   DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),

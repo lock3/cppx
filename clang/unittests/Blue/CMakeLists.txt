@@ -39,6 +39,7 @@ add_clang_unittest(BlueTests
   BlueAssignmentOpElab.cpp
   BlueASTMatchersTest.cpp
   BlueTypeElab.cpp
+  BlueBindingElab.cpp
   BlueBitwiseOpElab.cpp
   BlueBuiltinElabElab.cpp
   BlueClassElab.cpp

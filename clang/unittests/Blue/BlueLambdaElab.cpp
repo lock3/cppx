@@ -22,9 +22,26 @@ using namespace blue;
 TEST(BlueLambda, TrailingReturn) {
   StringRef Code = R"BLUE(
 main : () -> int = {
-  fn := lambda(x : int) -> int => {
+  fn := lambda:(x : int) -> int => {
      return x;
-  };
+  }
+
+  test := fn(42);
+}
+)BLUE";
+
+  DeclarationMatcher Test =
+    varDecl(hasName("test"), hasType(asString("int")),
+            hasDescendant(integerLiteral(equals(42))));
+  ASSERT_TRUE(matches(Code.str(), Test));
+}
+
+TEST(BlueLambda, TrailingReturnNoKW) {
+  StringRef Code = R"BLUE(
+main : () -> int = {
+  fn := :(x : int) -> int => {
+     return x;
+  }
 
   test := fn(42);
 }
@@ -39,9 +56,26 @@ main : () -> int = {
 TEST(BlueLambda, ImplicitReturn) {
   StringRef Code = R"BLUE(
 main : () -> int = {
-  fn := lambda(x : int) => {
+  fn := lambda:(x : int) => {
      return x;
-  };
+  }
+
+  test := fn(42);
+}
+)BLUE";
+
+  DeclarationMatcher Test =
+    varDecl(hasName("test"), hasType(asString("int")),
+            hasDescendant(integerLiteral(equals(42))));
+  ASSERT_TRUE(matches(Code.str(), Test));
+}
+
+TEST(BlueLambda, ImplicitReturnNoKW) {
+  StringRef Code = R"BLUE(
+main : () -> int = {
+  fn := :(x : int) => {
+     return x;
+  }
 
   test := fn(42);
 }

@@ -66,23 +66,40 @@ static inline void copyParamSpecs(DeclarationSyntax *S,
     delete[] Old;
 }
 
+static inline bool isCloseEnclosure(tok::TokenKind K) {
+  switch (K) {
+  case tok::RightParen:
+  case tok::RightBracket:
+  case tok::RightBrace:
+    return true;
+  default:
+    return false;
+  }
+}
+
+/// Builds the declarator list.
+static Syntax *makeDeclaratorList(SyntaxSeq &SS, Parser &P)
+{
+  // TODO: What if `SS` is empty? Recovery means skipping the entire
+  // declaration, probably.
+  assert(!SS.empty());
+
+  // Collapse singleton lists into simple declarators.
+  if (!isCloseEnclosure(P.getLookahead()) && SS.size() == 1)
+    return SS[0];
+
+  // if (P.InBody && P.getLookahead() == tok::RightBrace &&
+  //     SS.size() == 1) {
+  //   P.InBody = false;
+  //   return SS[0];
+  // }
+
+  // FIXME: find a way to maintain the token kind?
+  return new ListSyntax(AllocateSeq(SS), SS.size());
+}
+
 // Syntax productions
 
-Syntax *Parser::parseFile() {
-  Syntax *Decls = nullptr;
-
-  llvm::SmallVector<Syntax *, 16> SS;
-  if (!atEndOfFile())
-    Decls = parseDeclSequence(SS);
-
-  return new FileSyntax(Decls);
-}
-
-Syntax *Parser::parseDeclSequence(SyntaxSeq &SS) {
-  while (!atEndOfFile())
-    parseItem(*this, &Parser::parseDeclaration, SS);
-  return new SequenceSyntax(AllocateSeq(SS), SS.size());
-}
 
 template<typename Parse, typename Sequence>
 static Syntax *parseIntoVector(Sequence &Seq, Parse Fn) {
@@ -101,15 +118,6 @@ static inline bool atClosedBrace(Parser &P, unsigned BeginningBraceDepth) {
 static inline bool atClosingBrace(Parser &P, unsigned BeginningBraceDepth) {
   return P.BraceDepth == BeginningBraceDepth &&
     P.nextTokenIs(tok::RightBrace);
-}
-
-
-/// Parse a block-statement.
-///
-///   block-statement:
-///     block-expression
-Syntax *Parser::parseBlockStatement() {
-  return parseBraceEnclosed(&Parser::parseStatementSeq);
 }
 
 static inline bool isParameterSpec(tok::TokenKind K);
@@ -153,7 +161,24 @@ static bool startsDefinition(Parser &P, std::size_t La)
         || P.nthTokenIs(La, tok::ProtectedKeyword)) {
       return true;
     }
+
+    if (P.nthTokenIs(La, tok::UsingKeyword))
+      return true;
+
+    // Check for bindings.
+    if (P.nthTokenIs(La, tok::LeftParen)) {
+      ++La;
+      while (P.nthTokenIsNot(La, tok::RightParen)) {
+        if (P.nthTokenIs(La, tok::EndOfFile))
+          return false;
+
+        ++La;
+      }
+
+      ++La;
+    }
   }
+
   // Check for unnamed definitions.
   if (P.nthTokenIs(La, tok::Colon))
     return true;
@@ -205,6 +230,21 @@ bool startsDefinition(Parser &P)
   return startsDefinition(P, 0);
 }
 
+static inline bool isRepetitionKeyword(tok::TokenKind K) {
+  switch (K) {
+  case tok::ForKeyword:
+  case tok::WhileKeyword:
+  case tok::DoKeyword:
+    return true;
+  default:
+    return false;
+  }
+}
+
+static inline bool isAnonymousLambda(tok::TokenKind L1, tok::TokenKind L2) {
+  return L1 == tok::Colon && L2 == tok::LeftParen;
+}
+
 namespace
 {
   struct DescriptorClause
@@ -225,13 +265,14 @@ namespace
   {
     DescriptorClause DC;
     P.expectToken(tok::Colon);
-    if (P.nextTokenIs(tok::IsKeyword)) {
-      DC.Cons = P.parseConstraint();
-    } else if(P.nextTokenIsNot(tok::Equal)) {
-      DC.Type = P.parseDescriptor();
-      if (P.nextTokenIs(tok::IsKeyword))
-        DC.Cons = P.parseConstraint();
+    if(P.nextTokenIsNot(tok::Equal)) {
+      DC.Type = P.parsePrefixExpression();
+      if (P.nextTokenIs(tok::IsKeyword)) {
+        P.consumeToken();
+        DC.Cons = P.parsePrefixExpression();
+      }
     }
+
     return DC;
   }
 
@@ -240,11 +281,30 @@ namespace
     Syntax *Init = {};
   };
 
+  inline bool isComputationIntro(Parser &P) {
+    if (P.nextTokenIs(tok::LeftBrace))
+      return true;
+    if (P.nextTokenIs(tok::IfKeyword))
+      return true;
+    if (P.nextTokenIs(tok::SwitchKeyword))
+      return true;
+    if (isRepetitionKeyword(P.getLookahead()))
+      return true;
+    if (P.nextTokenIs(tok::LambdaKeyword))
+      return true;
+    if (isAnonymousLambda(P.getLookahead(), P.getLookahead(1)))
+      return true;
+    if (P.nextTokenIs(tok::LetKeyword))
+      return true;
+
+    return false;
+  }
+
   //   initializer-clause: 
   //     ; 
   //     = expression ; 
   //     = block-statement
-  InitializerClause parseInitializerClause(Parser &P)
+  InitializerClause parseInitializerClause(Parser &P, bool Parameter = false)
   {
     InitializerClause Clause;
     if (P.nextTokenIs(tok::Equal)) {
@@ -252,14 +312,16 @@ namespace
       P.expectToken(tok::Equal);
 
       if (P.nextTokenIs(tok::LeftBrace)) {
-        Clause.Init = P.parseBlockStatement();
+        Clause.Init = P.parseBlockExpression();
       } else if (P.nextTokenIs(tok::DefaultKeyword)
                  || P.nextTokenIs(tok::DeleteKeyword)) {
         Clause.Init = new LiteralSyntax(P.consumeToken());
         P.expectToken(tok::Semicolon);
       } else {
-        Clause.Init = P.parseExpression();
-        P.expectToken(tok::Semicolon);
+        bool RequiresSemicolon = !isComputationIntro(P) && !Parameter;
+        Clause.Init = P.parseComputationExpression();
+        if (RequiresSemicolon)
+          P.expectToken(tok::Semicolon);
       }
     } else {
       // FIXME: if the next token is `{`, consider hinting to include `=`
@@ -269,6 +331,37 @@ namespace
     return Clause;
   }
 } // namespace
+
+// Returns a list for `SS`.
+static Syntax *makeParameterList(Parser &P, SyntaxSeq &SS)
+{
+  // This only happens when an error occurred.
+  if (SS.empty())
+    return nullptr;
+
+  return new ListSyntax(AllocateSeq(SS), SS.size());
+}
+
+
+Syntax *Parser::parseBinding() {
+  Token Id = expectToken(tok::Identifier);
+  Syntax *Decl = new IdentifierSyntax(Id);
+
+  if (Token Op = matchToken(tok::IsKeyword)) {
+    Syntax *Cons = parsePrefixExpression();
+    return new InfixSyntax(Op, Decl, Cons);
+  }
+
+  return Decl;
+}
+
+Syntax *Parser::parseBindingList() {
+  llvm::SmallVector<Syntax *, 4> SS;
+  parseItem(*this, &Parser::parseBinding, SS);
+  while (matchToken(tok::Comma))
+    parseItem(*this, &Parser::parseBinding, SS);
+  return makeParameterList(*this, SS);
+}
 
 /// Parse a constraint.
 ///
@@ -284,23 +377,27 @@ Syntax *Parser::parseConstraint()
   return parsePattern();
 }
 
-/// Parse a type expression.
-///
-///   descriptor:
-///     prefix-expression
-///
-/// A descriptor specifies part of the signature of a declaration, including
-/// its template parameters, function parameters, array bounds, and type.
-Syntax *Parser::parseDescriptor()
-{
-  return parsePrefixExpression();
+Syntax *Parser::parseFile() {
+  Syntax *Decls = nullptr;
+
+  llvm::SmallVector<Syntax *, 16> SS;
+  if (!atEndOfFile())
+    Decls = parseDeclSequence(SS);
+
+  return new FileSyntax(Decls);
 }
 
+Syntax *Parser::parseDeclSequence(SyntaxSeq &SS) {
+  while (!atEndOfFile())
+    parseItem(*this, &Parser::parseDeclaration, SS);
+  return new SequenceSyntax(AllocateSeq(SS), SS.size());
+}
 
 /// Parse a declaration:
 ///
 ///   declaration:
-///     definition
+///     definition-declaration
+///     using-declaration
 Syntax *Parser::parseDeclaration() {
   Token Intro;
   Syntax *Pars = nullptr;
@@ -309,6 +406,7 @@ Syntax *Parser::parseDeclaration() {
     expectToken(tok::Semicolon);
     return Pars;
   }
+
   Pars = parseDefinition();
   if (!Pars)
     return nullptr;
@@ -319,26 +417,11 @@ Syntax *Parser::parseDeclaration() {
 
 /// Definition declaration:
 ///
-///   definition-declaration:
-///     declarator-list? type-clause initializer-clause 
+///   decl-specifier-seq_{opt} identifier descriptor-clause initializer-clause
 ///
-///   type-clause: 
-///     : type constraint? 
-///     : constraint? 
+///   decl-specifier-seq_{opt} identifier-list descriptor-clause ;
 ///
-///   type: 
-///     prefix-expression 
-///
-///   constraint:
-///     is pattern
-///
-///   initializer-clause: 
-///     ; 
-///     = expression ; 
-///     = block-statement
-///
-///   block:
-///     block-statement 
+///   ( binding-list ) : = expression ;
 Syntax *Parser::parseDefinition() {
   // Parse the declarator-list.
   // Checking for unary declaration syntax.
@@ -348,11 +431,21 @@ Syntax *Parser::parseDefinition() {
       || nextTokenIs(tok::ProtectedKeyword)) {
     AccessSpecifier = consumeToken();
   }
-  Syntax *Decl = nullptr;
-  if (nextTokenIsNot(tok::Colon)) {
-    Decl = parseDeclaratorList();
+
+  if (nextTokenIs(tok::LeftParen)) {
+    consumeToken();
+    Syntax *Bindings = parseBindingList();
+    expectToken(tok::RightParen);
+    expectToken(tok::Colon);
+    expectToken(tok::Equal);
+    Syntax *Init = parseExpression();
+    expectToken(tok::Semicolon);
+    return new DeclarationSyntax(Bindings, nullptr, nullptr, Init, AccessSpecifier);
   }
 
+  Syntax *Decl = nullptr;
+  if (nextTokenIsNot(tok::Colon))
+    Decl = parseDeclarator();
   DescriptorClause DC = parseDescriptorClause(*this);
   InitializerClause IC;
   if (nextTokenIsNot(tok::Semicolon))
@@ -362,98 +455,6 @@ Syntax *Parser::parseDefinition() {
 
   return new DeclarationSyntax(Decl, DC.Type, DC.Cons, IC.Init, AccessSpecifier);
 }
-
-static inline bool isCloseEnclosure(tok::TokenKind K) {
-  switch (K) {
-  case tok::RightParen:
-  case tok::RightBracket:
-  case tok::RightBrace:
-    return true;
-  default:
-    return false;
-  }
-}
-
-/// Builds the declarator list.
-static Syntax *makeDeclaratorList(SyntaxSeq &SS, Parser &P)
-{
-  // TODO: What if `SS` is empty? Recovery means skipping the entire
-  // declaration, probably.
-  assert(!SS.empty());
-
-  // Collapse singleton lists into simple declarators.
-  if (!isCloseEnclosure(P.getLookahead()) && SS.size() == 1)
-    return SS[0];
-
-  // if (P.InBody && P.getLookahead() == tok::RightBrace &&
-  //     SS.size() == 1) {
-  //   P.InBody = false;
-  //   return SS[0];
-  // }
-
-  // FIXME: find a way to maintain the token kind?
-  return new ListSyntax(AllocateSeq(SS), SS.size());
-}
-
-Syntax *Parser::parseStatementSeq() {
-  llvm::SmallVector<Syntax *, 4> SS;
-  do
-    parseItem(*this, &Parser::parseStatement, SS);
-  while (nextTokenIsNot(tok::RightBrace));
-
-  if (SS.size() == 1 && isa<ListSyntax>(SS.front()))
-    return SS.front();
-
-  return new ListSyntax(AllocateSeq(SS), SS.size());
-}
-
-
-
-/// Parse a statement.
-///
-///   statement:
-///     block-statement
-///     declaration-statement
-///     expression-statement
-Syntax *Parser::parseStatement()
-{
-  if (nextTokenIs(tok::LeftBrace))
-    return parseBlockStatement();
-
-  // This will need to be fixed to do look-a-head and correct scanning for
-  // declarations of the form x, y, z or x.y.z
-  if (startsDefinition(*this))
-    return parseDeclarationStatement();
-
-  return parseExpressionStatement();
-}
-
-/// Parse a declaration-statement.
-///
-///   declaration-statement:
-///     declaration
-///
-/// Not all declarations are allowed in all scopes. However, we don't
-/// really have a notion of scope attached to the parse, so we have to
-/// filter semantically.
-// Syntax *Parser::parseDeclarationStatement()
-Syntax *Parser::parseDeclarationStatement()
-{
-  return parseDeclaration();
-}
-
-/// Parse an expression-statement.
-///
-///   expression-statement:
-///     expression-list ;
-Syntax *Parser::parseExpressionStatement()
-{
-  Syntax *E = parseExpressionList();
-  if (!nextTokenIs(tok::RightBrace) && !PreviousToken.hasKind(tok::RightBrace))
-    expectToken(tok::Semicolon);
-  return E;
-}
-
 
 /// Parse an expression-list.
 ///
@@ -472,142 +473,195 @@ Syntax *Parser::parseExpressionList()
   return makeDeclaratorList(SS, *this);
 }
 
-/// Parse a declarator-list.
-///   declarator-list:
-///     declarator
-///     declartor-list , declarator
-///
-/// Technically, this allows the declaration of multiple functions having
-/// the same return type, but we can semantically limit declarators to just
-/// variables.
-Syntax *Parser::parseDeclaratorList()
-{
-  llvm::SmallVector<Syntax *, 4> SS;
-  do
-    parseItem(*this, &Parser::parseDeclarator, SS);
-  while (matchToken(tok::Comma));
-  return makeDeclaratorList(SS, *this);
-}
-
-/// Parse a declarator.
-///
-///   declarator:
-///     id-expression
-///
-/// This is a restriction on a more general grammar that allows function
-/// and/or array-like declarators.
-Syntax *Parser::parseDeclarator() {
-  Syntax *Ret = parseIdExpression();
-
-  // Consume and build the correct name specifier, this only applies for
-  // namespace name declarations.
-  // This declaration cannot have nested name qualififiers in the form of
-  // x.(y)z
-  while(nextTokenIs(tok::Dot)) {
-    Token DotTok = matchToken(tok::Dot);
-    Syntax *RHS = parseIdExpression();
-    Ret = new InfixSyntax(DotTok, Ret, RHS);
-  }
-
-  return Ret;
-}
-
-/// Parse a mapping descriptor.
-///
-///   mapping-descriptor:
-///     [ parameter-group ] prefix-expression
-///     ( parameter-group ) prefix-expression
-Syntax* Parser::parseMappingDescriptor()
-{
-  assert(nextTokenIs(tok::LeftParen) || nextTokenIs(tok::LeftBracket));
-  return parsePrefixExpression();
-}
-
-/// Parse an equal-initializer.
-///
-///   equal-initializer:
-///     = expression-statement
-Syntax *Parser::parseEqualInitializer() {
-  requireToken(tok::Equal);
-  return parseExpressionStatement();
-}
-
-/// Parse an equal-initializer.
-///
-///   brace-initializer:
-///     block-statement
-Syntax *Parser::parseBraceInitializer() {
-  return parseBlockStatement();
-}
-
 /// Parse an expression.
 ///
 ///   expression:
 ///     leave-expression 
 ///     expression where ( parameter-group )
 Syntax *Parser::parseExpression() {
-  Syntax *E0 = parseLeaveExpression();
-  while (Token Op = matchToken(tok::WhereKeyword)) {
-    // Syntax* E1 = parseParenEnclosed(&Parser::parse_parameter_group);
-    Syntax *E1 = nullptr;
-    E0 = new InfixSyntax(Op, E0, E1);
-  }
+  if (startsDefinition(*this))
+    return parseDeclaration();
 
-  return E0;
+  return parseControlExpression();
+  // Syntax *E0 = parseLeaveExpression();
+  // while (Token Op = matchToken(tok::WhereKeyword)) {
+  //   // Syntax* E1 = parseParenEnclosed(&Parser::parse_parameter_group);
+  //   Syntax *E1 = nullptr;
+  //   E0 = new InfixSyntax(Op, E0, E1);
+  // }
+
+  // return E0;
 }
 
-/// Parse a leave-expression.
-///
-///   leave-expression:
-///     control-expression
-///     return control-expression
-///     throw control-expression
-Syntax *Parser::parseLeaveExpression()
-{
+Syntax *Parser::parseControlExpression() {
   switch (getLookahead()) {
   case tok::ReturnKeyword:
   case tok::ThrowKeyword: {
     Token KW = consumeToken();
-    Syntax *S = parseControlExpression();
+    Syntax *S = parseComputationExpression();
+    expectToken(tok::Semicolon);
     return new PrefixSyntax(KW, S);
   }
   default:
     break;
   }
 
-  return parseControlExpression();
+  return parseComputationExpression();
 }
 
-/// Parse a control-expression.
-///
-///   control-expression:
-///     assignment-expression
-///     conditional-expression
-///     case-expression
-///     loop-expression
-///     lambda-expression
-///     let-expression
-Syntax *Parser::parseControlExpression()
-{
-  switch (getLookahead()) {
-  case tok::IfKeyword:
+/// computation-expression:
+///         assignment-expression
+///         conditional-expression
+///         selection-expression
+///         repetition-expression
+///         lambda-expression
+///         let-expression
+///         block-expression
+Syntax *Parser::parseComputationExpression() {
+  if (nextTokenIs(tok::LeftBrace))
+    return parseBlockExpression();
+  if (nextTokenIs(tok::IfKeyword))
     return parseConditionalExpression();
-  case tok::CaseKeyword:
-  case tok::SwitchKeyword:
-    return parseMatchExpression();
-  case tok::ForKeyword:
-  case tok::WhileKeyword:
-  case tok::DoKeyword:
-    return parseLoopExpression();
-  case tok::LambdaKeyword:
+  if (nextTokenIs(tok::SwitchKeyword))
+    return parseSelectionExpression();
+  if (isRepetitionKeyword(getLookahead()))
+    return parseRepetitionExpression();
+  if (nextTokenIs(tok::LambdaKeyword))
     return parseLambdaExpression();
-  case tok::LetKeyword:
+  if (isAnonymousLambda(getLookahead(), getLookahead(1)))
+    return parseLambdaExpression();
+  if (nextTokenIs(tok::LetKeyword))
     return parseLetExpression();
-  default:
-    break;
-  }
+  // TODO: parse anonymous let parameter
 
   return parseAssignmentExpression();
+}
+
+Syntax *Parser::parseRepetitionExpression() {
+  switch (getLookahead()) {
+  case tok::ForKeyword:
+    return parseForExpression();
+  case tok::WhileKeyword:
+    return parseWhileExpression();
+  case tok::DoKeyword:
+    return parseDoExpression();
+  default:
+    llvm_unreachable("invalid repetition expression");
+  }
+}
+
+/// Parse a for loop.
+///
+///   loop-expression:
+///     for ( declarator descriptor-clause in expression ) block-expression
+///
+/// The declaration in the parameter list is similar to normal parameters
+/// except that the `=` is replaced by `in`.
+///
+/// TODO: Can we generalize the syntax for multiple parameters? What would
+/// it mean? There are a few options (zip vs. cross). Note that these
+/// don't group like other parameters.
+Syntax *Parser::parseForExpression()
+{
+  // FIXME: differentiate two types of for expressions.
+  return parseTraditionalForExpression();
+}
+
+Syntax *Parser::parseRangeForExpression() {
+  Token Ctrl = requireToken(tok::ForKeyword);
+  expectToken(tok::LeftParen);
+  Syntax *Id = parseIdExpression();
+  DescriptorClause DC = parseDescriptorClause(*this);
+  expectToken(tok::InKeyword);
+  Syntax *Init = parseExpression();
+  Syntax *Decl = new DeclarationSyntax(Id, DC.Type, DC.Cons, Init);
+  expectToken(tok::RightParen);
+  Syntax *Body = parseBlockExpression();
+  return new ControlSyntax(Ctrl, Decl, Body);
+}
+
+Syntax *Parser::parseTraditionalForExpression() {
+  Token Keyword = requireToken(tok::ForKeyword);
+  expectToken(tok::LeftParen);
+
+  Syntax *Decl = nullptr;
+  if (!nextTokenIs(tok::Semicolon))
+    Decl = parseDeclaration();
+  if (nextTokenIs(tok::Semicolon))
+    consumeToken();
+
+  Syntax *Condition = nullptr;
+  if (!nextTokenIs(tok::Semicolon))
+    Condition = parseEqualityExpression();
+
+  expectToken(tok::Semicolon);
+
+  Syntax *Increment = nullptr;
+  if (!nextTokenIs(tok::RightParen))
+    Increment = parseAssignmentExpression();
+  expectToken(tok::RightParen);
+
+  Syntax *Head = new TripleSyntax(Decl, Condition, Increment);
+  Syntax *Body = parseBlockExpression();
+  return new ControlSyntax(Keyword, Head, Body);
+}
+
+///   loop-expression:
+///     while ( expression ) block-expression
+Syntax *Parser::parseWhileExpression()
+{
+  Token ctrl = requireToken(tok::WhileKeyword);
+  expectToken(tok::LeftParen);
+  Syntax* s0 = parseExpression();
+  expectToken(tok::RightParen);
+  Syntax* s1 = parseBlockExpression();
+  return new ControlSyntax(ctrl, s0, s1);
+}
+
+/// Parse a do/do-while expression.
+///
+///   loop-expression:
+///     do block-expression while ( condition )
+///     do block-expression
+///
+/// Note that the "head" of the do expression appears after the body
+/// of the loop (if it appears at all).
+Syntax *Parser::parseDoExpression()
+{
+  Token Ctrl = requireToken(tok::DoKeyword);
+  Syntax *S1 = parseBlockExpression();
+  Syntax *S0 = nullptr;
+
+  if (nextTokenIs(tok::Semicolon))
+    consumeToken();
+
+  if (matchToken(tok::WhileKeyword)) {
+    expectToken(tok::LeftParen);
+    S0 = parseComputationExpression();
+    expectToken(tok::RightParen);
+  } else {
+    Diags.Report(getInputLocation(), clang::diag::err_expected) <<
+      getSpelling(tok::WhileKeyword);
+    // a do-while in our do-while parsing algorithm !
+    do
+      consumeToken();
+    while (nextTokenIsNot(tok::Semicolon));
+    expectToken(tok::Semicolon);
+  }
+
+  return new ControlSyntax(Ctrl, S0, S1);
+}
+
+/// Parse a let expression.
+///
+///   let-expression:
+///     let ( parameter-group ) block-or-expression
+Syntax *Parser::parseLetExpression()
+{
+  Token Ctrl = requireToken(tok::LetKeyword);
+  Syntax *Head = parseParenEnclosed(&Parser::parseParameterGroup);
+  Syntax *Body = parseBlockExpression();
+  return new ControlSyntax(Ctrl, Head, Body);
 }
 
 static bool isOpenToken(tok::TokenKind K)
@@ -654,41 +708,87 @@ static std::size_t findMatched(Parser &P,
   return la;
 }
 
-/// Parse a conditional-expression.
-///
-///   conditional-expression:
-///     if ( expression ) block-expression
-///     if ( expression ) block-expression else block-expression
-Syntax *Parser::parseConditionalExpression()
+// Returns true if the current sequnce of tokens a capture block.
+static bool isCapture(Parser &P)
 {
-  Token Ctrl = requireToken(tok::IfKeyword);
-  expectToken(tok::LeftParen);
-  Syntax *S0 = parseExpression();
-  expectToken(tok::RightParen);
-  Syntax *S1 = parseStatement();
-
-  // Match the else part. Turn the body into an application.
-  if (matchToken(tok::ElseKeyword)) {
-    Syntax *S2 = parseStatement();
-    S1 = new PairSyntax(S1, S2);
-  } else {
-    S1 = new PairSyntax(S1, nullptr);
+  assert(P.nextTokenIs(tok::LeftBrace));
+  std::size_t La = findMatched(P, tok::LeftBrace, tok::RightBrace);
+  switch (P.getLookahead(La + 1)) {
+  case tok::LeftParen:
+  case tok::LeftBracket:
+  case tok::IsKeyword:
+  case tok::EqualGreater:
+    return true;
+  default:
+    break;
   }
 
-  return new ControlSyntax(Ctrl, S0, S1);
+  return false;
 }
 
-/// Parse a match-expression.
+/// Parse a lambda-expression.
 ///
-///   match-expression:
-///     case ( expression ) case-list
-///     switch ( expression ) case-list
-Syntax *Parser::parseMatchExpression()
+///   lambda-expression:
+///     lambda capture? mapping-descriptor constraint? => block-expression
+///     lambda block-expression
+///
+/// The capture, descriptor, and constraint comprise the head and are
+/// stored in a triple.
+Syntax *Parser::parseLambdaExpression()
 {
+  if (nextTokenIs(tok::LambdaKeyword))
+    consumeToken();
+  Token Ctrl = expectToken(tok::Colon);
+
+  Syntax *Cap = nullptr;
+  if (nextTokenIs(tok::LeftBrace))
+  {
+    if (!isCapture(*this)) {
+      Syntax *Body = parseBlockExpression();
+      return new ControlSyntax(Ctrl, nullptr, Body);
+    }
+
+    Cap = parseCapture();
+  }
+
+  Syntax *Desc = nullptr;
+  if (nextTokenIs(tok::LeftParen)) {
+    consumeToken();
+    Desc = parseParameterList();
+    expectToken(tok::RightParen);
+  }
+
+  Syntax *TrailingReturn = nullptr;
+  if (nextTokenIs(tok::MinusGreater)) {
+    consumeToken();
+    TrailingReturn = parsePrefixExpression();
+  }
+
+  Syntax *Cons = nullptr;
+  if (nextTokenIs(tok::IsKeyword))
+    Cons = parseConstraint();
+
+  expectToken(tok::EqualGreater);
+  Syntax *Body = parseBlockExpression();
+
+  Syntax *Head = new QuadrupleSyntax(Cap, Desc, Cons, TrailingReturn);
+  return new ControlSyntax(Ctrl, Head, Body);
+}
+
+/// Parse a lambda capture.
+///
+///   capture:
+///     block-statement
+Syntax* Parser::parseCapture()
+{
+  return parseBlockExpression();
+}
+
+Syntax *Parser::parseSelectionExpression() {
   assert(nextTokenIs(tok::CaseKeyword) || nextTokenIs(tok::SwitchKeyword));
   Token Ctrl = consumeToken();
   expectToken(tok::LeftParen);
-  Syntax *S0 = parseExpression();
+  Syntax *S0 = parseComputationExpression();
   expectToken(tok::RightParen);
   Syntax *S1 = parseCaseList();
   return new ControlSyntax(Ctrl, S0, S1);
@@ -747,352 +847,44 @@ Syntax *Parser::parsePattern()
   return parsePrefixExpression();
 }
 
-/// Parse a loop expression.
+/// Parse a conditional-expression.
 ///
-///   loop-expression:
-///     for ( declarator type-clause in expression ) block-expression
-///     while ( expression ) block-expression
-///     do block-expression while ( condition )
-///     do block-expression
-Syntax *Parser::parseLoopExpression()
+///   conditional-expression:
+///     if ( expression ) block-expression
+///     if ( expression ) block-expression else block-expression
+Syntax *Parser::parseConditionalExpression()
 {
-  switch (getLookahead()) {
-  case tok::ForKeyword:
-    return parseForExpression();
-  case tok::WhileKeyword:
-    return parseWhileExpression();
-  case tok::DoKeyword:
-    return parseDoExpression();
-  default:
-    break;
-  }
-  assert(false);
-}
-
-/// Parse a for loop.
-///
-///   loop-expression:
-///     for ( declarator descriptor-clause in expression ) block-expression
-///
-/// The declaration in the parameter list is similar to normal parameters
-/// except that the `=` is replaced by `in`.
-///
-/// TODO: Can we generalize the syntax for multiple parameters? What would
-/// it mean? There are a few options (zip vs. cross). Note that these
-/// don't group like other parameters.
-Syntax *Parser::parseForExpression()
-{
-  // FIXME: differentiate two types of for expressions.
-  return parseTraditionalForExpression();
-}
-
-Syntax *Parser::parseRangeForExpression() {
-  Token ctrl = requireToken(tok::ForKeyword);
+  Token Ctrl = requireToken(tok::IfKeyword);
   expectToken(tok::LeftParen);
-  Syntax* id = parseDeclarator();
-  DescriptorClause dc = parseDescriptorClause(*this);
-  expectToken(tok::InKeyword);
-  Syntax* init = parseExpression();
-  Syntax* decl = new DeclarationSyntax(id, dc.Type, dc.Cons, init);
+  Syntax *S0 = parseComputationExpression();
   expectToken(tok::RightParen);
-  Syntax* body = parseBlockExpression();
-  return new ControlSyntax(ctrl, decl, body);
-}
+  Syntax *S1 = parseBlockExpression();
 
-Syntax *Parser::parseTraditionalForExpression() {
-  Token Keyword = requireToken(tok::ForKeyword);
-  expectToken(tok::LeftParen);
-
-  Syntax *Decl = nullptr;
-  if (!nextTokenIs(tok::Semicolon))
-    Decl = parseDeclaration();
-  if (nextTokenIs(tok::Semicolon))
-    consumeToken();
-
-  Syntax *Condition = nullptr;
-  if (!nextTokenIs(tok::Semicolon))
-    Condition = parseEqualityExpression();
-
-  expectToken(tok::Semicolon);
-
-  Syntax *Increment = nullptr;
-  if (!nextTokenIs(tok::RightParen))
-    Increment = parseAssignmentExpression();
-  expectToken(tok::RightParen);
-
-  Syntax *Head = new TripleSyntax(Decl, Condition, Increment);
-  Syntax *Body = parseBlockExpression();
-  return new ControlSyntax(Keyword, Head, Body);
-}
-
-///   loop-expression:
-///     while ( expression ) block-expression
-Syntax *Parser::parseWhileExpression()
-{
-  Token ctrl = requireToken(tok::WhileKeyword);
-  expectToken(tok::LeftParen);
-  Syntax* s0 = parseExpression();
-  expectToken(tok::RightParen);
-  Syntax* s1 = parseBlockExpression();
-  return new ControlSyntax(ctrl, s0, s1);
-}
-
-/// Parse a do/do-while expression.
-///
-///   loop-expression:
-///     do block-expression while ( condition )
-///     do block-expression
-///
-/// Note that the "head" of the do expression appears after the body
-/// of the loop (if it appears at all).
-Syntax *Parser::parseDoExpression()
-{
-  Token Ctrl = requireToken(tok::DoKeyword);
-  Syntax *S1 = parseStatement();
-  Syntax *S0 = nullptr;
-
-  if (matchToken(tok::WhileKeyword)) {
-    expectToken(tok::LeftParen);
-    S0 = parseExpression();
-    expectToken(tok::RightParen);
+  // Match the else part. Turn the body into an application.
+  if (matchToken(tok::ElseKeyword)) {
+    Syntax *S2 = parseBlockExpression();
+    S1 = new PairSyntax(S1, S2);
   } else {
-    Diags.Report(getInputLocation(), clang::diag::err_expected) <<
-      getSpelling(tok::WhileKeyword);
-    // a do-while in our do-while parsing algorithm !
-    do
-      consumeToken();
-    while (nextTokenIsNot(tok::Semicolon));
-    expectToken(tok::Semicolon);
+    S1 = new PairSyntax(S1, nullptr);
   }
 
   return new ControlSyntax(Ctrl, S0, S1);
 }
 
-// Returns true if the current sequnce of tokens a capture block.
-static bool isCapture(Parser &P)
-{
-  assert(P.nextTokenIs(tok::LeftBrace));
-  std::size_t La = findMatched(P, tok::LeftBrace, tok::RightBrace);
-  switch (P.getLookahead(La + 1)) {
-  case tok::LeftParen:
-  case tok::LeftBracket:
-  case tok::IsKeyword:
-  case tok::EqualGreater:
-    return true;
-  default:
-    break;
-  }
+Syntax *Parser::parseExpressionSeq() {
+  llvm::SmallVector<Syntax *, 4> SS;
+  do {
+    parseItem(*this, &Parser::parseExpression, SS);
+    // Non-declaration expressions will still have their semicolon unconsumed.
+    if (nextTokenIs(tok::Semicolon))
+      consumeToken();
+  } while (nextTokenIsNot(tok::RightBrace));
 
-  return false;
-}
-
-/// Parse a lambda-expression.
-///
-///   lambda-expression:
-///     lambda capture? mapping-descriptor constraint? => block-expression
-///     lambda block-expression
-///
-/// The capture, descriptor, and constraint comprise the head and are
-/// stored in a triple.
-Syntax *Parser::parseLambdaExpression()
-{
-  Token Ctrl = requireToken(tok::LambdaKeyword);
-
-  Syntax *Cap = nullptr;
-  if (nextTokenIs(tok::LeftBrace))
-  {
-    if (!isCapture(*this)) {
-      Syntax *Body = parseBlockExpression();
-      return new ControlSyntax(Ctrl, nullptr, Body);
-    }
-
-    Cap = parseCapture();
-  }
-
-  Syntax *Desc = nullptr;
-  if (nextTokenIs(tok::LeftParen) || nextTokenIs(tok::LeftBracket))
-    Desc = parseMappingDescriptor();
-
-  Syntax *TrailingReturn = nullptr;
-  if (nextTokenIs(tok::MinusGreater)) {
-    consumeToken();
-    TrailingReturn = parseDescriptor();
-  }
-
-  Syntax *Cons = nullptr;
-  if (nextTokenIs(tok::IsKeyword))
-    Cons = parseConstraint();
-
-  expectToken(tok::EqualGreater);
-  Syntax *Body = parseBlockExpression();
-
-  Syntax *Head = new QuadrupleSyntax(Cap, Desc, Cons, TrailingReturn);
-  return new ControlSyntax(Ctrl, Head, Body);
-}
-
-/// Parse a lambda capture.
-///
-///   capture:
-///     block-statement
-Syntax* Parser::parseCapture()
-{
-  return parseBlockStatement();
-}
-
-
-/// Parse a let expression.
-///
-///   let-expression:
-///     let ( parameter-group ) block-or-expression
-Syntax *Parser::parseLetExpression()
-{
-  Token Ctrl = requireToken(tok::LetKeyword);
-  Syntax *Head = parseParenEnclosed(&Parser::parseParameterGroup);
-  Syntax *Body = parseBlockExpression();
-  return new ControlSyntax(Ctrl, Head, Body);
-}
-
-/// Parse a block-expression.
-///
-///   block-expression:
-///     expression
-///     block
-Syntax *Parser::parseBlockExpression()
-{
-  InBody = true;
-  if (nextTokenIs(tok::LeftBrace))
-    return parseBlock();
-  return parseExpression();
-}
-
-/// Parse a block.
-///
-///   block:
-///     block-statement
-Syntax* Parser::parseBlock()
-{
-  return parseBlockStatement();
-}
-
-/// Returns a list defining the group.
-static Syntax *makeParameterGroup(Parser &P, SyntaxSeq &SS)
-{
-  // This only happens when there's an error and we can't accumulate
-  // a group. If we propagate errors, this shouldn't happen at all.
-  if (SS.empty())
-    return nullptr;
-
-  // Don't allocate groups if there's only one present.
-  if (SS.size() == 1)
-    return SS[0];
+  if (SS.size() == 1 && isa<ListSyntax>(SS.front()))
+    return SS.front();
 
   return new ListSyntax(AllocateSeq(SS), SS.size());
 }
-
-/// Parse an expression-group.
-///
-///   parameter-group:
-///     parameter-list
-///     parameter-group ; parameter-list
-///
-/// Groups are only created if multiple groups are present.
-Syntax *Parser::parseParameterGroup()
-{
-  llvm::SmallVector<Syntax *, 4> SS;
-  do
-    parseItem(*this, &Parser::parseParameterList, SS);
-  while (matchToken(tok::Semicolon));
-
-  return makeParameterGroup(*this, SS);
-}
-
-// Returns a list for `SS`.
-static Syntax *makeParameterList(Parser &P, SyntaxSeq &SS)
-{
-  // This only happens when an error occurred.
-  if (SS.empty())
-    return nullptr;
-
-  return new ListSyntax(AllocateSeq(SS), SS.size());
-}
-
-/// Parse an parameter-list.
-///
-///   parameter-list:
-///     parameter
-///     parameter-list , parameter
-///
-/// This always returns a list, even if there's a single element.
-Syntax *Parser::parseParameterList()
-{
-  llvm::SmallVector<Syntax *, 4> SS;
-  parseItem(*this, &Parser::parseParameter, SS);
-  while (matchToken(tok::Comma))
-    parseItem(*this, &Parser::parseParameter, SS);
-  return makeParameterList(*this, SS);
-}
-
-inline bool isParameterSpec(tok::TokenKind K) {
-  switch (K) {
-  case tok::OverrideKeyword:
-  case tok::FinalKeyword:
-  case tok::VirtualKeyword:
-  case tok::InKeyword:
-  case tok::InoutKeyword:
-  case tok::OutKeyword:
-  case tok::MoveKeyword:
-  case tok::ForwardKeyword:
-    return true;
-  default:
-    return false;
-  }
-}
-
-/// Parser a parameter:
-///
-///   parameter:
-///     parameter_specifier{opt} identifier : type
-///     parameter_specifier{opt} identifier : type = expression
-///     parameter_specifier{opt} identifier : = expression
-///     parameter_specifier{opt} : type
-///     parameter_specifier{opt} : type = expression
-///
-/// TODO: Can parameters have introducers?
-///
-/// TODO: Can paramters be packs (yes, but what's the syntax?).
-Syntax *Parser::parseParameter()
-{
-  llvm::SmallVector<Token, 4> ParamSpecs;
-  while(Token ParamSpec = matchTokenIf(isParameterSpec))
-    ParamSpecs.push_back(ParamSpec);
-
-  // Match unnamed variants.
-  if (matchToken(tok::Colon)) {
-    Syntax *Type = parseDescriptor();
-    Syntax *Init = nullptr;
-    if (matchToken(tok::Equal))
-      Init = parseExpression();
-    return new DeclarationSyntax(nullptr, Type, nullptr, Init);
-  }
-
-  // Match the identifier...
-  Syntax *Id = parseIdExpression();
-
-  // ... And optional declarative information
-  Syntax *Type = nullptr;
-  Syntax *Init = nullptr;
-  if (matchToken(tok::Colon)) {
-    if (nextTokenIsNot(tok::Equal))
-      Type = parseDescriptor();
-    if (matchToken(tok::Equal))
-      Init = parseExpression();
-  }
-
-  DeclarationSyntax *Ret = new DeclarationSyntax(Id, Type, nullptr, Init);
-  copyParamSpecs(Ret, ParamSpecs);
-  return Ret;
-}
-
 
 static bool isAssignmentOp(tok::TokenKind K)
 {
@@ -1101,9 +893,8 @@ static bool isAssignmentOp(tok::TokenKind K)
         || K == tok::PercentEqual || K == tok::Equal;
 }
 
-
 Syntax *Parser::parseAssignmentExpression() {
-  Syntax *E0 = parseImplicationExpression();
+  Syntax *E0 = parseLogicalOrExpression();
   while (Token Op = matchTokenIf(isAssignmentOp)) {
     Syntax *E1 = nullptr;
     if (nextTokenIs(tok::LambdaKeyword))
@@ -1113,22 +904,6 @@ Syntax *Parser::parseAssignmentExpression() {
 
     E0 = new InfixSyntax(Op, E0, E1);
   }
-  return E0;
-}
-
-/// Parse an implication.
-///
-///   implication-expression:
-///     logical-or-expression
-///     logical-or-expression -> implication-expression
-Syntax *Parser::parseImplicationExpression()
-{
-  Syntax *E0 = parseLogicalOrExpression();
-  if (Token Op = matchToken(tok::MinusGreater)) {
-    Syntax *E1 = parseImplicationExpression();
-    return new InfixSyntax(Op, E0, E1);
-  }
-
   return E0;
 }
 
@@ -1240,19 +1015,42 @@ static bool isMultiplicativeOperator(tok::TokenKind K)
 /// Parse a multiplicative expression.
 ///
 ///   multiplicative-expression:
-///     prefix-expression
-///     multiplicative-expression * prefix-expression
-///     multiplicative-expression / prefix-expression
-///     multiplicative-expression % prefix-expression
+///     cast-expression
+///     multiplicative-expression * cast-expression
+///     multiplicative-expression / cast-expression
+///     multiplicative-expression % cast-expression
 Syntax *Parser::parseMultiplicativeExpression() {
-  Syntax *E0 = parsePrefixExpression();
+  Syntax *E0 = parseCastExpression();
   while (Token Op = matchTokenIf(isMultiplicativeOperator)) {
+    Syntax *E1 = parseCastExpression();
+    E0 = new InfixSyntax(Op, E0, E1);
+  }
+
+  return E0;
+}
+
+static bool isCastOperator(tok::TokenKind K)
+{
+  return K == tok::IsKeyword ||
+    K == tok::AsKeyword;
+}
+
+/// Parse a cast expression.
+///
+/// cast-expression:
+///         prefix-expression
+///         prefix-expression is prefix-expression
+///         prefix-expression as prefix-expression
+Syntax *Parser::parseCastExpression() {
+  Syntax *E0 = parsePrefixExpression();
+  while (Token Op = matchTokenIf(isCastOperator)) {
     Syntax *E1 = parsePrefixExpression();
     E0 = new InfixSyntax(Op, E0, E1);
   }
 
   return E0;
 }
+
 
 // An lparen starts a prefix operator if the first few tokens start a
 // prefix operator, and the entire enclosure is not followed by something
@@ -1386,47 +1184,6 @@ Syntax *Parser::parsePrefixExpression() {
   return parsePostfixExpression();
 }
 
-/// Parse a template type constructor.
-///
-///   prefix-expression:
-///     [ parameter-group ] prefix-expression
-Syntax* Parser::parseTemplateConstructor()
-{
-  Syntax *Op = parseBracketEnclosed(&Parser::parseParameterGroup);
-  Syntax *Type = nullptr;
-  if (nextTokenIs(tok::MinusGreater)) {
-    consumeToken();
-    Type = parsePrefixExpression();
-  }
-  return new TemplateSyntax(Op, Type);
-}
-
-/// Parse an array type constructor.
-///
-///   prefix-expression:
-///     [ expression-list? ] prefix-expression
-Syntax* Parser::parseArrayConstructor()
-{
-  Syntax *Op = parseBracketEnclosed(&Parser::parseExpressionList);
-  Syntax *Type = parsePrefixExpression();
-  return new ArraySyntax(Op, Type);
-}
-
-/// Parse a function type constructor.
-///
-///   prefix-expression:
-///     ( parameter-group? ) -> prefix-expression
-Syntax* Parser::parseFunctionConstructor()
-{
-  Syntax *Op = parseParenEnclosed(&Parser::parseParameterGroup);
-  Syntax *Type = nullptr;
-  if (nextTokenIs(tok::MinusGreater)) {
-    consumeToken();
-    Type = parsePrefixExpression();
-  }
-  return new FunctionSyntax(Op, Type);
-}
-
 /// Parse a postfix-expression.
 ///
 ///   postfix-expression:
@@ -1435,6 +1192,8 @@ Syntax* Parser::parseFunctionConstructor()
 ///     postfix-expression [ expression-list? ]
 ///     postfix-expression . id-expression
 ///     postfix-expression ^
+///     postfix-expression is prefix-expression
+///     postfix-expression as prefix-expression
 Syntax *Parser::parsePostfixExpression() {
   Syntax *E0 = parsePrimaryExpression();
   while (true)
@@ -1442,12 +1201,10 @@ Syntax *Parser::parsePostfixExpression() {
     if (nextTokenIs(tok::LeftParen)) {
       Syntax *Args = parseParenEnclosed(&Parser::parseExpressionList);
       E0 = new CallSyntax(E0, Args);
-    }
-    else if (nextTokenIs(tok::LeftBracket)) {
+    } else if (nextTokenIs(tok::LeftBracket)) {
       Syntax *Args = parseBracketEnclosed(&Parser::parseExpressionList);
       E0 = new CallSyntax(E0, Args);
-    }
-    else if (Token Dot = matchToken(tok::Dot)) {
+    } else if (Token Dot = matchToken(tok::Dot)) {
       if (nextTokenIs(tok::LeftParen)) {
         Token LParen = matchToken(tok::LeftParen);
         Syntax *QualIdE = parsePrefixExpression();
@@ -1458,60 +1215,41 @@ Syntax *Parser::parsePostfixExpression() {
           Syntax *Member = parseIdExpression();
           E0 = new QualifiedMemberAccessSyntax(Dot, LParen, RParen, E0, QualIdE, Member);
         } else {
-          // we are missing the ending R Paren
           Diags.Report(getInputLocation(), clang::diag::err_expected) <<
                        getSpelling(tok::RightParen);
-          // Don't change the current expression
+          // Continue parsing the expression.
         }
       } else {
-
         Syntax *Member = parseIdExpression();
         E0 = new InfixSyntax(Dot, E0, Member);
       }
-    }
-    else if (Token Op = matchToken(tok::Caret)) {
+    } else if (Token Op = matchToken(tok::Caret)) {
       E0 = new PostfixSyntax(Op, E0);
-    }
-    else if (Token Inc = matchToken(tok::PlusPlus)) {
+    } else if (Token Inc = matchToken(tok::PlusPlus)) {
       E0 = new PostfixSyntax(Inc, E0);
-    }
-    else if (Token Dec = matchToken(tok::MinusMinus)) {
+    } else if (Token Dec = matchToken(tok::MinusMinus)) {
       E0 = new PostfixSyntax(Dec, E0);
-    } else
+    } else if (Token Is = matchToken(tok::IsKeyword)) {
+      E0 = new PostfixSyntax(Is, E0);
+    } else if (Token As = matchToken(tok::AsKeyword)) {
+      E0 = new PostfixSyntax(As, E0);
+    } else {
       break;
+    }
   }
 
   return E0;
 }
 
-Syntax *Parser::parseMemberExpression(Syntax *E) {
-  return nullptr;
-}
-
-Syntax *Parser::parseCallExpression(Syntax *E) {
-  return nullptr;
-}
-
-Syntax *Parser::parseIndexExpression(Syntax *E) {
-  return nullptr;
-}
-
-Syntax *Parser::parseBraceExpression(Syntax *E) {
-  return nullptr;
-}
-
-Syntax *Parser::parseApplicationExpression(Syntax *E) {
-  return nullptr;
-}
-
-Syntax *Parser::parsePointerExpression(Syntax *E) {
-  return nullptr;
-}
-
-Syntax *Parser::parsePointerExpression() {
-  return nullptr;
-}
-
+/// Parse a primary expression.
+///
+/// primary-expression:
+///         literal
+///         identifier
+///         ( expression-list )
+/// expression-list:
+///         expression
+///         expression-list , expression
 Syntax *Parser::parsePrimaryExpression() {
   switch (getLookahead()) {
   case tok::DecltypeKeyword:
@@ -1588,27 +1326,6 @@ Syntax *Parser::parsePrimaryExpression() {
   return nullptr;
 }
 
-static bool isBuiltinCompilerOperator(tok::TokenKind K) {
-  switch(K) {
-    case tok::DecltypeKeyword:
-    case tok::SizeOfKeyword:
-    case tok::AlignOfKeyword:
-    case tok::NoExceptKeyword:
-    case tok::TypeidKeyword:
-      return true;
-    default:
-      return false;
-  }
-}
-
-Syntax *Parser::parseBuiltinCompilerOp() {
-  assert(nthTokenConformsTo(0, isBuiltinCompilerOperator));
-  Token Op = matchTokenIf(isBuiltinCompilerOperator);
-  assert(Op && "Invalid call to parseBuiltinCompilerOp");
-  Syntax *Args = parseParenEnclosed(&Parser::parseExpressionList);
-  return new BuiltinCompilerOpSyntax(Op, Args);
-}
-
 static inline bool isOperator(tok::TokenKind K) {
   return K >= tok::Question && K <= tok::MinusMinus;
 }
@@ -1633,12 +1350,274 @@ Syntax *Parser::parseIdExpression() {
   return nullptr;
 }
 
+/// Returns a list defining the group.
+static Syntax *makeParameterGroup(Parser &P, SyntaxSeq &SS)
+{
+  // This only happens when there's an error and we can't accumulate
+  // a group. If we propagate errors, this shouldn't happen at all.
+  if (SS.empty())
+    return nullptr;
+
+  // Don't allocate groups if there's only one present.
+  if (SS.size() == 1)
+    return SS[0];
+
+  return new ListSyntax(AllocateSeq(SS), SS.size());
+}
+
+/// Parse an expression-group.
+///
+///   parameter-group:
+///     parameter-list
+///     parameter-group ; parameter-list
+///
+/// Groups are only created if multiple groups are present.
+Syntax *Parser::parseParameterGroup()
+{
+  llvm::SmallVector<Syntax *, 4> SS;
+  do
+    parseItem(*this, &Parser::parseParameterList, SS);
+  while (matchToken(tok::Semicolon));
+
+  return makeParameterGroup(*this, SS);
+}
+
+/// Parse an parameter-list.
+///
+///   parameter-list:
+///     parameter
+///     parameter-list , parameter
+///
+/// This always returns a list, even if there's a single element.
+Syntax *Parser::parseParameterList()
+{
+  llvm::SmallVector<Syntax *, 4> SS;
+  parseItem(*this, &Parser::parseParameter, SS);
+  while (matchToken(tok::Comma))
+    parseItem(*this, &Parser::parseParameter, SS);
+  return makeParameterList(*this, SS);
+}
+
+inline bool isParameterSpec(tok::TokenKind K) {
+  switch (K) {
+  case tok::OverrideKeyword:
+  case tok::FinalKeyword:
+  case tok::VirtualKeyword:
+  case tok::InKeyword:
+  case tok::InoutKeyword:
+  case tok::OutKeyword:
+  case tok::MoveKeyword:
+  case tok::ForwardKeyword:
+    return true;
+  default:
+    return false;
+  }
+}
+
+/// Parser a parameter:
+///
+///   parameter:
+///     parameter_specifier{opt} identifier : type
+///     parameter_specifier{opt} identifier : type = expression
+///     parameter_specifier{opt} identifier : = expression
+///     parameter_specifier{opt} : type
+///     parameter_specifier{opt} : type = expression
+///
+/// TODO: Can parameters have introducers?
+///
+/// TODO: Can paramters be packs (yes, but what's the syntax?).
+Syntax *Parser::parseParameter()
+{
+  llvm::SmallVector<Token, 4> ParamSpecs;
+  while(Token ParamSpec = matchTokenIf(isParameterSpec))
+    ParamSpecs.push_back(ParamSpec);
+
+  // Match unnamed variants.
+  if (nextTokenIs(tok::Colon)) {
+    DescriptorClause DC;
+    InitializerClause IC;
+
+    DC = parseDescriptorClause(*this);
+    if (nextTokenIs(tok::Equal))
+      IC = parseInitializerClause(*this, /*Parameter=*/true);
+    return new DeclarationSyntax(nullptr, DC.Type, nullptr, IC.Init);
+  }
+
+  // Match the identifier...
+  Syntax *Id = parseIdExpression();
+
+  // ... And optional declarative information
+  DescriptorClause DC;
+  InitializerClause IC;
+  if (nextTokenIs(tok::Colon)) {
+    DC = parseDescriptorClause(*this);
+    if (nextTokenIs(tok::Equal))
+      IC = parseInitializerClause(*this, /*Parameter=*/true);
+  }
+
+  DeclarationSyntax *Ret = new DeclarationSyntax(Id, DC.Type, DC.Cons, IC.Init);
+  copyParamSpecs(Ret, ParamSpecs);
+  return Ret;
+}
+
+/// Parse a block-expression.
+///
+///   block-expression:
+///     expression
+///     block
+Syntax *Parser::parseBlockExpression()
+{
+  InBody = true;
+  if (nextTokenIs(tok::LeftBrace))
+    return parseBlock();
+  return parseExpression();
+}
+
+/// Parse a block.
+///
+///   block:
+///     block-statement
+Syntax* Parser::parseBlock()
+{
+  return parseBraceEnclosed(&Parser::parseExpressionSeq);
+}
+
+/// Parse a template type constructor.
+///
+///   prefix-expression:
+///     [ parameter-group ] prefix-expression
+Syntax* Parser::parseTemplateConstructor()
+{
+  Syntax *Op = parseBracketEnclosed(&Parser::parseParameterGroup);
+  Syntax *Type = nullptr;
+  if (nextTokenIs(tok::MinusGreater)) {
+    consumeToken();
+    Type = parsePrefixExpression();
+  }
+  return new TemplateSyntax(Op, Type);
+}
+
+/// Parse an array type constructor.
+///
+///   prefix-expression:
+///     [ expression-list? ] prefix-expression
+Syntax* Parser::parseArrayConstructor()
+{
+  Syntax *Op = parseBracketEnclosed(&Parser::parseExpressionList);
+  Syntax *Type = parsePrefixExpression();
+  return new ArraySyntax(Op, Type);
+}
+
+/// Parse a function type constructor.
+///
+///   prefix-expression:
+///     ( parameter-group? ) -> prefix-expression
+Syntax* Parser::parseFunctionConstructor()
+{
+  Syntax *Op = parseParenEnclosed(&Parser::parseParameterGroup);
+  Syntax *Type = nullptr;
+  if (nextTokenIs(tok::MinusGreater)) {
+    consumeToken();
+    Type = parsePrefixExpression();
+  }
+  return new FunctionSyntax(Op, Type);
+}
+
+Syntax *Parser::parseMemberExpression(Syntax *E) {
+  return nullptr;
+}
+
+Syntax *Parser::parseCallExpression(Syntax *E) {
+  return nullptr;
+}
+
+Syntax *Parser::parseIndexExpression(Syntax *E) {
+  return nullptr;
+}
+
+Syntax *Parser::parseBraceExpression(Syntax *E) {
+  return nullptr;
+}
+
+Syntax *Parser::parseApplicationExpression(Syntax *E) {
+  return nullptr;
+}
+
+Syntax *Parser::parsePointerExpression(Syntax *E) {
+  return nullptr;
+}
+
+Syntax *Parser::parsePointerExpression() {
+  return nullptr;
+}
+
+static bool isBuiltinCompilerOperator(tok::TokenKind K) {
+  switch(K) {
+    case tok::DecltypeKeyword:
+    case tok::SizeOfKeyword:
+    case tok::AlignOfKeyword:
+    case tok::NoExceptKeyword:
+    case tok::TypeidKeyword:
+      return true;
+    default:
+      return false;
+  }
+}
+
+Syntax *Parser::parseBuiltinCompilerOp() {
+  assert(nthTokenConformsTo(0, isBuiltinCompilerOperator));
+  Token Op = matchTokenIf(isBuiltinCompilerOperator);
+  assert(Op && "Invalid call to parseBuiltinCompilerOp");
+  Syntax *Args = parseParenEnclosed(&Parser::parseExpressionList);
+  return new BuiltinCompilerOpSyntax(Op, Args);
+}
+
 Syntax *Parser::parseTupleExpression() {
   return nullptr;
 }
 
 Syntax *Parser::parseArrayExpression() {
   return nullptr;
+}
+
+/// Parse an equal-initializer.
+///
+///   equal-initializer:
+///     = block-expression
+Syntax *Parser::parseEqualInitializer() {
+  requireToken(tok::Equal);
+  return parseBlockExpression();
+}
+
+/// Parse an equal-initializer.
+///
+///   brace-initializer:
+///     block-expression
+Syntax *Parser::parseBraceInitializer() {
+  return parseBlockExpression();
+}
+
+/// Parse a declarator.
+///
+///   declarator:
+///     id-expression
+///
+/// This is a restriction on a more general grammar that allows function
+/// and/or array-like declarators.
+Syntax *Parser::parseDeclarator() {
+  Syntax *Ret = parseIdExpression();
+
+  // Consume and build the correct name specifier, this only applies for
+  // namespace name declarations.
+  // This declaration cannot have nested name qualififiers in the form of
+  // x.(y)z
+  while(nextTokenIs(tok::Dot)) {
+    Token DotTok = matchToken(tok::Dot);
+    Syntax *RHS = parseIdExpression();
+    Ret = new InfixSyntax(DotTok, Ret, RHS);
+  }
+
+  return Ret;
 }
 
 } // namespace blue

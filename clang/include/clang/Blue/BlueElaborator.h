@@ -83,6 +83,7 @@ public:
   clang::Decl *elaborateDecl(const Syntax *S);
   clang::Decl *elaborateDefDecl(const DeclarationSyntax *S);
   clang::Decl *elaboratePrefixDecl(const PrefixSyntax *S);
+  clang::Decl *elaborateBindingDecl(const Syntax *S);
 
   clang::Decl *elaborateDeclarationTyping(Declaration *D);
   void elaborateTemplateParameters(OptionalScopeRAII &TemplateScope,

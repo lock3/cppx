@@ -150,17 +150,23 @@ struct KarySyntax : Syntax
 
   /// The location that best indicates the best position of the term.
   clang::SourceLocation getLocation() const {
-    return Terms[0]->getLocation();
+    for (unsigned I = 0; I < N; ++I)
+      if (Terms[I])
+        return Terms[I]->getLocation();
+    return clang::SourceLocation();
   }
 
   /// The location of the beginning of the term.
   clang::SourceLocation getBeginLocation() const {
-    return Terms[0]->getLocation();
+    return getLocation();
   }
 
   /// The location of the end of the term.
   clang::SourceLocation getEndLocation() const {
-    return Terms[N-1]->getLocation();
+    for (unsigned I = N - 1; I > 0; --I)
+      if (Terms[I])
+        return Terms[I]->getLocation();
+    return clang::SourceLocation();
   }
 
   Syntax *Terms[N];
@@ -310,7 +316,10 @@ struct MultiarySyntax : Syntax
     if (NumTerms == 0)
       return clang::SourceLocation();
 
-    return Terms[0]->getLocation();
+    for (unsigned I = 0; I < NumTerms; ++I)
+      if (Terms[I])
+        return Terms[I]->getLocation();
+    return clang::SourceLocation();
   }
 
   /// The location of the end of the term.
