@@ -172,6 +172,7 @@ public:
 
   clang::Expr *elaborateCallExpression(const CallSyntax *S);
   clang::Expr *elaboratePrefixExpression(const PrefixSyntax *S);
+  clang::Expr *elaboratePrefixDotExpression(const PrefixSyntax *S);
   clang::Expr *elaboratePostfixExpression(const PostfixSyntax *S);
   clang::Expr *elaborateInfixExpression(const InfixSyntax *S);
   clang::Expr *elaborateControlExpression(const ControlSyntax *S);
