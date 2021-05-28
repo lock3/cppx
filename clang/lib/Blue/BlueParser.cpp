@@ -1252,6 +1252,16 @@ Syntax *Parser::parsePostfixExpression() {
 ///         expression-list , expression
 Syntax *Parser::parsePrimaryExpression() {
   switch (getLookahead()) {
+  case tok::Dot:{
+
+    Token DotTok = consumeToken();
+    // Syntax *E = parsePrefixExpression();
+    if (Token Id = expectToken(tok::Identifier)) {
+      Syntax *IdSyntax = new IdentifierSyntax(Id);
+      return new PrefixSyntax(DotTok, IdSyntax);
+    }
+    break;
+  }
   case tok::DecltypeKeyword:
   case tok::SizeOfKeyword:
   case tok::AlignOfKeyword:

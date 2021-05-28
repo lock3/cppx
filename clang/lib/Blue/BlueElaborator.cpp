@@ -433,6 +433,7 @@ static clang::Decl *handleNamespaceAliasDecl(Sema &SemaRef,
     Diags.Report(UsingLoc, DiagID);
     return nullptr;
   }
+  llvm_unreachable("not sure what should happen here");
 }
 
 
@@ -3794,8 +3795,7 @@ void Elaborator::elaborateFunctionDef(Declaration *D) {
 /// be returned from by the look up.
 static clang::Expr *BuildReferenceToDecl(Sema &SemaRef,
                                          clang::SourceLocation Loc,
-                                         clang::LookupResult &R,
-                                         bool IsKnownOverload = false);
+                                         clang::LookupResult &R);
 
 clang::Expr *buildIdExpr(Sema &SemaRef, llvm::StringRef Id,
                          clang::SourceLocation Loc) {
@@ -3838,7 +3838,7 @@ clang::Expr *buildIdExpr(Sema &SemaRef, llvm::StringRef Id,
                                                  R.end());
   }
   case clang::LookupResult::Found:
-    return BuildReferenceToDecl(SemaRef, Loc, R, false);
+    return BuildReferenceToDecl(SemaRef, Loc, R);
   case clang::LookupResult::NotFoundInCurrentInstantiation:
   case clang::LookupResult::NotFound: {
     SemaRef.getCxxSema().Diags.Report(Loc,
@@ -4012,6 +4012,11 @@ clang::Expr *Elaborator::elaborateCallExpression(const CallSyntax *S) {
 }
 
 clang::Expr *Elaborator::elaboratePrefixExpression(const PrefixSyntax *S) {
+  // This has to be handled differently then the other prefix expressions because
+  // this one modifies it's operand.
+  if (S->getOperation().hasKind(tok::Dot))
+    return elaboratePrefixDotExpression(S);
+
   auto Operand = elaborateExpression(S->getOperand());
   if (!Operand)
     return Operand;
@@ -4047,6 +4052,125 @@ clang::Expr *Elaborator::elaboratePrefixExpression(const PrefixSyntax *S) {
   }
 
   return CxxSema.BuildUnaryOp(/*scope*/nullptr, Loc, Op, Operand).get();
+}
+
+static clang::Expr *BuildGloballyQualifiedReferenceToDecl(
+  Sema &SemaRef, clang::CppxCXXScopeSpecExpr *SSE, clang::SourceLocation Loc,
+  clang::LookupResult &R)
+{
+
+  clang::SourceLocation EmptyLoc;
+
+  clang::ASTContext &CxxAST = SemaRef.getCxxAST();
+  const clang::DeclarationNameInfo &DNI = R.getLookupNameInfo();
+  // building the global scope spec.
+  // There are much fewer things available within a globally qualified
+  // expression, we only have to handle declarations that can occur
+  // within the global scope of a program, anything else is wrong.
+  if (clang::ValueDecl *VD = R.getAsSingle<clang::ValueDecl>()) {
+    clang::CXXScopeSpec SS = SSE->getScopeSpec();
+    auto NNSL = SS.getWithLocInContext(CxxAST);
+    if(isa<clang::FunctionDecl>(VD)) {
+      return clang::UnresolvedLookupExpr::Create(SemaRef.getCxxAST(),
+                                                 R.getNamingClass(),
+                                                 NNSL, DNI,
+                                                 /*ADL=*/false,
+                                                 R.isOverloadedResult(),
+                                                 R.begin(), R.end());
+    }
+
+    if (isa<clang::VarDecl>(VD)) {
+        // Simply assuming that this is a variable declaration.
+      clang::QualType ResultType = VD->getType();
+      if (ResultType.getTypePtr()->isReferenceType())
+        ResultType = ResultType.getTypePtr()->getPointeeType();
+
+      clang::ExprValueKind ValueKind =
+        SemaRef.getCxxSema().getValueKindForDeclReference(ResultType,
+                                                          VD, Loc);
+      clang::DeclRefExpr *DRE =
+        SemaRef.getCxxSema().BuildDeclRefExpr(VD, ResultType, ValueKind,
+                                              DNI, NNSL, VD,
+                                              EmptyLoc, nullptr);
+      ExprMarker(SemaRef.getCxxAST(), SemaRef).Visit(DRE);
+      return DRE;
+    }
+    VD->dump();
+    llvm_unreachable("Whatever this is it shouldn't be in the global scope.");
+  }
+  // Processing the case when the returned result is a type.
+  clang::Expr *NameExpr = nullptr;
+  if (auto TD = R.getAsSingle<clang::TagDecl>())
+    NameExpr = SemaRef.buildTypeExprFromTypeDecl(TD, Loc);
+  else if (auto CTD = R.getAsSingle<clang::ClassTemplateDecl>())
+    NameExpr = SemaRef.buildTemplateType(CTD, Loc);
+  else if (auto *NS = R.getAsSingle<clang::CppxNamespaceDecl>())
+    NameExpr = SemaRef.buildNSDeclRef(NS, Loc);
+  else if (auto *TD = R.getAsSingle<clang::TypeDecl>())
+    NameExpr = SemaRef.buildTypeExprFromTypeDecl(TD, Loc);
+  else if (auto *TD = R.getAsSingle<clang::TemplateDecl>())
+    NameExpr = SemaRef.buildTemplateType(TD, Loc);
+
+  if (!NameExpr){
+    std::string Name = R.getLookupName().getAsString();
+    SemaRef.getCxxSema().Diags.Report(Loc,
+                                clang::diag::err_identifier_not_declared_in_scope)
+                                    << Name;
+    return nullptr;
+  }
+  SemaRef.extendScope(SSE, NameExpr);
+  return SSE;
+}
+
+clang::Expr *Elaborator::elaboratePrefixDotExpression(const PrefixSyntax *S) {
+  auto SSE = SemaRef.buildGlobalScopeExpr(S->getLocation());
+  auto TUDcl = SemaRef.getDeclaration(SemaRef.getCxxAST().getTranslationUnitDecl());
+  const Syntax *IdSyn = S->getOperand();
+  assert(IdSyn && "Invalid syntax tree");
+  clang::SourceLocation Loc = IdSyn->getLocation();
+  auto Id = dyn_cast<IdentifierSyntax>(IdSyn);
+  if (!Id) {
+    error(Loc) << "invalid global namespace accessor";
+    return nullptr;
+  }
+  clang::IdentifierInfo *II = &SemaRef.getCxxAST().Idents.get(Id->getSpelling());
+  clang::LookupResult R(SemaRef.getCxxSema(), {{II}, Loc},
+                        clang::Sema::LookupOrdinaryName);
+  R.setTemplateNameLookup(true);
+  SemaRef.lookupUnqualifiedName(R, SemaRef.getTUDecl()->SavedScope);
+
+  clang::CXXScopeSpec SS = SSE->getScopeSpec();
+  R.resolveKind();
+  switch (R.getResultKind()) {
+  case clang::LookupResult::FoundOverloaded: {
+    auto NNSL = SS.getWithLocInContext(CxxAST);
+    return clang::UnresolvedLookupExpr::Create(SemaRef.getCxxAST(),
+                                              R.getNamingClass(),
+                                              NNSL, R.getLookupNameInfo(),
+                                              /*ADL=*/false,
+                                              R.isOverloadedResult(),
+                                              R.begin(), R.end());
+  }
+  case clang::LookupResult::Found:
+    return BuildGloballyQualifiedReferenceToDecl(SemaRef, SSE, Loc, R);
+  case clang::LookupResult::NotFoundInCurrentInstantiation:
+  case clang::LookupResult::NotFound: {
+    SemaRef.getCxxSema().Diags.Report(Loc,
+                              clang::diag::err_identifier_not_declared_in_scope)
+                                      << II->getName();
+
+    return nullptr;
+  }
+  case clang::LookupResult::FoundUnresolvedValue:
+    // FIXME: I need to figure out when this can occur, then create
+    // that situiation wihtin a test and build appropriate error message.
+    // I suspect that this may have something to do with variable template
+    // declarations.
+    llvm_unreachable("Not sure how handle unresolved values.");
+  case clang::LookupResult::Ambiguous:
+    SemaRef.getCxxSema().DiagnoseAmbiguousLookup(R);
+    return nullptr;
+  }
 }
 
 clang::Expr *Elaborator::elaboratePostfixExpression(const PostfixSyntax *S) {
@@ -4603,12 +4727,9 @@ clang::Expr *Elaborator::elaborateTypeidOp(Token Tok, const Syntax *Arg) {
 
 clang::Expr *BuildReferenceToDecl(Sema &SemaRef,
                                   clang::SourceLocation Loc,
-                                  clang::LookupResult &R,
-                                  bool IsKnownOverload) {
+                                  clang::LookupResult &R) {
   std::string Name = R.getLookupName().getAsString();
-  if (IsKnownOverload) {
-    llvm_unreachable("We haven't implemented overload references yet.");
-  }
+
   // assert(FoundDecl && "Incorrectly set found declaration.");
   if (clang::ValueDecl *VD = R.getAsSingle<clang::ValueDecl>()) {
     // clang::QualType FoundTy = VD->getType();

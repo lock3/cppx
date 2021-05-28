@@ -1215,3 +1215,43 @@ C : type = {
 )BLUE";
   BlueFailureTest(Code);
 }
+
+
+TEST(BlueMemberAccess, GloballyQualifiedMemberAccess) {
+  StringRef Code = R"BLUE(
+B : type = {
+  i:int;
+}
+
+C : type = {
+  :B;
+  i:int;
+  foo:(inout this) -> void = {
+    this.(.B).i = 4;
+  }
+}
+
+)BLUE";
+  auto ToMatch = memberExpr(
+    member(hasName("i")),
+    has(implicitCastExpr(
+      has(
+        cxxThisExpr(hasType(asString("struct C *")))
+      )
+    ))
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(BlueMemberAccess, GloballyQualifiedName) {
+  StringRef Code = R"BLUE(
+foo:()->void = { }
+
+bar:()->void = {
+  .foo();
+}
+
+)BLUE";
+  auto ToMatch = callExpr(callee(functionDecl(hasName("foo"))));
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
