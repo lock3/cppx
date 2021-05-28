@@ -52,6 +52,10 @@ struct Declaration {
     : Ctx(Ctx), Def(Def), Decl(Decl), Init(Init)
     {}
 
+  Declaration(Declaration *Ctx, const Syntax *Init)
+    : Ctx(), Def(), Decl(), Init(Init), IsDecomposition(true)
+    {}
+
   // The owning context.
   Declaration *Ctx = nullptr;
 
@@ -99,6 +103,13 @@ struct Declaration {
   /// This is used for a special case when this is given without
   /// any specifiers.
   bool HasIdentifierOnlyThis = false;
+
+  /// True when this is a binding in a decompostion.
+  bool IsBinding = false;
+
+  /// True when this is a decomposition.
+  bool IsDecomposition = false;
+  llvm::SmallVector<Declaration *, 4> Bindings;
 
   /// This acts as a copy of the array of parameter specifies associated with
   /// the this parameter (so that we can apply and remove them as needed).
