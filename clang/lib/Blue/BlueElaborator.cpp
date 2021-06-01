@@ -3650,12 +3650,23 @@ void Elaborator::elaborateVarDef(Declaration *D) {
     getCxxSema().FinalizeDeclaration(VD);
     return;
   }
-  clang::Expr *InitExpr = nullptr;;
+  clang::Expr *InitExpr = nullptr;
   if (auto CtorArgs = dyn_cast<EnclosureSyntax>(D->getInitializer())) {
     if (CtorArgs->getOperand()) {
-      llvm_unreachable("Constructor with arguments not implemented yet.");
-    } else
-      InitExpr = elaborateExplicitDefaultCtorCall(VD, CtorArgs);
+      // auto TInfo = VD->getTypeSourceInfo();
+      InitExpr = elaborateConstructorCall(VD, CtorArgs);
+        // auto PT = SemaRef.getCxxSema().CreateParsedType(TInfo->getType(), TInfo);
+        // auto CtorExpr = SemaRef.getCxxSema().ActOnCXXTypeConstructExpr(PT,
+        //             CtorArgs->getOpen().getLocation(), , CtorArgs->getClose().getLocation(),
+        //                                               /*ListInitialization=*/false);
+        // if (CtorExpr.isInvalid())
+        //   return nullptr;
+        // InitExpr = CtorExpr.get();
+      // }
+      // llvm_unreachable("Constructor with arguments not implemented yet.");
+    } else {
+      InitExpr = elaborateConstructorCall(VD, CtorArgs);
+    }
   } else {
     InitExpr = elaborateExpression(D->getInitializer());
   }
@@ -3665,16 +3676,33 @@ void Elaborator::elaborateVarDef(Declaration *D) {
   getCxxSema().AddInitializerToDecl(VD, InitExpr, /*DirectInit=*/false);
 }
 
-clang::Expr *Elaborator::elaborateExplicitDefaultCtorCall(clang::VarDecl *D,
+clang::Expr *Elaborator::elaborateConstructorCall(clang::VarDecl *D,
                                                     const EnclosureSyntax *ES) {
   BALANCE_DBG();
   llvm::SmallVector<clang::Expr *, 8> Args;
+  clang::SourceLocation Begin, End;
+
+  Begin = ES->getOpen().getLocation();
+  End = ES->getClose().getLocation();
   auto TInfo = D->getTypeSourceInfo();
+  if (ES->getOperand()) {
+    if (auto ArgList = dyn_cast<ListSyntax>(ES->getOperand())) {
+      for(const Syntax *Arg : ArgList->children()) {
+        auto E = elaborateExpression(Arg);
+        if (!E)
+          continue;
+        Args.emplace_back(E);
+      }
+    } else {
+      auto E = elaborateExpression(ES->getOperand());
+      if (E)
+        Args.emplace_back(E);
+    }
+  }
   clang::ParsedType PTy;
   PTy = getCxxSema().CreateParsedType(TInfo->getType(), TInfo);
   clang::ExprResult ConstructorExpr =
-      getCxxSema().ActOnCXXTypeConstructExpr(PTy, clang::SourceLocation(),
-                                             Args, clang::SourceLocation(),
+      getCxxSema().ActOnCXXTypeConstructExpr(PTy, Begin, Args, End,
                                              /*ListInitialization*/false);
   if (!ConstructorExpr.get()) {
     Error(ES->getOpen().getLocation(), "invalid constructor");
@@ -3684,6 +3712,9 @@ clang::Expr *Elaborator::elaborateExplicitDefaultCtorCall(clang::VarDecl *D,
       ConstructorExpr.get());
   return Temp.get();
 }
+
+// clang::Expr *Elaborator::elaborateConstructorCall(clang::VarDecl *D,
+//                                                   const EnclosureSyntax *ES) {}
 
 void Elaborator::elaborateFieldInit(Declaration *D) {
   BALANCE_DBG();
@@ -4171,6 +4202,7 @@ clang::Expr *Elaborator::elaboratePrefixDotExpression(const PrefixSyntax *S) {
     SemaRef.getCxxSema().DiagnoseAmbiguousLookup(R);
     return nullptr;
   }
+  llvm_unreachable("Cannot reach here unless the above enum is missing something.");
 }
 
 clang::Expr *Elaborator::elaboratePostfixExpression(const PostfixSyntax *S) {
