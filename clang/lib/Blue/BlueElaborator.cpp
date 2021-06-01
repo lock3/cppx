@@ -3846,10 +3846,12 @@ void Elaborator::elaborateFunctionDef(Declaration *D) {
               "that isn't a specail method");
       }
     } else {
-      // this is for elaborating anything taht isn't a default or delete kw.
+      // this is for elaborating anything that isn't a default or delete kw.
       clang::Expr *BodyE = elaborateExpression(D->Init);
+      auto ReturnResult = SemaRef.getCxxSema().ActOnReturnStmt(
+        D->Init->getLocation(), BodyE, SemaRef.getCurClangScope());
       SemaRef.setClangDeclContext(cast<clang::FunctionDecl>(D->getCxx()));
-      SemaRef.getCxxSema().ActOnFinishFunctionBody(FuncDecl, BodyE);
+      SemaRef.getCxxSema().ActOnFinishFunctionBody(FuncDecl, ReturnResult.get());
     }
   } else {
     llvm_unreachable("unknown function body!");
