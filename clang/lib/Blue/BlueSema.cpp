@@ -1353,7 +1353,12 @@ bool Sema::checkForRedeclaration(Declaration *D) {
   case clang::Decl::TypeAlias:
   case clang::Decl::Var:
   case clang::Decl::Field:
+  case clang::Decl::Binding:
     return checkSimplNameMatchRedecl(*this, D);
+
+  // These don't have names.
+  case clang::Decl::Decomposition:
+    return false;
   case clang::Decl::Function:
     // This requeires more infor.
     llvm_unreachable("FunctionDecl redeclaration not implemented.");
@@ -1426,8 +1431,6 @@ bool Sema::checkForRedeclaration(Declaration *D) {
   case clang::Decl::OMPDeclareReduction:
   case clang::Decl::OMPDeclareMapper:
   case clang::Decl::BuiltinTemplate:
-  case clang::Decl::Decomposition:
-  case clang::Decl::Binding:
   case clang::Decl::Concept:
   case clang::Decl::LifetimeExtendedTemporary:
   case clang::Decl::RequiresExprBody:

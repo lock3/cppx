@@ -86,7 +86,8 @@ bool Declaration::declaredWithinClassBody() const {
 }
 
 bool Declaration::isVariableDecl() const {
-  return Cxx && isa<clang::VarDecl>(Cxx);
+  return Cxx &&
+    (isa<clang::VarDecl>(Cxx) || isa<clang::DecompositionDecl>(Cxx));
 }
 
 bool Declaration::isFunctionDecl() const {

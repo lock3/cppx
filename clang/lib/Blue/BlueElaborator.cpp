@@ -152,6 +152,7 @@ Declaration *Elaborator::createDeclaration(const Syntax *Def,
 
   Declaration *TheDecl =
     new Declaration(SemaRef.getCurrentDecl(), Def, Dcl, Init);
+  TheDecl->IsBinding = DecompositionContext;
 
   if (const DeclarationSyntax *Name = dyn_cast<DeclarationSyntax>(Def)) {
     if (const IdentifierSyntax *Id
@@ -352,10 +353,26 @@ Declaration *Elaborator::buildDeclaration(const DeclarationSyntax *S) {
   BALANCE_DBG();
   Declarator *Dcl = getDeclarator(S->getType());
 
+  // Check for decomposition declarations.
   if (const ListSyntax *L = dyn_cast_or_null<ListSyntax>(S->getDeclarator())) {
-    for (const Syntax *SS : L->children())
-      createDeclaration(SS, Dcl, S->getInitializer());
-    return nullptr;
+    Declaration *TheDecl =
+      new Declaration(SemaRef.getCurrentDecl(), S->getInitializer());
+    BooleanRAII Decomp(DecompositionContext, true);
+
+    llvm::SmallVector<Declaration *, 4> Bindings;
+    for (const Syntax *SS : L->children()) {
+      Declaration *Binding = createDeclaration(SS, Dcl, nullptr);
+      Bindings.push_back(Binding);
+    }
+
+    TheDecl->Bindings = Bindings;
+    TheDecl->Def = S;
+    Scope *CurScope = SemaRef.getCurrentScope();
+    CurScope->addDecl(TheDecl);
+    TheDecl->DeclaringContext = SemaRef.getCurClangDeclContext();
+    TheDecl->ScopeForDecl = CurScope;
+    TheDecl->ClangDeclaringScope = SemaRef.getCurClangScope();
+    return TheDecl;
   }
 
   return createDeclaration(S, Dcl, S->getInitializer());
@@ -404,13 +421,6 @@ clang::Decl *Elaborator::elaborateDecl(const Syntax *S) {
 
 clang::Decl *Elaborator::elaborateDefDecl(const DeclarationSyntax *S) {
   BALANCE_DBG();
-  if (const ListSyntax *L = dyn_cast_or_null<ListSyntax>(S->getDeclarator())) {
-    for (const Syntax *SS : L->children())
-      elaborateDecl(SS);
-    return nullptr;
-  }
-
-
   Declaration *D = SemaRef.getCurrentScope()->findDecl(S);
   if (!D)
     return nullptr;
@@ -435,8 +445,6 @@ static clang::Decl *handleNamespaceAliasDecl(Sema &SemaRef,
   }
   llvm_unreachable("not sure what should happen here");
 }
-
-
 
 static clang::Decl *handleUsing(Sema &SemaRef,
                                 Declaration *D,
@@ -603,7 +611,7 @@ clang::Decl *Elaborator::elaborateDeclarationTyping(Declaration *D) {
   OptionalClangScopeRAII ClangTemplateScope(SemaRef);
 
   // Handling template declarations.
-  if (D->Decl->declaresTemplate())
+  if (D->Decl && D->Decl->declaresTemplate())
     elaborateTemplateParameters(TemplateParamScope, ClangTemplateScope, D,
                                 D->Decl);
 
@@ -696,6 +704,10 @@ clang::Decl *Elaborator::doElaborateDeclarationTyping(Declaration *D) {
   BALANCE_DBG();
   if (!D)
     return nullptr;
+
+  if (D->IsDecomposition)
+    return makeDecompositionDecl(D);
+
   if (deduceDeclKindFromSyntax(D)) {
     Error(D->getErrorLocation(), "Elaboration for this kind of declaration not implemented yet.");
     return nullptr;
@@ -1316,11 +1328,6 @@ clang::Decl *Elaborator::elaborateDeclEarly(Declaration *D) {
 
 clang::Decl *Elaborator::makeValueDecl(Declaration *D) {
   BALANCE_DBG();
-  // Elaborate the declarator.
-  // if (D->declaratorContainsFunction()) {
-  //   Error(D->getErrorLocation(), "Function declaration missing introducer.");
-  //   return nullptr;
-  // }
 
   // FIXME: An ill-typed declaration isn't the end of the world. Can we
   // poison the declaration and move on?
@@ -1392,9 +1399,15 @@ clang::Decl *Elaborator::makeObjectDecl(Declaration *D, clang::Expr *Ty) {
     return nullptr;
 
   clang::DeclContext *Owner = SemaRef.getCurClangDeclContext();
-  clang::VarDecl *VD =
-    clang::VarDecl::Create(CxxAST, Owner, Loc, Loc, Id, T->getType(), T,
-                           getDefaultVariableStorageClass(SemaRef));
+
+  clang::ValueDecl *VD = nullptr;
+  if (D->IsBinding) {
+    VD = clang::BindingDecl::Create(CxxAST, Owner, Loc, Id);
+  } else {
+    VD = clang::VarDecl::Create(CxxAST, Owner, Loc, Loc, Id, T->getType(), T,
+                                getDefaultVariableStorageClass(SemaRef));
+  }
+
   Owner->addDecl(VD);
   D->setCxx(SemaRef, VD);
   D->CurrentPhase = Phase::Typing;
@@ -1449,6 +1462,45 @@ clang::Decl *Elaborator::makeTypeDecl(Declaration *D, clang::QualType T) {
   D->setCxx(SemaRef, TypeAlias);
   SemaRef.checkForRedeclaration(D);
   return TypeAlias;
+}
+
+clang::DecompositionDecl *Elaborator::makeDecompositionDecl(Declaration *D) {
+  assert(D->IsDecomposition);
+  const DeclarationSyntax *Def = D->asDef();
+  clang::DiagnosticsEngine &Diags = SemaRef.getCxxSema().Diags;
+  assert(Def->getDeclarator() && isa<ListSyntax>(Def->getDeclarator()));
+
+  const ListSyntax *L = cast<ListSyntax>(Def->getDeclarator());
+  llvm::SmallVector<clang::BindingDecl *, 4> CreatedBindings;
+  for (const Syntax *SS : L->children()) {
+    clang::Decl *B = elaborateDecl(SS);
+    if (!B)
+      continue;
+    // If we got back a non-binding, it's the end of the world.
+    if (!isa<clang::BindingDecl>(B)) {
+      unsigned DiagID =
+        Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                      "expected bindable value");
+      Diags.Report(D->getErrorLocation(), DiagID);
+      return nullptr;
+    }
+
+    CreatedBindings.push_back(cast<clang::BindingDecl>(B));
+  }
+
+  clang::TypeSourceInfo *TInfo =
+    gold::BuildAnyTypeLoc(CxxAST, CxxAST.getAutoDeductType(),
+                          D->getErrorLocation());
+
+  clang::DeclContext *Owner = SemaRef.getCurClangDeclContext();
+  clang::DecompositionDecl *New =
+    clang::DecompositionDecl::Create(CxxAST, Owner, L->getLocation(),
+                                     D->Init->getLocation(), TInfo->getType(),
+                                     TInfo, clang::SC_None, CreatedBindings);
+  Owner->addDecl(New);
+  D->CurrentPhase = Phase::Typing;
+  D->setCxx(SemaRef, New);
+  return New;
 }
 
 clang::CppxTypeLiteral *Elaborator::createFunctionType(Declaration *D,
@@ -3593,14 +3645,6 @@ clang::Expr *Elaborator::elaborateLiteralExpression(const LiteralSyntax *S) {
 void Elaborator::elaborateDefinition(const Syntax *S) {
 
   BALANCE_DBG();
-  if (const DeclarationSyntax *D = dyn_cast<DeclarationSyntax>(S)) {
-    if (const auto *L = dyn_cast_or_null<ListSyntax>(D->getDeclarator())) {
-      for (const Syntax *SS : L->children())
-        elaborateDefinition(SS);
-      return;
-    }
-  }
-
   auto Decl = SemaRef.getCurrentScope()->findDecl(S);
   if (!Decl)
     return;
@@ -3620,6 +3664,8 @@ void Elaborator::elaborateDefinitionInitialization(Declaration *D) {
     return elaborateVarDef(D);
   if (D->isFunctionDecl())
     return elaborateFunctionDef(D);
+  if (D->IsBinding)
+    return;
 
   llvm_unreachable("Elaboration for this kind of declaration isn't "
                    "implemented yet.");
@@ -3653,25 +3699,17 @@ void Elaborator::elaborateVarDef(Declaration *D) {
   clang::Expr *InitExpr = nullptr;
   if (auto CtorArgs = dyn_cast<EnclosureSyntax>(D->getInitializer())) {
     if (CtorArgs->getOperand()) {
-      // auto TInfo = VD->getTypeSourceInfo();
       InitExpr = elaborateConstructorCall(VD, CtorArgs);
-        // auto PT = SemaRef.getCxxSema().CreateParsedType(TInfo->getType(), TInfo);
-        // auto CtorExpr = SemaRef.getCxxSema().ActOnCXXTypeConstructExpr(PT,
-        //             CtorArgs->getOpen().getLocation(), , CtorArgs->getClose().getLocation(),
-        //                                               /*ListInitialization=*/false);
-        // if (CtorExpr.isInvalid())
-        //   return nullptr;
-        // InitExpr = CtorExpr.get();
-      // }
-      // llvm_unreachable("Constructor with arguments not implemented yet.");
     } else {
       InitExpr = elaborateConstructorCall(VD, CtorArgs);
     }
   } else {
     InitExpr = elaborateExpression(D->getInitializer());
   }
+
   if (!InitExpr)
     return;
+
   // Update the initializer.
   getCxxSema().AddInitializerToDecl(VD, InitExpr, /*DirectInit=*/false);
 }
@@ -3681,9 +3719,10 @@ clang::Expr *Elaborator::elaborateConstructorCall(clang::VarDecl *D,
   BALANCE_DBG();
   llvm::SmallVector<clang::Expr *, 8> Args;
   clang::SourceLocation Begin, End;
-
-  Begin = ES->getOpen().getLocation();
-  End = ES->getClose().getLocation();
+  if (ES) {
+    Begin = ES->getOpen().getLocation();
+    End = ES->getClose().getLocation();
+  }
   auto TInfo = D->getTypeSourceInfo();
   if (ES->getOperand()) {
     if (auto ArgList = dyn_cast<ListSyntax>(ES->getOperand())) {

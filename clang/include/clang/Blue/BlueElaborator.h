@@ -125,6 +125,7 @@ public:
   clang::Decl *makeValueDecl(Declaration *D);
   clang::Decl *makeObjectDecl(Declaration *D, clang::Expr *Ty);
   clang::Decl *makeTypeDecl(Declaration *D, clang::QualType T);
+  clang::DecompositionDecl *makeDecompositionDecl(Declaration *D);
   clang::Decl *makeFunctionDecl(Declaration *D);
   void checkCXXMethodDecl(clang::CXXMethodDecl *MD);
   clang::Decl *makeClass(Declaration *D);
@@ -321,6 +322,29 @@ public:
   void lateElaborateMemberInitializer(
       LateElaborateMemberInitializer &MemberInit);
   ///}
+
+  struct BooleanRAII {
+    BooleanRAII(bool &Boolean, bool Val)
+      : Boolean(Boolean)
+      {
+        SavedVal = Boolean;
+        Boolean = Val;
+      }
+
+    ~BooleanRAII() {
+      Boolean = SavedVal;
+    }
+
+  private:
+    bool &Boolean;
+    bool SavedVal;
+  };
+
+private:
+  // True when we are elaborating a decomposition declaration (i.e.
+  /// structured binding).
+  bool DecompositionContext = false;
+
 private:
   Sema &SemaRef;
 
