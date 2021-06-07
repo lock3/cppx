@@ -191,19 +191,23 @@ Token Lexer::operator()() {
     case '<':
       if (nthCharacterIs(1, '='))
         return matchToken(tok::LessEqual);
-      // Removed from lexer because this was replaced with bit_right_shift
-      // if (nthCharacterIs(1, '>'))
-      //   // return matchToken(tok::GreaterGreater);
-      // if (nthCharacterIs(1, '<'))
-      //   return matchToken(tok::LessLess);
+      if (nthCharacterIs(1, '<')) {
+        if (nthCharacterIs(2, '='))
+          return matchToken(tok::LessLessEqual);
+        return matchToken(tok::LessLess);
+      }
+
       return matchToken(tok::Less);
 
     case '>':
       if (nthCharacterIs(1, '='))
         return matchToken(tok::GreaterEqual);
-      // Removed from lexer because this was replaced with bit_right_shift
-      // if (nthCharacterIs(1, '>'))
-      //   // return matchToken(tok::GreaterGreater);
+      if (nthCharacterIs(1, '>')) {
+        if (nthCharacterIs(2, '='))
+          return matchToken(tok::GreaterGreaterEqual);
+        return matchToken(tok::GreaterGreater);
+      }
+
       return matchToken(tok::Greater);
 
     case '~':

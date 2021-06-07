@@ -4249,6 +4249,45 @@ clang::Expr *Elaborator::elaboratePostfixExpression(const PostfixSyntax *S) {
   return CxxSema.BuildUnaryOp(/*scope*/nullptr, Loc, Op, Operand).get();
 }
 
+static inline bool isCShiftOperator(tok::TokenKind K) {
+  return K == tok::LessLess || K == tok::GreaterGreater ||
+    K == tok::LessLessEqual || K == tok::GreaterGreaterEqual;
+}
+
+static bool hasOperator(Sema &SemaRef, clang::ASTContext &CxxAST,
+                        clang::Expr *E, tok::TokenKind Op)
+{
+  if (!E->getType()->isTypeOfTypes())
+    return false;
+
+  const clang::CXXRecordDecl *RD = E->getType()->getAsCXXRecordDecl();
+  if (!RD)
+    return false;
+
+  clang::DeclarationName Name;
+  switch (Op) {
+  case tok::LessLess:
+    Name = CxxAST.DeclarationNames.getCXXOperatorName(clang::OO_LessLess);
+    break;
+  case tok::GreaterGreater:
+    Name = CxxAST.DeclarationNames.getCXXOperatorName(clang::OO_GreaterGreater);
+    break;
+  case tok::LessLessEqual:
+    Name = CxxAST.DeclarationNames.getCXXOperatorName(clang::OO_LessLessEqual);
+    break;
+  case tok::GreaterGreaterEqual:
+    Name = CxxAST.DeclarationNames.getCXXOperatorName(clang::OO_GreaterGreaterEqual);
+    break;
+  default:
+    llvm_unreachable("unexpected shift token");
+  }
+
+  clang::DeclarationNameInfo NameInfo(Name, E->getExprLoc());
+  clang::Sema &CxxSema = SemaRef.getCxxSema();
+  clang::LookupResult Res(CxxSema, NameInfo, clang::Sema::LookupOrdinaryName);
+  return CxxSema.LookupQualifiedName(Res, const_cast<clang::CXXRecordDecl *>(RD));
+}
+
 clang::Expr *Elaborator::elaborateInfixExpression(const InfixSyntax *S) {
   auto LHS = elaborateExpression(S->getOperand(0));
   if (!LHS)
@@ -4256,6 +4295,38 @@ clang::Expr *Elaborator::elaborateInfixExpression(const InfixSyntax *S) {
 
   if (S->getOperation().hasKind(tok::Dot))
     return elaborateMemberAccess(LHS, S);
+  if (isCShiftOperator(S->getOperation().getKind())) {
+    Token Tok = S->getOperation();
+    if (!hasOperator(SemaRef, CxxAST, LHS, Tok.getKind())) {
+      std::string Msg = "type does not have overloaded operator'" +
+        Tok.getSpelling() + "'";
+
+      std::string Hint;
+      switch (Tok.getKind()) {
+      case tok::LessLess:
+        Hint = "bit_shift_left";
+      case tok::GreaterGreater:
+        Hint = "bit_shift_right";
+      default:
+        break;
+      }
+
+      unsigned DiagID =
+        SemaRef.getCxxSema().Diags.getCustomDiagID(
+          clang::DiagnosticsEngine::Error, "Type does not have overloaded "
+          "shift operator");
+      SemaRef.getCxxSema().Diags.Report(LHS->getExprLoc(), DiagID);
+
+      // if (!Hint.empty()) {
+      //   unsigned HintID =
+      //     SemaRef.getCxxSema().Diags.getCustomDiagID(
+      //       clang::DiagnosticsEngine::Note, "Did you mean '%0'?") << Hint.c_str();
+      //   SemaRef.getCxxSema().Diags.Report(LHS->getExprLoc(), HintID);
+      // }
+
+      return nullptr;
+    }
+  }
 
   auto RHS = elaborateExpression(S->getOperand(1));
   if (!RHS)

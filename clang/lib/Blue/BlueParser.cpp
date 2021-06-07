@@ -890,7 +890,8 @@ static bool isAssignmentOp(tok::TokenKind K)
 {
   return K == tok::PlusEqual || K == tok::MinusEqual
         || K == tok::StarEqual || K == tok::SlashEqual
-        || K == tok::PercentEqual || K == tok::Equal;
+        || K == tok::PercentEqual || K == tok::Equal
+        || K == tok::LessLessEqual || K == tok::GreaterGreaterEqual;
 }
 
 Syntax *Parser::parseAssignmentExpression() {
@@ -958,8 +959,7 @@ Syntax *Parser::parseEqualityExpression() {
   return E0;
 }
 
-static bool isRelationalOperator(tok::TokenKind K)
-{
+static bool isRelationalOperator(tok::TokenKind K) {
   return K == tok::Less ||
     K == tok::Greater ||
     K == tok::LessEqual ||
@@ -969,14 +969,34 @@ static bool isRelationalOperator(tok::TokenKind K)
 /// Parse a relational expression.
 ///
 ///   relational-expression:
-///     additive-expression
-///     relational-expression < additive-expression
-///     relational-expression > additive-expression
-///     relational-expression <= additive-expression
-///     relational-expression >= additive-expression
+///     shift-expression
+///     relational-expression < shift-expression
+///     relational-expression > shift-expression
+///     relational-expression <= shift-expression
+///     relational-expression >= shift-expression
 Syntax *Parser::parseRelationalExpression() {
-  Syntax* E0 = parseAdditiveExpression();
+  Syntax* E0 = parseShiftExpression();
   while (Token Op = matchTokenIf(isRelationalOperator)) {
+    Syntax* E1 = parseShiftExpression();
+    E0 = new InfixSyntax(Op, E0, E1);
+  }
+
+  return E0;
+}
+
+static bool isShiftOperator(tok::TokenKind K) {
+  return K == tok::LessLess || K == tok::GreaterGreater;
+}
+
+/// Parse a shift expression.
+///
+///   shift-expression:
+///     additive-expression
+///     shift-expression << additive-expression
+///     shift-expression >> additive-expression
+Syntax *Parser::parseShiftExpression() {
+  Syntax* E0 = parseAdditiveExpression();
+  while (Token Op = matchTokenIf(isShiftOperator)) {
     Syntax* E1 = parseAdditiveExpression();
     E0 = new InfixSyntax(Op, E0, E1);
   }
