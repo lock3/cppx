@@ -74,6 +74,7 @@ add_clang_unittest(BlueTests
   BlueVariableElab.cpp
   BlueVirtualMethodElab.cpp
   BlueWhileElab.cpp
+  BlueWithCppExternElab.cpp
   )
 
 clang_target_link_libraries(BlueTests

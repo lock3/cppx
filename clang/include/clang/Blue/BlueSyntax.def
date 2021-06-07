@@ -37,7 +37,7 @@
 
 // The def_non_leaf_start and  def_non_leaf_end macros are specifically used
 // to keep track of the range that is specified concrete derived classes
-// that are avaiable.
+// that are available.
 
 def_abstract(Unary, Syntax)
 def_non_leaf_start(Unary, Enclosure)
@@ -45,6 +45,7 @@ def_non_leaf_start(Unary, Enclosure)
   def_syntax(Prefix, Unary)
   def_syntax(Postfix, Unary)
   def_syntax(BuiltinCompilerOp, Unary)
+  def_syntax(CppCodeBlock, Unary)
   def_syntax(File, Unary)
 def_non_leaf_end(Unary, File)
 
@@ -101,6 +102,8 @@ def_non_leaf_start(Atom, Literal)
   def_syntax(Literal, Atom)
   def_syntax(Identifier, Atom)
 def_non_leaf_end(Atom, Identifier)
+
+def_syntax(TokenList, Syntax)
 
 
 #undef def_syntax

@@ -698,6 +698,7 @@ struct ASTTemplateArgumentListInfo final
                                     TemplateArgumentLoc> {
 private:
   friend class ASTNodeImporter;
+  friend class BlueASTNodeImporter;
   friend TrailingObjects;
 
   ASTTemplateArgumentListInfo(const TemplateArgumentListInfo &List);

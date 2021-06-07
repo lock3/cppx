@@ -287,6 +287,7 @@ public:
   template <typename Impl> friend class clang::serialization::BasicReaderBase;
   friend class ASTImporter;
   friend class ASTNodeImporter;
+  friend class BlueASTNodeImporter;
 
 private:
   ValueKind Kind;

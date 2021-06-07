@@ -76,6 +76,8 @@ public:
   //                                  Elaboration                             //
   //===--------------------------------------------------------------------===//
   clang::Decl *elaborateFile(const Syntax *S);
+  void elaborateCppCode(const CppCodeBlockSyntax *Code);
+  void elaborateCppNsDecls(clang::CppxNamespaceDecl *NSD);
 
   Declaration *identifyDeclaration(const Syntax *S);
   Declaration *buildDeclaration(const DeclarationSyntax *S);
