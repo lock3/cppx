@@ -76,6 +76,8 @@ public:
   //                                  Elaboration                             //
   //===--------------------------------------------------------------------===//
   clang::Decl *elaborateFile(const Syntax *S);
+  void elaborateCppCode(const CppCodeBlockSyntax *Code);
+  void elaborateCppNsDecls(clang::CppxNamespaceDecl *NSD);
 
   Declaration *identifyDeclaration(const Syntax *S);
   Declaration *buildDeclaration(const DeclarationSyntax *S);
@@ -156,8 +158,7 @@ public:
   void elaborateDefinition(const Syntax *S);
   void elaborateDefinitionInitialization(Declaration *D);
   void elaborateVarDef(Declaration *D);
-  clang::Expr *elaborateExplicitDefaultCtorCall(clang::VarDecl *D,
-                                               const EnclosureSyntax *ES);
+  clang::Expr *elaborateConstructorCall(clang::VarDecl *D, const EnclosureSyntax *ES);
   void elaborateFieldInit(Declaration *D);
   void elaborateFunctionDef(Declaration *D);
 

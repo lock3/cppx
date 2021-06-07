@@ -106,6 +106,7 @@ public:
   friend class ASTDeclReader;
   friend class ASTDeclWriter;
   friend class ASTNodeImporter;
+  friend class BlueASTNodeImporter;
   friend TrailingObjects;
 
   static FriendDecl *Create(ASTContext &C, DeclContext *DC,

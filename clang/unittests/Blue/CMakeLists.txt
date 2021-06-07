@@ -60,10 +60,12 @@ add_clang_unittest(BlueTests
   BlueLiteralElab.cpp
   BlueLogicalOpElab.cpp
   BlueMemberAccessElab.cpp
+  BlueNamespaceAliasElab.cpp
   BlueNamespaceElab.cpp
   BlueOperatorOverloadingElab.cpp
   BluePlacementNetElab.cpp
   BluePointerElab.cpp
+  BlueSingleLineFunctionElab.cpp
   BlueStaticMemberFunctionElab.cpp
   BlueTemplateTemplateParamElab.cpp
   BlueTypeAliasElab.cpp
@@ -72,6 +74,7 @@ add_clang_unittest(BlueTests
   BlueVariableElab.cpp
   BlueVirtualMethodElab.cpp
   BlueWhileElab.cpp
+  BlueWithCppExternElab.cpp
   )
 
 clang_target_link_libraries(BlueTests

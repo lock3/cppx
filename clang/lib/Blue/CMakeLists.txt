@@ -4,6 +4,7 @@ set(LLVM_LINK_COMPONENTS
   )
 
 add_clang_library(blue
+  BlueASTImporter.cpp
   BlueSymbol.cpp
   BlueFile.cpp
   BlueFrontend.cpp
@@ -27,4 +28,6 @@ add_clang_library(blue
   clangFrontend
   clangLex
   clangSema
+  clangTooling
+  clangParse
   )

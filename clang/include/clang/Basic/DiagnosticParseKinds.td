@@ -1523,4 +1523,10 @@ def err_invalid_fold : Error<
   "%select{%1 ... %1|%1 ... |... %1}0 invalid fold "
   "%select{operator|expression}2">;
 
+let CategoryName = "Blue Parsing Issues" in {
+def err_blue_parsing : Error<"%0">;
+def err_blue_parsing_2 : Error<"%0 %1">;
+def err_blue_parsing_3 : Error<"%0 %1 %2">;
+def err_blue_parsing_4 : Error<"%0 %1 %2 %3">;
+} // end blue parsing issues.
 } // end of Parser diagnostics

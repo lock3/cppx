@@ -382,9 +382,91 @@ Syntax *Parser::parseFile() {
 
   llvm::SmallVector<Syntax *, 16> SS;
   if (!atEndOfFile())
-    Decls = parseDeclSequence(SS);
+    Decls = doParseFileDeclSeq(SS);
 
   return new FileSyntax(Decls);
+}
+
+Syntax *Parser::parseCppCodeBlock() {
+
+  Token Extern;
+  Token CppLiteral;
+
+  Extern = requireToken(tok::ExternKeyword);
+  if (!Extern)
+    return nullptr;
+
+  CppLiteral = requireToken(tok::String);
+  if (!CppLiteral)
+    return nullptr;
+
+  std::string CppLiteralCheck = CppLiteral.getSpelling();
+  if (CppLiteralCheck != "\"C++\"" && CppLiteralCheck != "\"c++\"") {
+    Diags.Report(CppLiteral.getLocation(), clang::diag::err_blue_parsing_2)
+          << "invalid extern \"C++\" block, expected extern \"c++\" "
+             "or extern \"C++\" instead got "
+          << CppLiteralCheck;
+    return nullptr;
+  }
+  unsigned Depth = 0;
+  auto OpenTokenId = openToken(Enclosure::Braces);
+  auto CloseTokenId = closeToken(Enclosure::Braces);
+  Token EnclosureOpen = requireToken(OpenTokenId);
+  if (!EnclosureOpen)
+    return nullptr;
+
+  llvm::SmallVector<Token, 64> Tokens;
+  while(true) {
+    if (atEndOfFile()) {
+      Diags.Report(getInputLocation(), clang::diag::err_blue_parsing)
+            << "unexpected end of file";
+      return nullptr;
+    }
+
+    if (Depth == 0)
+      if (nextTokenIs(CloseTokenId))
+        break;
+
+    // Keeping track of the current depth.
+    if (nextTokenIs(OpenTokenId)) {
+      ++Depth;
+    } else if (nextTokenIs(CloseTokenId)) {
+      --Depth;
+    }
+
+    Tokens.emplace_back(consumeToken());
+  }
+
+  Token EnclosureClose = requireToken(CloseTokenId);
+  if (!EnclosureClose)
+    return nullptr;
+  Token *Toks = nullptr;
+  if (Tokens.size()) {
+   Toks = new Token[Tokens.size()];
+   unsigned Idx = 0;
+
+   // Copying the vector of tokens into the array of tokens.
+   for (auto T : Tokens) {
+     Toks[Idx] = T;
+     ++Idx;
+   }
+  }
+  // Creating the TokenListSyntax first by attempting to create the array.
+  Syntax *TokList = new TokenListSyntax(Toks, Tokens.size());
+  Syntax *Enclosure = new EnclosureSyntax(EnclosureOpen, EnclosureClose, TokList);
+  return new CppCodeBlockSyntax(Extern, CppLiteral, Enclosure);
+}
+
+Syntax *Parser::parseTopLevelDeclaration() {
+  if (nextTokenIs(tok::ExternKeyword))
+    return parseCppCodeBlock();
+  return parseDeclaration();
+}
+
+Syntax *Parser::doParseFileDeclSeq(SyntaxSeq &SS) {
+  while (!atEndOfFile())
+    parseItem(*this, &Parser::parseTopLevelDeclaration, SS);
+  return new SequenceSyntax(AllocateSeq(SS), SS.size());
 }
 
 Syntax *Parser::parseDeclSequence(SyntaxSeq &SS) {

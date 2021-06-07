@@ -265,6 +265,7 @@ class CXXRecordDecl : public RecordDecl {
   friend class ASTDeclReader;
   friend class ASTDeclWriter;
   friend class ASTNodeImporter;
+  friend class BlueASTNodeImporter;
   friend class ASTReader;
   friend class ASTRecordWriter;
   friend class ASTWriter;

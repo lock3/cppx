@@ -44,6 +44,7 @@ void ParseBlueAST(clang::ASTContext &CxxContext,
   // Elaborate the resulting abstract syntax tree.
   Sema Sema(Context, CxxSema);
   CxxSema.setBlueSema(&Sema);
+
   Elaborator Elab(Sema);
   clang::Decl *PossibleTU = Elab.elaborateFile(CST);
   if (!PossibleTU)

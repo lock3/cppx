@@ -904,6 +904,7 @@ protected:
 private:
   friend class ASTDeclReader;
   friend class ASTNodeImporter;
+  friend class BlueASTNodeImporter;
   friend class StmtIteratorBase;
 
   class VarDeclBitfields {
@@ -4631,8 +4632,10 @@ public:
                                    SourceLocation IdLoc,
                                    IdentifierInfo *Id, NamespaceDecl *PrevDecl,
                                    blue::Scope *GScope);
+
   gold::Scope *getScopeRep();
   blue::Scope *getBlueScopeRep();
+  void setBlueScope(blue::Scope *BScope) { BlueScope = BScope; }
 
   // Implement isa/cast/dyncast/etc.
   static bool classof(const Decl *D) { return classofKind(D->getKind()); }

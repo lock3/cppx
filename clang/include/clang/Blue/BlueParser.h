@@ -187,6 +187,13 @@ namespace blue
     // Top-level
     Syntax *parseFile();
 
+    // Special top-level only extern "C++" linkage
+    Syntax *parseCppCodeBlock();
+
+    Syntax *parseTopLevelDeclaration();
+
+    Syntax *doParseFileDeclSeq(SyntaxSeq &SS);
+
     // Expressions
     Syntax *parseExpression();
 

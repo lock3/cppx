@@ -89,6 +89,7 @@ class TypeSourceInfo;
   /// merging AST nodes where appropriate.
   class ASTImporter {
     friend class ASTNodeImporter;
+    friend class BlueASTNodeImporter;
   public:
     using NonEquivalentDeclSet = llvm::DenseSet<std::pair<Decl *, Decl *>>;
     using ImportedCXXBaseSpecifierMap =

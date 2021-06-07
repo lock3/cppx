@@ -526,6 +526,44 @@ struct EnclosureSyntax : UnarySyntax
   }
 };
 
+struct CppCodeBlockSyntax : UnarySyntax {
+
+  static constexpr KindType Kind = CppCodeBlock;
+
+  CppCodeBlockSyntax(Token ExternTok, Token CppTok, Syntax *T)
+    : UnarySyntax(Kind, T), Extern(ExternTok), CppStr(CppTok)
+  { }
+
+  /// Returns the opening token.
+  Token getExtern() const
+  {
+    return Extern;
+  }
+
+  /// Returns the closing token.
+  Token getCppStr() const
+  {
+    return CppStr;
+  }
+
+  /// Returns the inner term.
+  Syntax *getTerm() const
+  {
+    return Term;
+  }
+
+  Token Extern;
+  Token CppStr;
+
+  clang::SourceLocation getLocation() const {
+    return Extern.getLocation();
+  }
+
+  static bool classof(const Syntax *S) {
+    return S->getKind() == Kind;
+  }
+};
+
 /// A pair of terms.
 struct PairSyntax : BinarySyntax
 {
@@ -972,6 +1010,50 @@ struct DeclarationSyntax : QuaternarySyntax
   unsigned NumParamSpecs = 0;
   Token AS;
 
+};
+
+struct TokenListSyntax : Syntax {
+
+  static constexpr KindType Kind = TokenList;
+
+  TokenListSyntax(Token *TokArray, unsigned NumberOfTokens)
+    : Syntax(Kind), Toks(TokArray), NumToks(NumberOfTokens)
+  { }
+
+  unsigned getNumOfTokens() const {
+    return NumToks;
+  }
+
+  Token getToken(unsigned I) const {
+    return Toks[I];
+  }
+
+  clang::SourceLocation getLocation() const {
+    if (NumToks == 0)
+      return clang::SourceLocation();
+    return Toks[0].getLocation();
+  }
+
+  clang::SourceLocation getBeginLocation() const {
+    return getLocation();
+  }
+
+  /// The location of the end of the term.
+  clang::SourceLocation getEndLocation() const {
+    if (NumToks == 0)
+      return clang::SourceLocation();
+    return Toks[NumToks - 1].getLocation();
+  }
+
+  child_range children() {
+    return child_range(child_iterator(), child_iterator());
+  }
+
+  const child_range children() const {
+    return const_child_range(const_child_iterator(), const_child_iterator());
+  }
+  Token *Toks;
+  unsigned NumToks = 0;
 };
 
 /// The top-level container of terms.

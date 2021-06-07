@@ -48,4 +48,48 @@ C : type = {
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
+TEST(BlueConstructor, DefaultCtorCall) {
+  StringRef Code = R"BLUE(
+C : type = {
+  operator= : (out this) = { }
+}
+
+foo:()->void = {
+  x:C = ();
+}
+)BLUE";
+  auto ToMatch = cxxConstructExpr();
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+
+TEST(BlueConstructor, SingleArgumentCall) {
+  StringRef Code = R"BLUE(
+C : type = {
+  operator= : (out this, x:int) = { }
+}
+
+foo:()->void = {
+  x:C = (5);
+}
+)BLUE";
+  auto ToMatch = cxxConstructExpr();
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+
+
+TEST(BlueConstructor, MultiArgumentCall) {
+  StringRef Code = R"BLUE(
+C : type = {
+  operator= : (out this, x:int, y:int) = { }
+}
+
+foo:()->void = {
+  x:C = (5, 65);
+}
+)BLUE";
+  auto ToMatch = cxxConstructExpr();
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
 

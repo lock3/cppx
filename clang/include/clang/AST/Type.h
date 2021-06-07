@@ -5494,6 +5494,7 @@ void printTemplateArgumentList(raw_ostream &OS,
 class InjectedClassNameType : public Type {
   friend class ASTContext; // ASTContext creates these.
   friend class ASTNodeImporter;
+  friend class BlueASTNodeImporter;
   friend class ASTReader; // FIXME: ASTContext::getInjectedClassNameType is not
                           // currently suitable for AST reading, too much
                           // interdependencies.
