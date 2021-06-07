@@ -2833,6 +2833,8 @@ clang::Expr *Elaborator::elaborateTypeDeclarator(const Declarator *Dcl) {
 
   if (isACppxDependentExpr(E))
     E = SemaRef.buildTypeExprTypeFromExpr(E, Dcl->getLocation());
+  if (isa<clang::CppxWildcardExpr>(E))
+    return SemaRef.buildTypeExpr(CxxAST.getAutoDeductType(), Dcl->getLocation());
 
   clang::QualType T = E->getType();
   if (!T->isKindType()) {

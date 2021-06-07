@@ -238,3 +238,11 @@ TEST(BlueType, BuiltInType_RealCompilerFunction_Binary_Invalid_1) {
 TEST(BlueType, BuiltInType_RealCompilerFunction_Binary_Invalid_2) {
   BlueFailureTest("i:real[2, binary];");
 }
+
+TEST(BlueType, SimpleWildcard) {
+  StringRef Code = "x : _ = 32;";
+  DeclarationMatcher VarXMatcher = varDecl(
+    hasName("x"), hasType(asString("int"))
+  );
+  ASSERT_TRUE(matches(Code.str(), VarXMatcher));
+}
