@@ -5050,62 +5050,54 @@ clang::Expr *Elaborator::elaborateTypeidOp(Token Tok, const Syntax *Arg) {
 clang::Expr *BuildReferenceToDecl(Sema &SemaRef,
                                   clang::SourceLocation Loc,
                                   clang::LookupResult &R) {
+  clang::ASTContext &CxxAST = SemaRef.getCxxAST();
   std::string Name = R.getLookupName().getAsString();
 
   // assert(FoundDecl && "Incorrectly set found declaration.");
   if (clang::ValueDecl *VD = R.getAsSingle<clang::ValueDecl>()) {
-    // clang::QualType FoundTy = VD->getType();
-    // If the user annotated the DeclRefExpr with an incorrect type.
-    // if (!Ty.isNull() && Ty != FoundTy) {
-    //   SemaRef.getCxxSema().Diags.Report(Loc,
-    //     clang::diag::err_type_annotation_mismatch) << FoundTy << Ty;
-    //   return nullptr;
-    // }
-
     if (isa<clang::FieldDecl>(VD)) {
       // If we are inside of a non-static member declaration, then if the member
       // is reachable through the current this pointer then we can create the
       // implicit this reference to that variable.
       // FIXME: Write a test for this!
       // Building this access.
-      // clang::FieldDecl* Field = cast<clang::FieldDecl>(VD);
-      // clang::RecordDecl* RD = Field->getParent();
-      // clang::QualType ThisTy(RD->getTypeForDecl(), 0);
-      // clang::QualType ThisPtrTy = SemaRef.getContext().CxxAST.getPointerType(
-      //                                                                 ThisTy);
-      // clang::Expr* This = SemaRef.getCxxSema().BuildCXXThisExpr(Loc,
-      //                                                           ThisPtrTy,
-      //                                                           true);
+      clang::DeclarationNameInfo DNI = {R.getLookupName(), Loc};
+      clang::FieldDecl* Field = cast<clang::FieldDecl>(VD);
+      clang::RecordDecl* RD = Field->getParent();
+      clang::QualType ThisTy(RD->getTypeForDecl(), 0);
+      clang::QualType ThisPtrTy = CxxAST.getPointerType(ThisTy);
+      clang::Expr* This = SemaRef.getCxxSema().BuildCXXThisExpr(Loc,
+                                                                ThisPtrTy,
+                                                                true);
 
-      // clang::DeclAccessPair FoundDecl = clang::DeclAccessPair::make(Field,
-      //                                                     Field->getAccess());
-      // clang::CXXScopeSpec SS;
-      // clang::ExprResult MemberExpr
-      //     = SemaRef.getCxxSema().BuildFieldReferenceExpr(This, true,
-      //                                                 clang::SourceLocation(),
-      //                                                     SS, Field, FoundDecl,
-      //                                                     DNI);
-      // clang::Expr *Ret = MemberExpr.get();
-      // if (!Ret) {
-      //   SemaRef.Diags.Report(Loc, clang::diag::err_no_member)
-      //       << Field << ThisTy;
-      // }
-      // ExprMarker(Context.CxxAST, SemaRef).Visit(Ret);
-      // return Ret;
-      llvm_unreachable("Reference to a Field decl not implemented yet.");
+      clang::DeclAccessPair FoundDecl = clang::DeclAccessPair::make(Field,
+                                                          Field->getAccess());
+      clang::CXXScopeSpec SS;
+      clang::ExprResult MemberExpr
+          = SemaRef.getCxxSema().BuildFieldReferenceExpr(This, true,
+                                                      clang::SourceLocation(),
+                                                          SS, Field, FoundDecl,
+                                                          DNI);
+      clang::Expr *Ret = MemberExpr.get();
+      if (!Ret) {
+        SemaRef.getCxxSema().Diags.Report(Loc, clang::diag::err_no_member)
+            << Field << ThisTy;
+      }
+      ExprMarker(CxxAST, SemaRef).Visit(Ret);
+      return Ret;
     }
+
     // Need to check if the result is a CXXMethodDecl because that's a
     // ValueDecl.
     if(isa<clang::CXXMethodDecl>(VD)) {
       // FIXME: Write a test for this!
-      // clang::CXXScopeSpec SS;
-      // clang::SourceLocation Loc;
-      // // This may need to change into a different type of function call
-      // // base on given arguments, because this could be an issue.
-      // return SemaRef.getCxxSema().BuildPossibleImplicitMemberExpr(SS, Loc, R,
-      //                                                             nullptr,
-      //                                       SemaRef.getCurClangScope()).get();
-      // llvm_unreachable("Reference to a CXX Method decl not implemented yet.");
+      clang::CXXScopeSpec SS;
+      clang::SourceLocation Loc;
+      // This may need to change into a different type of function call
+      // base on given arguments, because this could be an issue.
+      return SemaRef.getCxxSema().BuildPossibleImplicitMemberExpr(SS, Loc, R,
+                                                                  nullptr,
+                                            SemaRef.getCurClangScope()).get();
     }
 
     if(isa<clang::FunctionDecl>(VD)) {

@@ -376,3 +376,24 @@ C : type = {
   );
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
+
+TEST(BlueClass, FieldReference) {
+  StringRef Code = R"BLUE(
+point: type = {
+    public x: int = 1;
+    public y: int = 2;
+    operator=: (out this) = { x = 1; y = 2; }
+}
+
+main: () -> int = {
+    p: point = ();
+    test : _ = p.x + p.y;
+}
+)BLUE";
+  auto ToMatch = varDecl(
+    hasName("test"),
+    hasType(asString("int"))
+  );
+
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
