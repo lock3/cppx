@@ -2611,11 +2611,14 @@ clang::Decl *Elaborator::makeClass(Declaration *D) {
                                                          SourceLocation());
     {
       clang::DeclarationName ClassDN(D->Id);
-      // ClsDecl->dump();
       auto PossibleInjectedClsDcl = ClsDecl->lookup(ClassDN);
-      // assert(!PossibleInjectedClsDcl.empty());
+      if (PossibleInjectedClsDcl.empty()) {
+        SemaRef.popDecl();
+        D->CurrentPhase = Phase::Initialization;
+        return D->getCxx();
+      }
+
       auto InjectedClassDcl = cast<clang::CXXRecordDecl>(PossibleInjectedClsDcl.front());
-      // InjectedClassDcl->dump();
       blue::Declaration *InjectedDeclaration = new blue::Declaration(D, D->Def,
                                                                      nullptr,
                                                                      nullptr);
@@ -4497,9 +4500,6 @@ clang::Expr *Elaborator::elaborateInfixExpression(const InfixSyntax *S) {
   if (isCShiftOperator(S->getOperation().getKind())) {
     Token Tok = S->getOperation();
     if (!hasOperator(SemaRef, CxxAST, LHS, Tok.getKind())) {
-      std::string Msg = "type does not have overloaded operator'" +
-        Tok.getSpelling() + "'";
-
       std::string Hint;
       switch (Tok.getKind()) {
       case tok::LessLess:
@@ -4512,16 +4512,31 @@ clang::Expr *Elaborator::elaborateInfixExpression(const InfixSyntax *S) {
 
       unsigned DiagID =
         SemaRef.getCxxSema().Diags.getCustomDiagID(
-          clang::DiagnosticsEngine::Error, "Type does not have overloaded "
-          "shift operator");
-      SemaRef.getCxxSema().Diags.Report(LHS->getExprLoc(), DiagID);
+          clang::DiagnosticsEngine::Error, "type does not have overloaded "
+          "%0 operator");
+      SemaRef.getCxxSema().Diags.Report(LHS->getExprLoc(), DiagID)
+        << Tok.getSpelling();
 
-      // if (!Hint.empty()) {
-      //   unsigned HintID =
-      //     SemaRef.getCxxSema().Diags.getCustomDiagID(
-      //       clang::DiagnosticsEngine::Note, "Did you mean '%0'?") << Hint.c_str();
-      //   SemaRef.getCxxSema().Diags.Report(LHS->getExprLoc(), HintID);
-      // }
+      if (clang::DeclRefExpr *DRE = dyn_cast<clang::DeclRefExpr>(LHS)) {
+        const clang::RecordType *RT =
+          DRE->getDecl()->getType()->getAs<clang::RecordType>();
+        if (RT) {
+          clang::Decl *D = RT->getDecl();
+          if (D) {
+            unsigned NoteID =
+              SemaRef.getCxxSema().Diags.getCustomDiagID(
+                clang::DiagnosticsEngine::Note, "declared here:");
+            SemaRef.getCxxSema().Diags.Report(D->getBeginLoc(), NoteID);
+          }
+        }
+      }
+
+      if (!Hint.empty()) {
+        unsigned HintID =
+          SemaRef.getCxxSema().Diags.getCustomDiagID(
+            clang::DiagnosticsEngine::Note, "did you mean '%0'?");
+        SemaRef.getCxxSema().Diags.Report(LHS->getExprLoc(), HintID) << Hint;
+      }
 
       return nullptr;
     }

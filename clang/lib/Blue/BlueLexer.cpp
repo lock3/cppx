@@ -431,12 +431,16 @@ Token Lexer::matchCharacter() {
 Token Lexer::matchString() {
   assert(nextCharacterIs('"'));
 
+  auto StartLoc = getInputLocation();
   consumeCharacter(); // '"'
-  while (nextCharacterIsNot('"')) {
+  while (!isDone() && nextCharacterIsNot('"')) {
     // Diagnose newlines, but continue lexing the token.
     if (isNewline(getLookahead())) {
       // FIXME: Diagnose this error.
-      assert(false && "Newline in character literal");
+      unsigned DiagID =
+        getDiagnostics().getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                         "newline in character literal");
+      getDiagnostics().Report(getInputLocation(), DiagID);
       consumeCharacter();
     }
 
@@ -451,7 +455,7 @@ Token Lexer::matchString() {
   if (isDone()) {
     // FIXME: Note the start of the string.
     getDiagnostics().Report(
-      getInputLocation(), clang::diag::ext_unterminated_char_or_string);
+      StartLoc, clang::diag::ext_unterminated_char_or_string) << 1;
     return matchEof();
   }
 
