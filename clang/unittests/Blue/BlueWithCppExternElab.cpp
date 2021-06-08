@@ -40,17 +40,34 @@ foo:()->void = {
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
-TEST(BlueExternCpp, TestingCppInclude) {
+// TEST(BlueExternCpp, TestingCppInclude) {
+//   StringRef Code = R"BLUE(
+// extern "C++" {
+//   #include <iostream>
+//   class A { };
+// }
+
+// foo:()->void = {
+//   x:A;
+// }
+// )BLUE";
+//   auto ToMatch = varDecl(hasName("x"), hasType(asString("class A")));
+//   ASSERT_TRUE(matches(Code.str(), ToMatch));
+// }
+TEST(BlueExternCpp, ShiftOperatorTest) {
   StringRef Code = R"BLUE(
 extern "C++" {
-  #include <iostream>
-  class A { };
+  struct x {
+    x &operator<<(int rhs) {
+      return *this;
+    }
+  };
 }
-
 foo:()->void = {
-  x:A;
+  y : x;
+  y << 5;
 }
 )BLUE";
-  auto ToMatch = varDecl(hasName("x"), hasType(asString("class A")));
+  auto ToMatch = cxxOperatorCallExpr(hasOperatorName("<<"));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }

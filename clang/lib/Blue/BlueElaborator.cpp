@@ -378,25 +378,25 @@ void Elaborator::elaborateCppCode(const CppCodeBlockSyntax *Code) {
       "-frtti", "-fexceptions",
       // Ensure that tests specify the C++ standard version that they need.
       "-Werror=c++14-extensions", "-Werror=c++17-extensions",
-      "-Werror=c++20-extensions"};
+      "-Werror=c++20-extensions"
+      };
     std::unique_ptr<clang::ASTUnit> CppUnit =
       clang::tooling::buildASTFromCodeWithArgs(CodeBuffer, Args);
     // Attempting to merge the 2 AST together.
     BlueASTImporter Importer(SemaRef, CxxAST, CxxSema.getSourceManager().getFileManager(),
                                 CppUnit->getASTContext(), CppUnit->getFileManager(),
-                                /*MinimalImport=*/true);
+                                /*MinimalImport=*/false);
     blue::Scope *CurScope = SemaRef.getCurrentScope();
     auto TLIter = CppUnit->top_level_begin();
     for(; TLIter != CppUnit->top_level_end(); ++TLIter) {
-      // if (auto NS = dyn_cast<clang::NamespaceDecl>(*TLIter)) {
-      //   llvm::outs() << "Creating a namespace = " << NS->getIdentifier()->getName() << "\n";
-      // }
       llvm::Expected<clang::Decl *> ImportedOrErr = Importer.Import(*TLIter);
       if (!ImportedOrErr) {
         llvm::Error Err = ImportedOrErr.takeError();
         // llvm::errs() << "ERROR: " << Err << "\n";
         llvm::Error Ret = llvm::handleErrors(
-            std::move(Err), [&](const clang::ImportError& ImportErr) { });
+            std::move(Err), [&](const clang::ImportError& ImportErr) {
+              llvm::outs() << "Naming conflict?\n";
+            });
         if (Ret) {
           llvm_unreachable("Failed to clear the error!");
         }
@@ -425,8 +425,10 @@ void Elaborator::elaborateCppCode(const CppCodeBlockSyntax *Code) {
 
       // Make sure that we don't create declarations for any method defined
       // outside the body of a class because it doesn't matter for lookup.
-      if (isa<clang::CXXMethodDecl>(ProcessedDecl))
+      if (isa<clang::CXXMethodDecl>(ProcessedDecl)) {
+        llvm::outs() << "We skipped a member?\n";
         continue;
+      }
 
       // We don't want to look up anything that is the definition for
       // something else.
@@ -4494,43 +4496,42 @@ clang::Expr *Elaborator::elaborateInfixExpression(const InfixSyntax *S) {
 
   if (S->getOperation().hasKind(tok::Dot))
     return elaborateMemberAccess(LHS, S);
-  if (isCShiftOperator(S->getOperation().getKind())) {
-    Token Tok = S->getOperation();
-    if (!hasOperator(SemaRef, CxxAST, LHS, Tok.getKind())) {
-      std::string Msg = "type does not have overloaded operator'" +
-        Tok.getSpelling() + "'";
+  // if (isCShiftOperator(S->getOperation().getKind())) {
+  //   Token Tok = S->getOperation();
+  //   if (!hasOperator(SemaRef, CxxAST, LHS, Tok.getKind())) {
+  //     std::string Msg = "type does not have overloaded operator'" +
+  //       Tok.getSpelling() + "'";
 
-      std::string Hint;
-      switch (Tok.getKind()) {
-      case tok::LessLess:
-        Hint = "bit_shift_left";
-      case tok::GreaterGreater:
-        Hint = "bit_shift_right";
-      default:
-        break;
-      }
+  //     std::string Hint;
+  //     switch (Tok.getKind()) {
+  //     case tok::LessLess:
+  //       Hint = "bit_shift_left";
+  //     case tok::GreaterGreater:
+  //       Hint = "bit_shift_right";
+  //     default:
+  //       break;
+  //     }
 
-      unsigned DiagID =
-        SemaRef.getCxxSema().Diags.getCustomDiagID(
-          clang::DiagnosticsEngine::Error, "Type does not have overloaded "
-          "shift operator");
-      SemaRef.getCxxSema().Diags.Report(LHS->getExprLoc(), DiagID);
+  //     unsigned DiagID =
+  //       SemaRef.getCxxSema().Diags.getCustomDiagID(
+  //         clang::DiagnosticsEngine::Error, "Type does not have overloaded "
+  //         "shift operator");
+  //     SemaRef.getCxxSema().Diags.Report(LHS->getExprLoc(), DiagID);
 
-      // if (!Hint.empty()) {
-      //   unsigned HintID =
-      //     SemaRef.getCxxSema().Diags.getCustomDiagID(
-      //       clang::DiagnosticsEngine::Note, "Did you mean '%0'?") << Hint.c_str();
-      //   SemaRef.getCxxSema().Diags.Report(LHS->getExprLoc(), HintID);
-      // }
+  //     // if (!Hint.empty()) {
+  //     //   unsigned HintID =
+  //     //     SemaRef.getCxxSema().Diags.getCustomDiagID(
+  //     //       clang::DiagnosticsEngine::Note, "Did you mean '%0'?") << Hint.c_str();
+  //     //   SemaRef.getCxxSema().Diags.Report(LHS->getExprLoc(), HintID);
+  //     // }
 
-      return nullptr;
-    }
-  }
+  //     return nullptr;
+  //   }
+  // }
 
   auto RHS = elaborateExpression(S->getOperand(1));
   if (!RHS)
     return nullptr;
-
   auto OpIter = SemaRef.BinOpMap.find(S->getOperation().getSpelling());
   if (OpIter == SemaRef.BinOpMap.end()) {
     Error(S->getLocation(), "invalid binary operator");
