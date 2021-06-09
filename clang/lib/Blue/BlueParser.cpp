@@ -956,6 +956,9 @@ Syntax *Parser::parseConditionalExpression()
 Syntax *Parser::parseExpressionSeq() {
   llvm::SmallVector<Syntax *, 4> SS;
   do {
+    if (atEndOfFile())
+      break;
+
     parseItem(*this, &Parser::parseExpression, SS);
     // Non-declaration expressions will still have their semicolon unconsumed.
     if (nextTokenIs(tok::Semicolon))
@@ -1431,9 +1434,10 @@ Syntax *Parser::parsePrimaryExpression() {
   // It might depend on what we're parsing (declarator, type, initialzer,
   // etc.). To do that, we'd have to maintain a stack of recovery strategies
   // that we can use to skip tokens.
-  // diagnose_expected("primary-expression");
-  Diags.Report(getInputLocation(), clang::diag::err_expected) <<
-    getSpelling(getLookahead());
+  unsigned DiagID =
+    Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                          "unexpected token: %0");
+  Diags.Report(getInputLocation(), DiagID) << getSpelling(getLookahead());
   consumeToken();
   return nullptr;
 }

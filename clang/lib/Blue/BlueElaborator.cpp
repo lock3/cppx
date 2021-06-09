@@ -2642,11 +2642,14 @@ clang::Decl *Elaborator::makeClass(Declaration *D) {
                                                          SourceLocation());
     {
       clang::DeclarationName ClassDN(D->Id);
-      // ClsDecl->dump();
       auto PossibleInjectedClsDcl = ClsDecl->lookup(ClassDN);
-      // assert(!PossibleInjectedClsDcl.empty());
+      if (PossibleInjectedClsDcl.empty()) {
+        SemaRef.popDecl();
+        D->CurrentPhase = Phase::Initialization;
+        return D->getCxx();
+      }
+
       auto InjectedClassDcl = cast<clang::CXXRecordDecl>(PossibleInjectedClsDcl.front());
-      // InjectedClassDcl->dump();
       blue::Declaration *InjectedDeclaration = new blue::Declaration(D, D->Def,
                                                                      nullptr,
                                                                      nullptr);
@@ -4528,9 +4531,6 @@ clang::Expr *Elaborator::elaborateInfixExpression(const InfixSyntax *S) {
   if (isCShiftOperator(S->getOperation().getKind())) {
     Token Tok = S->getOperation();
     if (!hasOperator(SemaRef, CxxAST, LHS, Tok.getKind())) {
-      std::string Msg = "type does not have overloaded operator'" +
-        Tok.getSpelling() + "'";
-
       std::string Hint;
       switch (Tok.getKind()) {
       case tok::LessLess:
@@ -4545,16 +4545,31 @@ clang::Expr *Elaborator::elaborateInfixExpression(const InfixSyntax *S) {
 
       unsigned DiagID =
         SemaRef.getCxxSema().Diags.getCustomDiagID(
-          clang::DiagnosticsEngine::Error, "Type does not have overloaded "
-          "shift operator");
-      SemaRef.getCxxSema().Diags.Report(LHS->getExprLoc(), DiagID);
+          clang::DiagnosticsEngine::Error, "type does not have overloaded "
+          "%0 operator");
+      SemaRef.getCxxSema().Diags.Report(LHS->getExprLoc(), DiagID)
+        << Tok.getSpelling();
 
-      // if (!Hint.empty()) {
-      //   unsigned HintID =
-      //     SemaRef.getCxxSema().Diags.getCustomDiagID(
-      //       clang::DiagnosticsEngine::Note, "Did you mean '%0'?") << Hint.c_str();
-      //   SemaRef.getCxxSema().Diags.Report(LHS->getExprLoc(), HintID);
-      // }
+      if (clang::DeclRefExpr *DRE = dyn_cast<clang::DeclRefExpr>(LHS)) {
+        const clang::RecordType *RT =
+          DRE->getDecl()->getType()->getAs<clang::RecordType>();
+        if (RT) {
+          clang::Decl *D = RT->getDecl();
+          if (D) {
+            unsigned NoteID =
+              SemaRef.getCxxSema().Diags.getCustomDiagID(
+                clang::DiagnosticsEngine::Note, "declared here:");
+            SemaRef.getCxxSema().Diags.Report(D->getBeginLoc(), NoteID);
+          }
+        }
+      }
+
+      if (!Hint.empty()) {
+        unsigned HintID =
+          SemaRef.getCxxSema().Diags.getCustomDiagID(
+            clang::DiagnosticsEngine::Note, "did you mean '%0'?");
+        SemaRef.getCxxSema().Diags.Report(LHS->getExprLoc(), HintID) << Hint;
+      }
 
       return nullptr;
     }
@@ -5082,62 +5097,54 @@ clang::Expr *Elaborator::elaborateTypeidOp(Token Tok, const Syntax *Arg) {
 clang::Expr *BuildReferenceToDecl(Sema &SemaRef,
                                   clang::SourceLocation Loc,
                                   clang::LookupResult &R) {
+  clang::ASTContext &CxxAST = SemaRef.getCxxAST();
   std::string Name = R.getLookupName().getAsString();
 
   // assert(FoundDecl && "Incorrectly set found declaration.");
   if (clang::ValueDecl *VD = R.getAsSingle<clang::ValueDecl>()) {
-    // clang::QualType FoundTy = VD->getType();
-    // If the user annotated the DeclRefExpr with an incorrect type.
-    // if (!Ty.isNull() && Ty != FoundTy) {
-    //   SemaRef.getCxxSema().Diags.Report(Loc,
-    //     clang::diag::err_type_annotation_mismatch) << FoundTy << Ty;
-    //   return nullptr;
-    // }
-
     if (isa<clang::FieldDecl>(VD)) {
       // If we are inside of a non-static member declaration, then if the member
       // is reachable through the current this pointer then we can create the
       // implicit this reference to that variable.
       // FIXME: Write a test for this!
       // Building this access.
-      // clang::FieldDecl* Field = cast<clang::FieldDecl>(VD);
-      // clang::RecordDecl* RD = Field->getParent();
-      // clang::QualType ThisTy(RD->getTypeForDecl(), 0);
-      // clang::QualType ThisPtrTy = SemaRef.getContext().CxxAST.getPointerType(
-      //                                                                 ThisTy);
-      // clang::Expr* This = SemaRef.getCxxSema().BuildCXXThisExpr(Loc,
-      //                                                           ThisPtrTy,
-      //                                                           true);
+      clang::DeclarationNameInfo DNI = {R.getLookupName(), Loc};
+      clang::FieldDecl* Field = cast<clang::FieldDecl>(VD);
+      clang::RecordDecl* RD = Field->getParent();
+      clang::QualType ThisTy(RD->getTypeForDecl(), 0);
+      clang::QualType ThisPtrTy = CxxAST.getPointerType(ThisTy);
+      clang::Expr* This = SemaRef.getCxxSema().BuildCXXThisExpr(Loc,
+                                                                ThisPtrTy,
+                                                                true);
 
-      // clang::DeclAccessPair FoundDecl = clang::DeclAccessPair::make(Field,
-      //                                                     Field->getAccess());
-      // clang::CXXScopeSpec SS;
-      // clang::ExprResult MemberExpr
-      //     = SemaRef.getCxxSema().BuildFieldReferenceExpr(This, true,
-      //                                                 clang::SourceLocation(),
-      //                                                     SS, Field, FoundDecl,
-      //                                                     DNI);
-      // clang::Expr *Ret = MemberExpr.get();
-      // if (!Ret) {
-      //   SemaRef.Diags.Report(Loc, clang::diag::err_no_member)
-      //       << Field << ThisTy;
-      // }
-      // ExprMarker(Context.CxxAST, SemaRef).Visit(Ret);
-      // return Ret;
-      llvm_unreachable("Reference to a Field decl not implemented yet.");
+      clang::DeclAccessPair FoundDecl = clang::DeclAccessPair::make(Field,
+                                                          Field->getAccess());
+      clang::CXXScopeSpec SS;
+      clang::ExprResult MemberExpr
+          = SemaRef.getCxxSema().BuildFieldReferenceExpr(This, true,
+                                                      clang::SourceLocation(),
+                                                          SS, Field, FoundDecl,
+                                                          DNI);
+      clang::Expr *Ret = MemberExpr.get();
+      if (!Ret) {
+        SemaRef.getCxxSema().Diags.Report(Loc, clang::diag::err_no_member)
+            << Field << ThisTy;
+      }
+      ExprMarker(CxxAST, SemaRef).Visit(Ret);
+      return Ret;
     }
+
     // Need to check if the result is a CXXMethodDecl because that's a
     // ValueDecl.
     if(isa<clang::CXXMethodDecl>(VD)) {
       // FIXME: Write a test for this!
-      // clang::CXXScopeSpec SS;
-      // clang::SourceLocation Loc;
-      // // This may need to change into a different type of function call
-      // // base on given arguments, because this could be an issue.
-      // return SemaRef.getCxxSema().BuildPossibleImplicitMemberExpr(SS, Loc, R,
-      //                                                             nullptr,
-      //                                       SemaRef.getCurClangScope()).get();
-      // llvm_unreachable("Reference to a CXX Method decl not implemented yet.");
+      clang::CXXScopeSpec SS;
+      clang::SourceLocation Loc;
+      // This may need to change into a different type of function call
+      // base on given arguments, because this could be an issue.
+      return SemaRef.getCxxSema().BuildPossibleImplicitMemberExpr(SS, Loc, R,
+                                                                  nullptr,
+                                            SemaRef.getCurClangScope()).get();
     }
 
     if(isa<clang::FunctionDecl>(VD)) {

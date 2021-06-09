@@ -208,17 +208,19 @@ struct KarySyntax<1> : Syntax
 
   /// The location that best indicates the best position of the term.
   clang::SourceLocation getLocation() const {
+    if (!Term)
+      return clang::SourceLocation();
     return Term->getLocation();
   }
 
   /// The location of the beginning of the term.
   clang::SourceLocation getBeginLocation() const {
-    return Term->getLocation();
+    return getLocation();
   }
 
   /// The location of the end of the term.
   clang::SourceLocation getEndLocation() const {
-    return Term->getLocation();
+    return getLocation();
   }
 
   Syntax *Term;
