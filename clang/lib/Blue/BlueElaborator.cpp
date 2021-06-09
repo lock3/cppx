@@ -46,7 +46,7 @@
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/Error.h"
 
-
+#include "clang/Frontend/CompilerInstance.h"
 #include "clang/AST/ASTConsumer.h"
 #include "clang/Parse/ParseAST.h"
 #include "clang/Parse/Parser.h"
@@ -372,38 +372,74 @@ void Elaborator::elaborateCppCode(const CppCodeBlockSyntax *Code) {
     auto CloseCharPtr = SemaRef.getCxxSema().getSourceManager().getCharacterData(Close);
 
     CodeBuffer.assign(OpenCharPtr + 1, CloseCharPtr);
-
     std::vector<std::string> Args = {
       // Some tests need rtti/exceptions on.
       "-frtti", "-fexceptions",
       // Ensure that tests specify the C++ standard version that they need.
-      "-Werror=c++14-extensions", "-Werror=c++17-extensions",
-      "-Werror=c++20-extensions"
-      };
+      // "-Werror=c++14-extensions", "-Werror=c++17-extensions"
+      "-std=c++17", "-c"
+    };
+
+    std::string WD = SemaRef.getCompilerInstance()->getFileSystemOpts().WorkingDir;
+    if (WD != "") {
+      llvm::outs() << "Setting working directory = " << WD << "\n";
+      Args.emplace_back("-working-directory" + WD);
+    }
+
+    clang::HeaderSearchOptions &HeaderOptions = SemaRef.getCompilerInstance()->getHeaderSearchOpts();
+    for (const auto &IncludeDir : HeaderOptions.SystemHeaderPrefixes) {
+      if (IncludeDir.IsSystemHeader) {
+        llvm::outs() << "INcluding system header path = " << IncludeDir.Prefix << "\n";
+        Args.emplace_back("-cxx-isystem" + IncludeDir.Prefix);
+      } else {
+        llvm::outs() << "Including header path = " << IncludeDir.Prefix << "\n";
+        Args.emplace_back("-I" + IncludeDir.Prefix);
+      }
+    }
+
+    // Gathering all of what I believe are the necessary command line arguments.
+    // and reconstructing them accordingly.
     std::unique_ptr<clang::ASTUnit> CppUnit =
       clang::tooling::buildASTFromCodeWithArgs(CodeBuffer, Args);
+    if (!CppUnit) {
+      llvm_unreachable("Incomplete C++ code");
+    }
+    auto diagBegin = CppUnit->stored_diag_begin();
+    auto diagEnd = CppUnit->stored_diag_end();
+    clang::DiagnosticsEngine &Diags = SemaRef.getCxxSema().Diags;
+    for (;diagBegin != diagEnd; ++diagBegin) {
+      Diags.Report(*diagBegin);
+    }
+    // auto SharedState = std::make_shared<ASTImporterSharedState>(
+    //     CxxAST.getTranslationUnitDecl());
     // Attempting to merge the 2 AST together.
     BlueASTImporter Importer(SemaRef, CxxAST, CxxSema.getSourceManager().getFileManager(),
                                 CppUnit->getASTContext(), CppUnit->getFileManager(),
                                 /*MinimalImport=*/false);
-    blue::Scope *CurScope = SemaRef.getCurrentScope();
-    auto TLIter = CppUnit->top_level_begin();
-    for(; TLIter != CppUnit->top_level_end(); ++TLIter) {
-      llvm::Expected<clang::Decl *> ImportedOrErr = Importer.Import(*TLIter);
-      if (!ImportedOrErr) {
-        llvm::Error Err = ImportedOrErr.takeError();
-        // llvm::errs() << "ERROR: " << Err << "\n";
+    Importer.setODRHandling(clang::ASTImporter::ODRHandlingType::Liberal);
+    clang::TranslationUnitDecl *TU = CppUnit->getASTContext().getTranslationUnitDecl();
+    for (auto *D : TU->decls()) {
+      // Don't re-import __va_list_tag, __builtin_va_list.
+      if (const auto *ND = dyn_cast<clang::NamedDecl>(D))
+        if (clang::IdentifierInfo *II = ND->getIdentifier())
+          if (II->isStr("__va_list_tag") || II->isStr("__builtin_va_list"))
+            continue;
+
+      llvm::Expected<clang::Decl *> ToDOrError = Importer.Import(D);
+      if (!ToDOrError) {
+        llvm::Error Err = ToDOrError.takeError();
+        // llvm::outs() << "ERROR: " << Err << "\n";
         llvm::Error Ret = llvm::handleErrors(
             std::move(Err), [&](const clang::ImportError& ImportErr) {
-              llvm::outs() << "Naming conflict?\n";
+              llvm::outs() << "==========!!!!!!!!!! Naming conflict ==========!!!!!!!!!!\n";
+              llvm::outs() << "what's my error " << ImportErr.toString() << "\n";
             });
         if (Ret) {
           llvm_unreachable("Failed to clear the error!");
         }
         continue;
       }
-
-      clang::Decl *ProcessedDecl = ImportedOrErr.get();
+      clang::Decl *ProcessedDecl = *ToDOrError;
       if (auto CppNS = dyn_cast<clang::CppxNamespaceDecl>(ProcessedDecl)) {
         elaborateCppNsDecls(CppNS);
         continue;
@@ -425,10 +461,8 @@ void Elaborator::elaborateCppCode(const CppCodeBlockSyntax *Code) {
 
       // Make sure that we don't create declarations for any method defined
       // outside the body of a class because it doesn't matter for lookup.
-      if (isa<clang::CXXMethodDecl>(ProcessedDecl)) {
-        llvm::outs() << "We skipped a member?\n";
+      if (isa<clang::CXXMethodDecl>(ProcessedDecl))
         continue;
-      }
 
       // We don't want to look up anything that is the definition for
       // something else.
@@ -454,16 +488,11 @@ void Elaborator::elaborateCppCode(const CppCodeBlockSyntax *Code) {
         TheDecl->setCxx(SemaRef, ND);
         CurScope->addDeclLookup(TheDecl);
       }
-      // else {
-      //   // llvm::outs() << "We have an un-named declaration.\n";
-      //   // ProcessedDecl->dump();
-      // }
     }
   } else {
     llvm_unreachable("Invalid AST format");
   }
 }
-
 void Elaborator::elaborateCppNsDecls(clang::CppxNamespaceDecl *NSD) {
   blue::Scope *SC = NSD->getBlueScopeRep();
   const Syntax *ScopeTerm = nullptr;
@@ -4496,38 +4525,40 @@ clang::Expr *Elaborator::elaborateInfixExpression(const InfixSyntax *S) {
 
   if (S->getOperation().hasKind(tok::Dot))
     return elaborateMemberAccess(LHS, S);
-  // if (isCShiftOperator(S->getOperation().getKind())) {
-  //   Token Tok = S->getOperation();
-  //   if (!hasOperator(SemaRef, CxxAST, LHS, Tok.getKind())) {
-  //     std::string Msg = "type does not have overloaded operator'" +
-  //       Tok.getSpelling() + "'";
+  if (isCShiftOperator(S->getOperation().getKind())) {
+    Token Tok = S->getOperation();
+    if (!hasOperator(SemaRef, CxxAST, LHS, Tok.getKind())) {
+      std::string Msg = "type does not have overloaded operator'" +
+        Tok.getSpelling() + "'";
 
-  //     std::string Hint;
-  //     switch (Tok.getKind()) {
-  //     case tok::LessLess:
-  //       Hint = "bit_shift_left";
-  //     case tok::GreaterGreater:
-  //       Hint = "bit_shift_right";
-  //     default:
-  //       break;
-  //     }
+      std::string Hint;
+      switch (Tok.getKind()) {
+      case tok::LessLess:
+        Hint = "bit_shift_left";
+        break;
+      case tok::GreaterGreater:
+        Hint = "bit_shift_right";
+        break;
+      default:
+        break;
+      }
 
-  //     unsigned DiagID =
-  //       SemaRef.getCxxSema().Diags.getCustomDiagID(
-  //         clang::DiagnosticsEngine::Error, "Type does not have overloaded "
-  //         "shift operator");
-  //     SemaRef.getCxxSema().Diags.Report(LHS->getExprLoc(), DiagID);
+      unsigned DiagID =
+        SemaRef.getCxxSema().Diags.getCustomDiagID(
+          clang::DiagnosticsEngine::Error, "Type does not have overloaded "
+          "shift operator");
+      SemaRef.getCxxSema().Diags.Report(LHS->getExprLoc(), DiagID);
 
-  //     // if (!Hint.empty()) {
-  //     //   unsigned HintID =
-  //     //     SemaRef.getCxxSema().Diags.getCustomDiagID(
-  //     //       clang::DiagnosticsEngine::Note, "Did you mean '%0'?") << Hint.c_str();
-  //     //   SemaRef.getCxxSema().Diags.Report(LHS->getExprLoc(), HintID);
-  //     // }
+      // if (!Hint.empty()) {
+      //   unsigned HintID =
+      //     SemaRef.getCxxSema().Diags.getCustomDiagID(
+      //       clang::DiagnosticsEngine::Note, "Did you mean '%0'?") << Hint.c_str();
+      //   SemaRef.getCxxSema().Diags.Report(LHS->getExprLoc(), HintID);
+      // }
 
-  //     return nullptr;
-  //   }
-  // }
+      return nullptr;
+    }
+  }
 
   auto RHS = elaborateExpression(S->getOperand(1));
   if (!RHS)

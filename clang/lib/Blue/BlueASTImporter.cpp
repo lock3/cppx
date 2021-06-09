@@ -4121,7 +4121,7 @@ ExpectedDecl BlueASTNodeImporter::VisitObjCMethodDecl(ObjCMethodDecl *D) {
         Importer.ToDiag(FoundMethod->getLocation(),
                         diag::note_odr_objc_method_here)
           << D->isInstanceMethod() << Name;
-
+  
         return make_error<ImportError>(ImportError::NameConflict);
       }
 
@@ -4133,7 +4133,7 @@ ExpectedDecl BlueASTNodeImporter::VisitObjCMethodDecl(ObjCMethodDecl *D) {
         Importer.ToDiag(FoundMethod->getLocation(),
                         diag::note_odr_objc_method_here)
           << D->isInstanceMethod() << Name;
-
+  
         return make_error<ImportError>(ImportError::NameConflict);
       }
 
@@ -4149,7 +4149,7 @@ ExpectedDecl BlueASTNodeImporter::VisitObjCMethodDecl(ObjCMethodDecl *D) {
             << (*P)->getType() << (*FoundP)->getType();
           Importer.ToDiag((*FoundP)->getLocation(), diag::note_odr_value_here)
             << (*FoundP)->getType();
-
+    
           return make_error<ImportError>(ImportError::NameConflict);
         }
       }
@@ -4162,7 +4162,7 @@ ExpectedDecl BlueASTNodeImporter::VisitObjCMethodDecl(ObjCMethodDecl *D) {
         Importer.ToDiag(FoundMethod->getLocation(),
                         diag::note_odr_objc_method_here)
           << D->isInstanceMethod() << Name;
-
+  
         return make_error<ImportError>(ImportError::NameConflict);
       }
 
@@ -5032,7 +5032,7 @@ ExpectedDecl BlueASTNodeImporter::VisitObjCPropertyDecl(ObjCPropertyDecl *D) {
           << Name << D->getType() << FoundProp->getType();
         Importer.ToDiag(FoundProp->getLocation(), diag::note_odr_value_here)
           << FoundProp->getType();
-
+  
         return make_error<ImportError>(ImportError::NameConflict);
       }
 
@@ -5481,7 +5481,6 @@ ExpectedDecl BlueASTNodeImporter::VisitClassTemplateSpecializationDecl(
         return PrevDefinition;
       }
     } else { // ODR violation.
-      // FIXME HandleNameConflict
       return make_error<ImportError>(ImportError::NameConflict);
     }
   }
@@ -8033,4 +8032,5 @@ llvm::Expected<clang::Decl *> BlueASTImporter::ImportImpl(clang::Decl *From) {
   clang::BlueASTNodeImporter Importer(*this);
   return Importer.Visit(From);
 }
+
 } // end blue namespace

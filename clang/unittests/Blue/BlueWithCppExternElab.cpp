@@ -40,20 +40,21 @@ foo:()->void = {
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
-// TEST(BlueExternCpp, TestingCppInclude) {
-//   StringRef Code = R"BLUE(
-// extern "C++" {
-//   #include <iostream>
-//   class A { };
-// }
+TEST(BlueExternCpp, TestingCppInclude) {
+  StringRef Code = R"BLUE(
+extern "C++" {
+  #include <iostream>
+  class A { };
+}
 
-// foo:()->void = {
-//   x:A;
-// }
-// )BLUE";
-//   auto ToMatch = varDecl(hasName("x"), hasType(asString("class A")));
-//   ASSERT_TRUE(matches(Code.str(), ToMatch));
-// }
+foo:()->void = {
+  x:A;
+}
+)BLUE";
+  auto ToMatch = varDecl(hasName("x"), hasType(asString("class A")));
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
 TEST(BlueExternCpp, ShiftOperatorTest) {
   StringRef Code = R"BLUE(
 extern "C++" {

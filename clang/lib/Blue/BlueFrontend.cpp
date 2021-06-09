@@ -37,7 +37,7 @@ void BlueSyntaxAction::ExecuteAction() {
     CI.getLangOpts().CPlusPlus11 = true;
     CI.getLangOpts().CPlusPlus14 = true;
     CI.getLangOpts().CPlusPlus17 = true;
-    ParseBlueAST(CI.getASTContext(), CI.getPreprocessor(), CI.getSema());
+    ParseBlueAST(&CI, CI.getASTContext(), CI.getPreprocessor(), CI.getSema());
     break;
 
   default:
@@ -65,7 +65,7 @@ void BlueSyntaxActionDumper::ExecuteAction() {
     CI.getLangOpts().CPlusPlus11 = true;
     CI.getLangOpts().CPlusPlus14 = true;
     CI.getLangOpts().CPlusPlus17 = true;
-    ParseBlueAST(CI.getASTContext(), CI.getPreprocessor(), CI.getSema());
+    ParseBlueAST(&CI, CI.getASTContext(), CI.getPreprocessor(), CI.getSema());
     CI.getASTContext().getTranslationUnitDecl()->dump();
     break;
 

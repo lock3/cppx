@@ -29,10 +29,9 @@
 
 namespace blue {
 
-void ParseBlueAST(clang::ASTContext &CxxContext,
+void ParseBlueAST(clang::CompilerInstance *CI, clang::ASTContext &CxxContext,
                   clang::Preprocessor &PP,
                   clang::Sema &CxxSema) {
-  // llvm::outs() << "Parse blue ast\n";
 
   // Parse the input file.
   clang::SourceManager &SM = PP.getSourceManager();
@@ -44,6 +43,7 @@ void ParseBlueAST(clang::ASTContext &CxxContext,
   // Elaborate the resulting abstract syntax tree.
   Sema Sema(Context, CxxSema);
   CxxSema.setBlueSema(&Sema);
+  Sema.setCompilerInstance(CI);
 
   Elaborator Elab(Sema);
   clang::Decl *PossibleTU = Elab.elaborateFile(CST);

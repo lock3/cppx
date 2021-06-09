@@ -80,6 +80,8 @@ public:
                   clang::ASTContext &FromContext, clang::FileManager &FromFileManager,
                   bool MinimalImport,
                   std::shared_ptr<clang::ASTImporterSharedState> SharedState = nullptr);
+
+
 protected:
   virtual llvm::Expected<clang::Decl *> ImportImpl(clang::Decl *From);
 };
