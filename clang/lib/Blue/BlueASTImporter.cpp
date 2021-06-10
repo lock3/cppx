@@ -3416,7 +3416,6 @@ ExpectedDecl BlueASTNodeImporter::VisitFunctionDecl(FunctionDecl *D) {
     // evaluated noexcept.  A call to adjustExceptionSpec() on the imported
     // decl and its redeclarations may be required.
   }
-
   ToFunction->setQualifierInfo(ToQualifierLoc);
   ToFunction->setAccess(D->getAccess());
   ToFunction->setLexicalDeclContext(LexicalDC);
