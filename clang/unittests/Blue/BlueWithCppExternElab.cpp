@@ -49,11 +49,23 @@ extern "C++" {
 
 foo:()->void = {
   x:A;
+  y : ^const char = "hi mom\n";
+  std.cout << y;
 }
 )BLUE";
-  auto ToMatch = varDecl(hasName("x"), hasType(asString("class A")));
+  auto ToMatch = varDecl(hasName("x"), hasType(asString("class As")));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
+TEST(BlueExternCpp, MissingIncludeFile) {
+  StringRef Code = R"BLUE(
+extern "C++" {
+  #include <foo>
+}
+
+)BLUE";
+  BlueFailureTest(Code);
+}
+
 
 TEST(BlueExternCpp, ShiftOperatorTest) {
   StringRef Code = R"BLUE(

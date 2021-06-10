@@ -46,6 +46,7 @@
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/Error.h"
 
+#include "clang/Lex/PreprocessorOptions.h"
 #include "clang/Frontend/CompilerInstance.h"
 #include "clang/AST/ASTConsumer.h"
 #include "clang/Parse/ParseAST.h"
@@ -377,7 +378,7 @@ void Elaborator::elaborateCppCode(const CppCodeBlockSyntax *Code) {
       "-frtti", "-fexceptions",
       // Ensure that tests specify the C++ standard version that they need.
       // "-Werror=c++14-extensions", "-Werror=c++17-extensions"
-      "-std=c++17", "-c"
+      "-std=c++17"
     };
 
     std::string WD = SemaRef.getCompilerInstance()->getFileSystemOpts().WorkingDir;
@@ -389,27 +390,41 @@ void Elaborator::elaborateCppCode(const CppCodeBlockSyntax *Code) {
     clang::HeaderSearchOptions &HeaderOptions = SemaRef.getCompilerInstance()->getHeaderSearchOpts();
     for (const auto &IncludeDir : HeaderOptions.SystemHeaderPrefixes) {
       if (IncludeDir.IsSystemHeader) {
-        llvm::outs() << "INcluding system header path = " << IncludeDir.Prefix << "\n";
+        // llvm::outs() << "Including system header path = " << IncludeDir.Prefix << "\n";
         Args.emplace_back("-cxx-isystem" + IncludeDir.Prefix);
       } else {
-        llvm::outs() << "Including header path = " << IncludeDir.Prefix << "\n";
+        // llvm::outs() << "Including header path = " << IncludeDir.Prefix << "\n";
         Args.emplace_back("-I" + IncludeDir.Prefix);
       }
     }
 
+    for(auto En : HeaderOptions.UserEntries) {
+      // llvm::outs() << "Including header path = " << En.Path << "\n";
+      Args.emplace_back("-I" + En.Path);
+    }
+    // clang::PreprocessorOptions &PPOpts = SemaRef.getCompilerInstance()->getPreprocessorOpts();
+    // for(auto PPInc : PPOpts.Includes) {
+    //   // llvm::outs() << "Dumping include directory! = " << PPInc << "\n";
+    // }
     // Gathering all of what I believe are the necessary command line arguments.
     // and reconstructing them accordingly.
     std::unique_ptr<clang::ASTUnit> CppUnit =
       clang::tooling::buildASTFromCodeWithArgs(CodeBuffer, Args);
     if (!CppUnit) {
-      llvm_unreachable("Incomplete C++ code");
+      error(Code->getLocation()) << "Invalid C++ code";
+      return;
+      // llvm_unreachable("Incomplete C++ code");
     }
-    auto diagBegin = CppUnit->stored_diag_begin();
-    auto diagEnd = CppUnit->stored_diag_end();
-    clang::DiagnosticsEngine &Diags = SemaRef.getCxxSema().Diags;
-    for (;diagBegin != diagEnd; ++diagBegin) {
-      Diags.Report(*diagBegin);
+    if (CppUnit->getDiagnostics().hasErrorOccurred()) {
+      error(Code->getLocation()) << "Invalid C++ code";
+      return;
     }
+    // auto diagBegin = CppUnit->stored_diag_begin();
+    // auto diagEnd = CppUnit->stored_diag_end();
+    // clang::DiagnosticsEngine &Diags = SemaRef.getCxxSema().Diags;
+    // for (;diagBegin != diagEnd; ++diagBegin) {
+    //   Diags.Report(*diagBegin);
+    // }
     // auto SharedState = std::make_shared<ASTImporterSharedState>(
     //     CxxAST.getTranslationUnitDecl());
     // Attempting to merge the 2 AST together.
@@ -506,10 +521,27 @@ void Elaborator::elaborateCppNsDecls(clang::CppxNamespaceDecl *NSD) {
   } else {
     ScopeTerm = SC->getTerm();
   }
+  // Building namespace declaration.
+  Token NSIdTok(tok::Identifier, NSD->getLocation(),
+          const_cast<char*>(NSD->getIdentifier()->getName().data()));
+  const Syntax *NsIdSyn = new IdentifierSyntax(NSIdTok);
+  Declaration *TheNSDecl = new Declaration(SemaRef.getCurrentDecl(), NsIdSyn,
+                                          nullptr, nullptr);
+  clang::IdentifierInfo *Id = NSD->getIdentifier();
+  Scope *ParentScope = SemaRef.getCurrentScope();
+  TheNSDecl->Id = Id;
+  TheNSDecl->DeclaringContext = cast<clang::DeclContext>(SemaRef.getCurrentDecl()->getCxx());
+  TheNSDecl->ScopeForDecl = ParentScope;
+  TheNSDecl->CurrentPhase = Phase::Initialization;
+  TheNSDecl->setCxx(SemaRef, NSD);
+  ParentScope->addDeclLookup(TheNSDecl);
+  // Make sure to enter the new decl context.
+  Sema::DeclContextRAII DCTracking(SemaRef, TheNSDecl);
   auto Iter = NSD->decls_begin();
   auto End = NSD->decls_end();
 
   ResumeScopeRAII ScopeTracker(SemaRef, SC, ScopeTerm);
+  TheNSDecl->SavedScope = SemaRef.getCurrentScope();
   for (;Iter != End; ++Iter) {
     clang::Decl *ProcessedDecl = *Iter;
     if (SemaRef.getDeclaration(ProcessedDecl)) {
@@ -552,12 +584,12 @@ void Elaborator::elaborateCppNsDecls(clang::CppxNamespaceDecl *NSD) {
       Token T(tok::Identifier, ND->getLocation(),
               const_cast<char*>(ND->getIdentifier()->getName().data()));
       const Syntax *IdSyn = new IdentifierSyntax(T);
-      Declaration *TheDecl = new Declaration(SemaRef.getTUDecl(), IdSyn,
+      Declaration *TheDecl = new Declaration(SemaRef.getCurrentDecl(), IdSyn,
                                               nullptr, nullptr);
       clang::IdentifierInfo *Id = ND->getIdentifier();
       Scope *CurScope = SemaRef.getCurrentScope();
       TheDecl->Id = Id;
-      TheDecl->DeclaringContext = SemaRef.getCurClangDeclContext();
+      TheDecl->DeclaringContext = NSD;
       TheDecl->ScopeForDecl = CurScope;
       TheDecl->CurrentPhase = Phase::Initialization;
       TheDecl->setCxx(SemaRef, ND);
