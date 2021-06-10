@@ -383,7 +383,7 @@ void Elaborator::elaborateCppCode(const CppCodeBlockSyntax *Code) {
 
     std::string WD = SemaRef.getCompilerInstance()->getFileSystemOpts().WorkingDir;
     if (WD != "") {
-      llvm::outs() << "Setting working directory = " << WD << "\n";
+      // llvm::outs() << "Setting working directory = " << WD << "\n";
       Args.emplace_back("-working-directory" + WD);
     }
 
@@ -399,7 +399,7 @@ void Elaborator::elaborateCppCode(const CppCodeBlockSyntax *Code) {
     }
 
     for(auto En : HeaderOptions.UserEntries) {
-      llvm::outs() << "Including header path = " << En.Path << "\n";
+      // llvm::outs() << "Including header path = " << En.Path << "\n";
       Args.emplace_back("-I" + En.Path);
     }
     // clang::PreprocessorOptions &PPOpts = SemaRef.getCompilerInstance()->getPreprocessorOpts();
