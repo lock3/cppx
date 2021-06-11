@@ -419,14 +419,7 @@ void Elaborator::elaborateCppCode(const CppCodeBlockSyntax *Code) {
       error(Code->getLocation()) << "Invalid C++ code";
       return;
     }
-    // auto diagBegin = CppUnit->stored_diag_begin();
-    // auto diagEnd = CppUnit->stored_diag_end();
-    // clang::DiagnosticsEngine &Diags = SemaRef.getCxxSema().Diags;
-    // for (;diagBegin != diagEnd; ++diagBegin) {
-    //   Diags.Report(*diagBegin);
-    // }
-    // auto SharedState = std::make_shared<ASTImporterSharedState>(
-    //     CxxAST.getTranslationUnitDecl());
+
     // Attempting to merge the 2 AST together.
     BlueASTImporter Importer(SemaRef, CxxAST, CxxSema.getSourceManager().getFileManager(),
                                 CppUnit->getASTContext(), CppUnit->getFileManager(),
@@ -4615,6 +4608,10 @@ clang::Expr *Elaborator::elaborateInfixExpression(const InfixSyntax *S) {
     Error(S->getLocation(), "invalid binary operator");
     return nullptr;
   }
+  llvm::errs() << "Dumping LHS for binary operator\n";
+  LHS->dump();
+  llvm::errs() << "Dumping RHS for binary operator\n";
+  RHS->dump();
   clang::ExprResult Res = SemaRef.getCxxSema().BuildBinOp(/*Scope=*/nullptr,
                                                           S->getLocation(),
                                                           OpIter->second, LHS,

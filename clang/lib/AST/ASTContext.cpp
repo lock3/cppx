@@ -1425,7 +1425,7 @@ void ASTContext::InitBuiltinTypes(const TargetInfo &Target,
     InitBuiltinType(WCharTy,           BuiltinType::WChar_S);
   else  // -fshort-wchar makes wchar_t be unsigned.
     InitBuiltinType(WCharTy,           BuiltinType::WChar_U);
-  if (LangOpts.CPlusPlus && LangOpts.WChar)
+  if ((LangOpts.CPlusPlus || LangOpts.Blue) && LangOpts.WChar)
     WideCharTy = WCharTy;
   else {
     // C99 (or C++ using -fno-wchar).
@@ -1437,12 +1437,12 @@ void ASTContext::InitBuiltinTypes(const TargetInfo &Target,
   // C++20 (proposed)
   InitBuiltinType(Char8Ty,              BuiltinType::Char8);
 
-  if (LangOpts.CPlusPlus) // C++0x 3.9.1p5, extension for C++
+  if (LangOpts.CPlusPlus || LangOpts.Blue) // C++0x 3.9.1p5, extension for C++
     InitBuiltinType(Char16Ty,           BuiltinType::Char16);
   else // C99
     Char16Ty = getFromTargetType(Target.getChar16Type());
 
-  if (LangOpts.CPlusPlus) // C++0x 3.9.1p5, extension for C++
+  if (LangOpts.CPlusPlus || LangOpts.Blue) // C++0x 3.9.1p5, extension for C++
     InitBuiltinType(Char32Ty,           BuiltinType::Char32);
   else // C99
     Char32Ty = getFromTargetType(Target.getChar32Type());

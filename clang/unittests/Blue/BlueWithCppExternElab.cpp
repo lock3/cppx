@@ -45,17 +45,21 @@ TEST(BlueExternCpp, TestingCppInclude) {
 extern "C++" {
   #include <iostream>
   class A { };
+  void bar() {
+    std::cout << "Hello world\n";
+  }
 }
 
 foo:()->void = {
   x:A;
-  y : ^const char = "hi mom\n";
+  y : ^const char = "Also hello world.\n";
   std.cout << y;
 }
 )BLUE";
-  auto ToMatch = varDecl(hasName("x"), hasType(asString("class As")));
+  auto ToMatch = cxxOperatorCallExpr(hasOperatorName("<<"));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
+
 TEST(BlueExternCpp, MissingIncludeFile) {
   StringRef Code = R"BLUE(
 extern "C++" {
