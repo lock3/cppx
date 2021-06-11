@@ -4608,10 +4608,7 @@ clang::Expr *Elaborator::elaborateInfixExpression(const InfixSyntax *S) {
     Error(S->getLocation(), "invalid binary operator");
     return nullptr;
   }
-  llvm::errs() << "Dumping LHS for binary operator\n";
-  LHS->dump();
-  llvm::errs() << "Dumping RHS for binary operator\n";
-  RHS->dump();
+
   clang::ExprResult Res = SemaRef.getCxxSema().BuildBinOp(/*Scope=*/nullptr,
                                                           S->getLocation(),
                                                           OpIter->second, LHS,
