@@ -3869,6 +3869,9 @@ void Elaborator::elaborateVarDef(Declaration *D) {
     // That includes complex types.
     getCxxSema().ActOnUninitializedDecl(VD);
     getCxxSema().FinalizeDeclaration(VD);
+    if (auto *CE = dyn_cast_or_null<clang::CXXConstructExpr>(VD->getInit()))
+      getCxxSema().ActOnDefaultCtorInitializers(CE->getConstructor());
+
     return;
   }
   clang::Expr *InitExpr = nullptr;
@@ -7215,9 +7218,9 @@ void Elaborator::lateElaborateDefaultParams(ElaboratingClass &Class) {
   }
 }
 
-void Elaborator::lateElaborateMemberInitializers(ElaboratingClass &Class) {
+void Elaborator::lateElaborateMemberInitializers(ElaboratingClass &EClass) {
   BALANCE_DBG();
-  bool CurrentlyNested = !Class.IsTopLevelClass;
+  bool CurrentlyNested = !EClass.IsTopLevelClass;
 
   Sema::ClangScopeRAII MemberInitScope(SemaRef, clang::Scope::DeclScope |
     clang::Scope::ClassScope, clang::SourceLocation(), CurrentlyNested);
@@ -7227,26 +7230,26 @@ void Elaborator::lateElaborateMemberInitializers(ElaboratingClass &Class) {
 
   // This may need to be moved to somewhere else.
   if (CurrentlyNested) {
-    OptResumeScope.Init(Class.TagOrTemplate->SavedScope,
-      Class.TagOrTemplate->Def, false);
+    OptResumeScope.Init(EClass.TagOrTemplate->SavedScope,
+      EClass.TagOrTemplate->Def, false);
     SemaRef.getCxxSema().ActOnStartDelayedMemberDeclarations(
-      SemaRef.getCurClangScope(), Class.TagOrTemplate->getCxx());
-    DCTracking.Init(Class.TagOrTemplate, true);
+      SemaRef.getCurClangScope(), EClass.TagOrTemplate->getCxx());
+    DCTracking.Init(EClass.TagOrTemplate, true);
   }
 
   clang::Sema::CXXThisScopeRAII PushThisIntoScope(SemaRef.getCxxSema(),
-      Class.TagOrTemplate->getCxx(), clang::Qualifiers());
+      EClass.TagOrTemplate->getCxx(), clang::Qualifiers());
 
-  for (size_t i = 0; i < Class.LateElaborations.size(); ++i) {
-    Class.LateElaborations[i]->ElaborateMemberInitializers();
+  for (size_t i = 0; i < EClass.LateElaborations.size(); ++i) {
+    EClass.LateElaborations[i]->ElaborateMemberInitializers();
   }
 
   if (CurrentlyNested)
     SemaRef.getCxxSema().ActOnFinishDelayedMemberDeclarations(
-      SemaRef.getCurClangScope(), Class.TagOrTemplate->getCxx());
+      SemaRef.getCurClangScope(), EClass.TagOrTemplate->getCxx());
 
   SemaRef.getCxxSema().ActOnFinishDelayedMemberInitializers(
-    Class.TagOrTemplate->getCxx());
+    EClass.TagOrTemplate->getCxx());
 }
 
 void Elaborator::lateElaborateMethodDefs(ElaboratingClass &Class) {
