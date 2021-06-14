@@ -2004,6 +2004,7 @@ Error BlueASTNodeImporter::ImportInitializer(VarDecl *From, VarDecl *To) {
     ToEval->HasConstantDestruction = FromEval->HasConstantDestruction;
     // FIXME: Also import the initializer value.
   }
+  To->setInitStyle(From->getInitStyle());
 
   // FIXME: Other bits to merge?
   return Error::success();
@@ -3884,6 +3885,8 @@ ExpectedDecl BlueASTNodeImporter::VisitVarDecl(VarDecl *D) {
     return std::move(Err);
   if (ToD)
     return ToD;
+
+  // llvm::outs() << "We have imported a declaration?\n";
 
   // Try to find a variable in our own ("to") context with the same name and
   // in the same context as the variable we're importing.
