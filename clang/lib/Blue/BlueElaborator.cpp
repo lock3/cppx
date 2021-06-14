@@ -4543,52 +4543,53 @@ clang::Expr *Elaborator::elaborateInfixExpression(const InfixSyntax *S) {
 
   if (S->getOperation().hasKind(tok::Dot))
     return elaborateMemberAccess(LHS, S);
-  if (isCShiftOperator(S->getOperation().getKind())) {
-    Token Tok = S->getOperation();
-    if (!hasOperator(SemaRef, CxxAST, LHS, Tok.getKind())) {
-      std::string Hint;
-      switch (Tok.getKind()) {
-      case tok::LessLess:
-        Hint = "bit_shift_left";
-        break;
-      case tok::GreaterGreater:
-        Hint = "bit_shift_right";
-        break;
-      default:
-        break;
-      }
+  // This only works for member operators and the << can be either.
+  // if (isCShiftOperator(S->getOperation().getKind())) {
+  //   Token Tok = S->getOperation();
+  //   if (!hasOperator(SemaRef, CxxAST, LHS, Tok.getKind())) {
+  //     std::string Hint;
+  //     switch (Tok.getKind()) {
+  //     case tok::LessLess:
+  //       Hint = "bit_shift_left";
+  //       break;
+  //     case tok::GreaterGreater:
+  //       Hint = "bit_shift_right";
+  //       break;
+  //     default:
+  //       break;
+  //     }
 
-      unsigned DiagID =
-        SemaRef.getCxxSema().Diags.getCustomDiagID(
-          clang::DiagnosticsEngine::Error, "type does not have overloaded "
-          "%0 operator");
-      SemaRef.getCxxSema().Diags.Report(LHS->getExprLoc(), DiagID)
-        << Tok.getSpelling();
+  //     unsigned DiagID =
+  //       SemaRef.getCxxSema().Diags.getCustomDiagID(
+  //         clang::DiagnosticsEngine::Error, "type does not have overloaded "
+  //         "%0 operator");
+  //     SemaRef.getCxxSema().Diags.Report(LHS->getExprLoc(), DiagID)
+  //       << Tok.getSpelling();
 
-      if (clang::DeclRefExpr *DRE = dyn_cast<clang::DeclRefExpr>(LHS)) {
-        const clang::RecordType *RT =
-          DRE->getDecl()->getType()->getAs<clang::RecordType>();
-        if (RT) {
-          clang::Decl *D = RT->getDecl();
-          if (D) {
-            unsigned NoteID =
-              SemaRef.getCxxSema().Diags.getCustomDiagID(
-                clang::DiagnosticsEngine::Note, "declared here:");
-            SemaRef.getCxxSema().Diags.Report(D->getBeginLoc(), NoteID);
-          }
-        }
-      }
+  //     if (clang::DeclRefExpr *DRE = dyn_cast<clang::DeclRefExpr>(LHS)) {
+  //       const clang::RecordType *RT =
+  //         DRE->getDecl()->getType()->getAs<clang::RecordType>();
+  //       if (RT) {
+  //         clang::Decl *D = RT->getDecl();
+  //         if (D) {
+  //           unsigned NoteID =
+  //             SemaRef.getCxxSema().Diags.getCustomDiagID(
+  //               clang::DiagnosticsEngine::Note, "declared here:");
+  //           SemaRef.getCxxSema().Diags.Report(D->getBeginLoc(), NoteID);
+  //         }
+  //       }
+  //     }
 
-      if (!Hint.empty()) {
-        unsigned HintID =
-          SemaRef.getCxxSema().Diags.getCustomDiagID(
-            clang::DiagnosticsEngine::Note, "did you mean '%0'?");
-        SemaRef.getCxxSema().Diags.Report(LHS->getExprLoc(), HintID) << Hint;
-      }
+  //     if (!Hint.empty()) {
+  //       unsigned HintID =
+  //         SemaRef.getCxxSema().Diags.getCustomDiagID(
+  //           clang::DiagnosticsEngine::Note, "did you mean '%0'?");
+  //       SemaRef.getCxxSema().Diags.Report(LHS->getExprLoc(), HintID) << Hint;
+  //     }
 
-      return nullptr;
-    }
-  }
+  //     return nullptr;
+  //   }
+  // }
 
   auto RHS = elaborateExpression(S->getOperand(1));
   if (!RHS)
