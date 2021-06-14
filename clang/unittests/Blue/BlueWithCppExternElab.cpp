@@ -46,7 +46,6 @@ extern "C++" {
   #include <iostream>
   class A { };
   void bar() {
-    std::cout << "Hello world\n";
   }
 }
 

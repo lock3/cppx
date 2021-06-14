@@ -382,30 +382,20 @@ void Elaborator::elaborateCppCode(const CppCodeBlockSyntax *Code) {
     };
 
     std::string WD = SemaRef.getCompilerInstance()->getFileSystemOpts().WorkingDir;
-    if (WD != "") {
-      // llvm::outs() << "Setting working directory = " << WD << "\n";
+    if (WD != "")
       Args.emplace_back("-working-directory" + WD);
-    }
 
     clang::HeaderSearchOptions &HeaderOptions = SemaRef.getCompilerInstance()->getHeaderSearchOpts();
-    for (const auto &IncludeDir : HeaderOptions.SystemHeaderPrefixes) {
-      if (IncludeDir.IsSystemHeader) {
-        // llvm::outs() << "Including system header path = " << IncludeDir.Prefix << "\n";
+    for (const auto &IncludeDir : HeaderOptions.SystemHeaderPrefixes)
+      if (IncludeDir.IsSystemHeader)
         Args.emplace_back("-cxx-isystem" + IncludeDir.Prefix);
-      } else {
-        // llvm::outs() << "Including header path = " << IncludeDir.Prefix << "\n";
+      else
         Args.emplace_back("-I" + IncludeDir.Prefix);
-      }
-    }
 
-    for(auto En : HeaderOptions.UserEntries) {
-      // llvm::outs() << "Including header path = " << En.Path << "\n";
+
+    for(auto En : HeaderOptions.UserEntries)
       Args.emplace_back("-I" + En.Path);
-    }
-    // clang::PreprocessorOptions &PPOpts = SemaRef.getCompilerInstance()->getPreprocessorOpts();
-    // for(auto PPInc : PPOpts.Includes) {
-    //   // llvm::outs() << "Dumping include directory! = " << PPInc << "\n";
-    // }
+
     // Gathering all of what I believe are the necessary command line arguments.
     // and reconstructing them accordingly.
     std::unique_ptr<clang::ASTUnit> CppUnit =
@@ -413,8 +403,8 @@ void Elaborator::elaborateCppCode(const CppCodeBlockSyntax *Code) {
     if (!CppUnit) {
       error(Code->getLocation()) << "Invalid C++ code";
       return;
-      // llvm_unreachable("Incomplete C++ code");
     }
+
     if (CppUnit->getDiagnostics().hasErrorOccurred()) {
       error(Code->getLocation()) << "Invalid C++ code";
       return;
@@ -4609,6 +4599,10 @@ clang::Expr *Elaborator::elaborateInfixExpression(const InfixSyntax *S) {
     return nullptr;
   }
 
+  // llvm::errs() << "Dumping LHS and RHS \n";
+  // LHS->dump();
+  // RHS->dump();
+  // llvm::errs() << "---------------\n";
   clang::ExprResult Res = SemaRef.getCxxSema().BuildBinOp(/*Scope=*/nullptr,
                                                           S->getLocation(),
                                                           OpIter->second, LHS,
