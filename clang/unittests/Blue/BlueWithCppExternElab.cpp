@@ -59,6 +59,29 @@ foo:()->void = {
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
+TEST(BlueExternCpp, MultipleExternCppBlocks) {
+  StringRef Code = R"BLUE(
+extern "C++" {
+  class A { };
+}
+
+extern "C++" {
+  class B { };
+}
+
+foo:()->void = {
+  x:A;
+  y:B;
+}
+)BLUE";
+  // auto ToMatch = cxxOperatorCallExpr(hasOperatorName("<<"));
+  auto ToMatch = translationUnitDecl(
+    hasDescendant(varDecl(hasName("x"), hasType(asString("class A")))),
+    hasDescendant(varDecl(hasName("y"), hasType(asString("class B"))))
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
 TEST(BlueExternCpp, MissingIncludeFile) {
   StringRef Code = R"BLUE(
 extern "C++" {
@@ -82,6 +105,20 @@ extern "C++" {
 foo:()->void = {
   y : x;
   y << 5;
+}
+)BLUE";
+  auto ToMatch = cxxOperatorCallExpr(hasOperatorName("<<"));
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+
+TEST(BlueExternCpp, JustAnInclude) {
+  StringRef Code = R"BLUE(
+#include <iostream>
+
+foo:()->void = {
+  y : ^const char = "Also hello world.\n";
+  std.cout << y;
 }
 )BLUE";
   auto ToMatch = cxxOperatorCallExpr(hasOperatorName("<<"));

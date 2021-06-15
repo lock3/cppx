@@ -76,7 +76,11 @@ public:
   //                                  Elaboration                             //
   //===--------------------------------------------------------------------===//
   clang::Decl *elaborateFile(const Syntax *S);
-  void elaborateCppCode(const CppCodeBlockSyntax *Code);
+  // void elaborateCppCode(const CppCodeBlockSyntax *Code);
+  /// \returns true in the event that an error was encountered, and false if not.
+  bool elaborateAllCppCode(const std::string &CodeBody);
+  void gatherCppCode(const CppCodeBlockSyntax *Code, std::string &CodeBuffer);
+  void gatherCppInclude(const CppIncludeSyntax *Include, std::string &CodeBuffer);
   void elaborateCppNsDecls(clang::CppxNamespaceDecl *NSD);
 
   Declaration *identifyDeclaration(const Syntax *S);

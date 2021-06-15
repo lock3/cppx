@@ -343,11 +343,26 @@ clang::Decl *Elaborator::elaborateFile(const Syntax *S) {
   assert(isa<SequenceSyntax>(Top->getDeclarations()) && "invalid file");
   const SequenceSyntax *Declarations =
     cast<SequenceSyntax>(Top->getDeclarations());
+  bool HandleCppCode = false;
+  std::string CodeBuffer;
   for (const Syntax *SS : Declarations->children()) {
     if (auto CppCode = dyn_cast<CppCodeBlockSyntax>(SS)) {
-      elaborateCppCode(CppCode);
+      HandleCppCode = true;
+      gatherCppCode(CppCode, CodeBuffer);
+    } else if (auto CppInclude = dyn_cast<CppIncludeSyntax>(SS)) {
+      HandleCppCode = true;
+      gatherCppInclude(CppInclude, CodeBuffer);
     }
   }
+
+  if (HandleCppCode) {
+    if (elaborateAllCppCode(CodeBuffer)) {
+      error(clang::SourceLocation())
+                              << "encountered an error while building C++ code";
+    }
+  }
+
+
   for (const Syntax *SS : Declarations->children())
     identifyDeclaration(SS);
 
@@ -363,134 +378,160 @@ clang::Decl *Elaborator::elaborateFile(const Syntax *S) {
   return TU;
 }
 
-
-void Elaborator::elaborateCppCode(const CppCodeBlockSyntax *Code) {
-  std::string CodeBuffer;
+void Elaborator::gatherCppCode(const CppCodeBlockSyntax *Code, std::string &CodeBuffer) {
   if (auto Enc = dyn_cast<EnclosureSyntax>(Code->getTerm())) {
     auto Open = Enc->getOpen().getLocation();
     auto Close = Enc->getClose().getLocation();
     auto OpenCharPtr = SemaRef.getCxxSema().getSourceManager().getCharacterData(Open);
     auto CloseCharPtr = SemaRef.getCxxSema().getSourceManager().getCharacterData(Close);
 
-    CodeBuffer.assign(OpenCharPtr + 1, CloseCharPtr);
-    std::vector<std::string> Args = {
-      // Some tests need rtti/exceptions on.
-      "-frtti", "-fexceptions",
-      // Ensure that tests specify the C++ standard version that they need.
-      // "-Werror=c++14-extensions", "-Werror=c++17-extensions"
-      "-std=c++17"
-    };
-
-    std::string WD = SemaRef.getCompilerInstance()->getFileSystemOpts().WorkingDir;
-    if (WD != "")
-      Args.emplace_back("-working-directory" + WD);
-
-    clang::HeaderSearchOptions &HeaderOptions = SemaRef.getCompilerInstance()->getHeaderSearchOpts();
-    for (const auto &IncludeDir : HeaderOptions.SystemHeaderPrefixes)
-      if (IncludeDir.IsSystemHeader)
-        Args.emplace_back("-cxx-isystem" + IncludeDir.Prefix);
-      else
-        Args.emplace_back("-I" + IncludeDir.Prefix);
-
-
-    for(auto En : HeaderOptions.UserEntries)
-      Args.emplace_back("-I" + En.Path);
-
-    // Gathering all of what I believe are the necessary command line arguments.
-    // and reconstructing them accordingly.
-    std::unique_ptr<clang::ASTUnit> CppUnit =
-      clang::tooling::buildASTFromCodeWithArgs(CodeBuffer, Args);
-    if (!CppUnit) {
-      error(Code->getLocation()) << "Invalid C++ code";
-      return;
-    }
-
-    if (CppUnit->getDiagnostics().hasErrorOccurred()) {
-      error(Code->getLocation()) << "Invalid C++ code";
-      return;
-    }
-
-    // Attempting to merge the 2 AST together.
-    BlueASTImporter Importer(SemaRef, CxxAST, CxxSema.getSourceManager().getFileManager(),
-                                CppUnit->getASTContext(), CppUnit->getFileManager(),
-                                /*MinimalImport=*/false);
-    Importer.setODRHandling(clang::ASTImporter::ODRHandlingType::Liberal);
-    clang::TranslationUnitDecl *TU = CppUnit->getASTContext().getTranslationUnitDecl();
-    for (auto *D : TU->decls()) {
-      // Don't re-import __va_list_tag, __builtin_va_list.
-      if (const auto *ND = dyn_cast<clang::NamedDecl>(D))
-        if (clang::IdentifierInfo *II = ND->getIdentifier())
-          if (II->isStr("__va_list_tag") || II->isStr("__builtin_va_list"))
-            continue;
-
-      llvm::Expected<clang::Decl *> ToDOrError = Importer.Import(D);
-      if (!ToDOrError) {
-        llvm::Error Err = ToDOrError.takeError();
-        // llvm::outs() << "ERROR: " << Err << "\n";
-        llvm::Error Ret = llvm::handleErrors(
-            std::move(Err), [&](const clang::ImportError& ImportErr) {
-              llvm::outs() << "==========!!!!!!!!!! Naming conflict ==========!!!!!!!!!!\n";
-              llvm::outs() << "what's my error " << ImportErr.toString() << "\n";
-            });
-        if (Ret) {
-          llvm_unreachable("Failed to clear the error!");
-        }
-        continue;
-      }
-      clang::Decl *ProcessedDecl = *ToDOrError;
-      if (auto CppNS = dyn_cast<clang::CppxNamespaceDecl>(ProcessedDecl)) {
-        elaborateCppNsDecls(CppNS);
-        continue;
-      }
-      if (auto CTD = dyn_cast<clang::ClassTemplateDecl>(ProcessedDecl)) {
-        ProcessedDecl = CTD->getTemplatedDecl();
-      } else if (auto FTD = dyn_cast<clang::FunctionTemplateDecl>(ProcessedDecl)) {
-        ProcessedDecl = FTD->getAsFunction();
-      } else if (auto TATD = dyn_cast<clang::TypeAliasTemplateDecl>(ProcessedDecl)) {
-        ProcessedDecl = TATD->getTemplatedDecl();
-      } else if (auto VTD = dyn_cast<clang::VarTemplateDecl>(ProcessedDecl)) {
-        ProcessedDecl = VTD->getTemplatedDecl();
-      }
-      // Don't include static data members that are defined outside the body
-      // of a class.
-      if (auto VD = dyn_cast<clang::VarDecl>(ProcessedDecl))
-        if (VD->isStaticDataMember())
-          continue;
-
-      // Make sure that we don't create declarations for any method defined
-      // outside the body of a class because it doesn't matter for lookup.
-      if (isa<clang::CXXMethodDecl>(ProcessedDecl))
-        continue;
-
-      // We don't want to look up anything that is the definition for
-      // something else.
-      if (auto DD = dyn_cast<clang::DeclaratorDecl>(ProcessedDecl))
-        if (DD->getQualifier())
-          continue;
-
-      if (auto ND = dyn_cast<clang::NamedDecl>(ProcessedDecl)) {
-        if (!ND->getIdentifier())
-          continue;
-
-        Token T(tok::Identifier, ND->getLocation(),
-                const_cast<char*>(ND->getIdentifier()->getName().data()));
-        const Syntax *IdSyn = new IdentifierSyntax(T);
-        Declaration *TheDecl = new Declaration(SemaRef.getTUDecl(), IdSyn,
-                                               nullptr, nullptr);
-        clang::IdentifierInfo *Id = ND->getIdentifier();
-        Scope *CurScope = SemaRef.getCurrentScope();
-        TheDecl->Id = Id;
-        TheDecl->DeclaringContext = SemaRef.getCurClangDeclContext();
-        TheDecl->ScopeForDecl = CurScope;
-        TheDecl->CurrentPhase = Phase::Initialization;
-        TheDecl->setCxx(SemaRef, ND);
-        CurScope->addDeclLookup(TheDecl);
-      }
-    }
+    std::string Temp;
+    Temp.assign(OpenCharPtr + 1, CloseCharPtr);
+    CodeBuffer +="\n" + Temp;
   } else {
     llvm_unreachable("Invalid AST format");
   }
 }
+
+void Elaborator::gatherCppInclude(const CppIncludeSyntax *Include, std::string &CodeBuffer) {
+  if (auto Code = dyn_cast<CppCodeBlockSyntax>(Include->getTerm())) {
+    if (auto Enc = dyn_cast<EnclosureSyntax>(Code->getTerm())) {
+      auto Open = Enc->getOpen().getLocation();
+      auto Close = Enc->getClose().getLocation();
+      auto OpenCharPtr = SemaRef.getCxxSema().getSourceManager().getCharacterData(Open);
+      auto CloseCharPtr = SemaRef.getCxxSema().getSourceManager().getCharacterData(Close);
+
+      std::string Temp;
+      Temp.assign(OpenCharPtr + 1, CloseCharPtr);
+      CodeBuffer +="\n#include <" + Temp + ">\n";
+    } else {
+      llvm_unreachable("Invalid syntax");
+    }
+  } else if (auto StrInclude = dyn_cast<AtomSyntax>(Include->getTerm())) {
+    CodeBuffer +="\n#include <" + StrInclude->getSpelling() + ">\n";
+  } else {
+    llvm_unreachable("Invalid AST format");
+  }
+}
+
+bool Elaborator::elaborateAllCppCode(const std::string &CodeBuffer) {
+  std::vector<std::string> Args = {
+    // Some tests need rtti/exceptions on.
+    "-frtti", "-fexceptions",
+    // Ensure that tests specify the C++ standard version that they need.
+    // "-Werror=c++14-extensions", "-Werror=c++17-extensions"
+    "-std=c++17"
+  };
+
+  std::string WD = SemaRef.getCompilerInstance()->getFileSystemOpts().WorkingDir;
+  if (WD != "")
+    Args.emplace_back("-working-directory" + WD);
+
+  clang::HeaderSearchOptions &HeaderOptions = SemaRef.getCompilerInstance()->getHeaderSearchOpts();
+  for (const auto &IncludeDir : HeaderOptions.SystemHeaderPrefixes)
+    if (IncludeDir.IsSystemHeader)
+      Args.emplace_back("-cxx-isystem" + IncludeDir.Prefix);
+    else
+      Args.emplace_back("-I" + IncludeDir.Prefix);
+
+
+  for(auto En : HeaderOptions.UserEntries)
+    Args.emplace_back("-I" + En.Path);
+
+  // Gathering all of what I believe are the necessary command line arguments.
+  // and reconstructing them accordingly.
+  std::unique_ptr<clang::ASTUnit> CppUnit =
+    clang::tooling::buildASTFromCodeWithArgs(CodeBuffer, Args);
+  if (!CppUnit) {
+    error(clang::SourceLocation()) << "Invalid C++ code";
+    return true;
+  }
+
+  if (CppUnit->getDiagnostics().hasErrorOccurred()) {
+    error(clang::SourceLocation()) << "Invalid C++ code";
+    return true;
+  }
+
+  // Attempting to merge the 2 AST together.
+  BlueASTImporter Importer(SemaRef, CxxAST, CxxSema.getSourceManager().getFileManager(),
+                              CppUnit->getASTContext(), CppUnit->getFileManager(),
+                              /*MinimalImport=*/false);
+  Importer.setODRHandling(clang::ASTImporter::ODRHandlingType::Liberal);
+  clang::TranslationUnitDecl *TU = CppUnit->getASTContext().getTranslationUnitDecl();
+  for (auto *D : TU->decls()) {
+    // Don't re-import __va_list_tag, __builtin_va_list.
+    if (const auto *ND = dyn_cast<clang::NamedDecl>(D))
+      if (clang::IdentifierInfo *II = ND->getIdentifier())
+        if (II->isStr("__va_list_tag") || II->isStr("__builtin_va_list"))
+          continue;
+
+    llvm::Expected<clang::Decl *> ToDOrError = Importer.Import(D);
+    if (!ToDOrError) {
+      llvm::Error Err = ToDOrError.takeError();
+      // llvm::outs() << "ERROR: " << Err << "\n";
+      llvm::Error Ret = llvm::handleErrors(
+          std::move(Err), [&](const clang::ImportError& ImportErr) {
+            llvm::outs() << "==========!!!!!!!!!! Naming conflict ==========!!!!!!!!!!\n";
+            llvm::outs() << "what's my error " << ImportErr.toString() << "\n";
+          });
+      if (Ret) {
+        llvm_unreachable("Failed to clear the error!");
+      }
+      continue;
+    }
+    clang::Decl *ProcessedDecl = *ToDOrError;
+    if (auto CppNS = dyn_cast<clang::CppxNamespaceDecl>(ProcessedDecl)) {
+      elaborateCppNsDecls(CppNS);
+      continue;
+    }
+    if (auto CTD = dyn_cast<clang::ClassTemplateDecl>(ProcessedDecl)) {
+      ProcessedDecl = CTD->getTemplatedDecl();
+    } else if (auto FTD = dyn_cast<clang::FunctionTemplateDecl>(ProcessedDecl)) {
+      ProcessedDecl = FTD->getAsFunction();
+    } else if (auto TATD = dyn_cast<clang::TypeAliasTemplateDecl>(ProcessedDecl)) {
+      ProcessedDecl = TATD->getTemplatedDecl();
+    } else if (auto VTD = dyn_cast<clang::VarTemplateDecl>(ProcessedDecl)) {
+      ProcessedDecl = VTD->getTemplatedDecl();
+    }
+    // Don't include static data members that are defined outside the body
+    // of a class.
+    if (auto VD = dyn_cast<clang::VarDecl>(ProcessedDecl))
+      if (VD->isStaticDataMember())
+        continue;
+
+    // Make sure that we don't create declarations for any method defined
+    // outside the body of a class because it doesn't matter for lookup.
+    if (isa<clang::CXXMethodDecl>(ProcessedDecl))
+      continue;
+
+    // We don't want to look up anything that is the definition for
+    // something else.
+    if (auto DD = dyn_cast<clang::DeclaratorDecl>(ProcessedDecl))
+      if (DD->getQualifier())
+        continue;
+
+    if (auto ND = dyn_cast<clang::NamedDecl>(ProcessedDecl)) {
+      if (!ND->getIdentifier())
+        continue;
+
+      Token T(tok::Identifier, ND->getLocation(),
+              const_cast<char*>(ND->getIdentifier()->getName().data()));
+      const Syntax *IdSyn = new IdentifierSyntax(T);
+      Declaration *TheDecl = new Declaration(SemaRef.getTUDecl(), IdSyn,
+                                              nullptr, nullptr);
+      clang::IdentifierInfo *Id = ND->getIdentifier();
+      Scope *CurScope = SemaRef.getCurrentScope();
+      TheDecl->Id = Id;
+      TheDecl->DeclaringContext = SemaRef.getCurClangDeclContext();
+      TheDecl->ScopeForDecl = CurScope;
+      TheDecl->CurrentPhase = Phase::Initialization;
+      TheDecl->setCxx(SemaRef, ND);
+      CurScope->addDeclLookup(TheDecl);
+    }
+  }
+  return false;
+}
+
 void Elaborator::elaborateCppNsDecls(clang::CppxNamespaceDecl *NSD) {
   blue::Scope *SC = NSD->getBlueScopeRep();
   const Syntax *ScopeTerm = nullptr;
@@ -4543,6 +4584,11 @@ clang::Expr *Elaborator::elaborateInfixExpression(const InfixSyntax *S) {
 
   if (S->getOperation().hasKind(tok::Dot))
     return elaborateMemberAccess(LHS, S);
+  
+  // TODO: We need to figure out if this is necessary or not. I say that because
+  // it doesn't do what's expected of it, in that it doesn't check for
+  // non-member versions of the << operator from inside of C++
+
   // This only works for member operators and the << can be either.
   // if (isCShiftOperator(S->getOperation().getKind())) {
   //   Token Tok = S->getOperation();
@@ -4600,10 +4646,6 @@ clang::Expr *Elaborator::elaborateInfixExpression(const InfixSyntax *S) {
     return nullptr;
   }
 
-  // llvm::errs() << "Dumping LHS and RHS \n";
-  // LHS->dump();
-  // RHS->dump();
-  // llvm::errs() << "---------------\n";
   clang::ExprResult Res = SemaRef.getCxxSema().BuildBinOp(/*Scope=*/nullptr,
                                                           S->getLocation(),
                                                           OpIter->second, LHS,

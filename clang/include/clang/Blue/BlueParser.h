@@ -189,6 +189,7 @@ namespace blue
 
     // Special top-level only extern "C++" linkage
     Syntax *parseCppCodeBlock();
+    Syntax *parseCppInclude();
 
     Syntax *parseTopLevelDeclaration();
 
