@@ -47,8 +47,8 @@ BLUE_BUILTIN_TYPE_TEST("uint128", uint128, "unsigned __int128")
 
 BLUE_BUILTIN_TYPE_TEST("char", char, "char")
 BLUE_BUILTIN_TYPE_TEST("char8", char8, "char8_t")
-BLUE_BUILTIN_TYPE_TEST("char16", char16, "unsigned short")
-BLUE_BUILTIN_TYPE_TEST("char32", char32, "unsigned int")
+BLUE_BUILTIN_TYPE_TEST("char16", char16, "char16_t")
+BLUE_BUILTIN_TYPE_TEST("char32", char32, "char32_t")
 
 //BLUE_BUILTIN_TYPE_TEST("float16", float16, "__fp16")
 BLUE_BUILTIN_TYPE_TEST("float32", float32, "float")
@@ -201,7 +201,7 @@ TEST(BlueType, BuiltInType_CharacterCompilerFunction_UTF8) {
 TEST(BlueType, BuiltInType_CharacterCompilerFunction_UTF16) {
   StringRef Code = "i:character[2, utf];";
   DeclarationMatcher VarIMatcher = varDecl(
-    hasName("i"), hasType(asString("unsigned short"))
+    hasName("i"), hasType(asString("char16_t"))
   );
   ASSERT_TRUE(matches(Code.str(), VarIMatcher));
 }
@@ -209,7 +209,7 @@ TEST(BlueType, BuiltInType_CharacterCompilerFunction_UTF16) {
 TEST(BlueType, BuiltInType_CharacterCompilerFunction_UTF32) {
   StringRef Code = "i:character[4, utf];";
   DeclarationMatcher VarIMatcher = varDecl(
-    hasName("i"), hasType(asString("unsigned int"))
+    hasName("i"), hasType(asString("char32_t"))
   );
   ASSERT_TRUE(matches(Code.str(), VarIMatcher));
 }

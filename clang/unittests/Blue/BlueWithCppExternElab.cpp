@@ -124,3 +124,15 @@ foo:()->void = {
   auto ToMatch = cxxOperatorCallExpr(hasOperatorName("<<"));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
+
+TEST(BlueExternCpp, MakingSureWeCanCallPrintf) {
+  StringRef Code = R"BLUE(
+#include <cstdio>
+
+foo:()->void = {
+  std.printf("hello world\n");
+}
+)BLUE";
+  auto ToMatch = callExpr(callee(functionDecl(hasName("printf"))));
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}

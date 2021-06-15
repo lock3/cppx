@@ -82,7 +82,10 @@ public:
   void gatherCppCode(const CppCodeBlockSyntax *Code, std::string &CodeBuffer);
   void gatherCppInclude(const CppIncludeSyntax *Include, std::string &CodeBuffer);
   void elaborateCppNsDecls(clang::CppxNamespaceDecl *NSD);
+  void elaborateCppLinkageDecls(clang::LinkageSpecDecl *LSD);
+  void elaborateCppDC(clang::DeclContext *DC);
 
+  void elaborateSingleCppImport(clang::Decl *D);
   Declaration *identifyDeclaration(const Syntax *S);
   Declaration *buildDeclaration(const DeclarationSyntax *S);
   Declaration *buildDeclaration(const PrefixSyntax *S);
