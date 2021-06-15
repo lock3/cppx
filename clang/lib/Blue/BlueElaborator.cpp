@@ -546,6 +546,10 @@ void Elaborator::elaborateSingleCppImport(clang::Decl *ProcessedDecl) {
   } else if (auto VTD = dyn_cast<clang::VarTemplateDecl>(ProcessedDecl)) {
     ProcessedDecl = VTD->getTemplatedDecl();
   }
+
+  if (isa<clang::UsingDecl>(ProcessedDecl))
+    return;
+
   // Don't include static data members that are defined outside the body
   // of a class.
   if (auto VD = dyn_cast<clang::VarDecl>(ProcessedDecl))
