@@ -93,3 +93,26 @@ foo:()->void = {
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
+TEST(BlueCopyConstructor, ThatParamImp) {
+  StringRef Code = R"BLUE(
+point: type = {
+    x: int = 0;
+    y: int = 0;
+    operator=: (out this, that)    = { x=that.x; y=that.y; }
+}
+)BLUE";
+  auto ToMatch = cxxConstructorDecl();
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(BlueCopyConstructor, ThatParamExp) {
+  StringRef Code = R"BLUE(
+point: type = {
+    x: int = 0;
+    y: int = 0;
+    operator=: (out this, that : point)    = { x=that.x; y=that.y; }
+}
+)BLUE";
+  auto ToMatch = cxxConstructorDecl();
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}

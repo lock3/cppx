@@ -10348,7 +10348,8 @@ void Sema::CheckConstructor(CXXConstructorDecl *Constructor) {
           TSK_ImplicitInstantiation) {
     QualType ParamType = Constructor->getParamDecl(0)->getType();
     QualType ClassTy = Context.getTagDeclType(ClassDecl);
-    if (Context.getCanonicalType(ParamType).getUnqualifiedType() == ClassTy) {
+    if (Context.getCanonicalType(ParamType).getUnqualifiedType() == ClassTy
+        && !getLangOpts().Blue) {
       SourceLocation ParamLoc = Constructor->getParamDecl(0)->getLocation();
       const char *ConstRef
         = Constructor->getParamDecl(0)->getIdentifier() ? "const &"

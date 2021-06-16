@@ -250,9 +250,14 @@ Phase phaseOf(Declaration *D) {
 
 bool deduceDeclKindFromSyntax(Declaration *D) {
   assert(D && "Invalid declaration syntax");
-  // We can't identify a declaration without a declarator?
-  if (!D->Decl)
+  if (!D->Decl) {
+    if (D->Id && D->Id->getName() == "that") {
+      D->setDeclSyntaxKind(Declaration::Variable);
+      return false;
+    }
+
     return true;
+  }
 
   if (D->declaratorContainsFunction()) {
     D->setDeclSyntaxKind(Declaration::Function);
@@ -264,7 +269,7 @@ bool deduceDeclKindFromSyntax(Declaration *D) {
     D->setDeclSyntaxKind(Declaration::Variable);
     return false;
   }
-  if (auto Lit = dyn_cast<LiteralSyntax>(Dcl->getInfo())) {
+  if (auto *Lit = dyn_cast<LiteralSyntax>(Dcl->getInfo())) {
     if (Lit->getToken().hasKind(tok::TypeKeyword)) {
       D->setDeclSyntaxKind(Declaration::Type);
       return false;
@@ -272,8 +277,8 @@ bool deduceDeclKindFromSyntax(Declaration *D) {
       D->setDeclSyntaxKind(Declaration::Namespace);
       return false;
     }
-  // This is should do what I want it to I hope.
   }
+
   D->setDeclSyntaxKind(Declaration::Variable);
   return false;
 }

@@ -1396,11 +1396,13 @@ clang::Decl *Elaborator::elaborateParameter(const Syntax *S, bool CtrlParam) {
       return nullptr;
     }
 
+
+    clang::IdentifierInfo *II = &CxxAST.Idents.get({Id->getSpelling()});
+    clang::DeclarationName Name(II);
+    clang::DeclContext *Owner = SemaRef.getCurClangDeclContext();
     // FIXME: create context for auto parameters to keep track of their
     // index and depth.
     Declaration *TheDecl = createDeclaration(S, nullptr, nullptr);
-
-    clang::IdentifierInfo *II = &CxxAST.Idents.get({Id->getSpelling()});
     clang::IdentifierInfo *TypeName =
       CxxSema.InventAbbreviatedTemplateParameterTypeName(II, TempCtx.Index);
 
@@ -1417,9 +1419,7 @@ clang::Decl *Elaborator::elaborateParameter(const Syntax *S, bool CtrlParam) {
     clang::CppxTypeLiteral *TyLit =
       SemaRef.buildTypeExpr(clang::QualType(TheType->getTypeForDecl(), 0),
                             Id->getLocation());
-    clang::DeclarationName Name(II);
     clang::TypeSourceInfo *T = cast<clang::CppxTypeLiteral>(TyLit)->getValue();
-    clang::DeclContext *Owner = SemaRef.getCurClangDeclContext();
     clang::ParmVarDecl *PVD =
       clang::ParmVarDecl::Create(CxxAST, Owner, Loc, Loc,
                                  Name, T->getType(), T,
@@ -1431,6 +1431,40 @@ clang::Decl *Elaborator::elaborateParameter(const Syntax *S, bool CtrlParam) {
   // FIXME: There is a lot of duplication with makeObjectDecl here.
   // In Gold it's just one function.
   const auto *Def = cast<DeclarationSyntax>(S);
+
+  // Handle the un-typed `that` parameter.
+  if (auto *Id = dyn_cast_or_null<IdentifierSyntax>(Def->getDeclarator())) {
+    if (!Def->getType() && Id->getSpelling() == "that") {
+      clang::IdentifierInfo *II = &CxxAST.Idents.get({Id->getSpelling()});
+      clang::DeclarationName Name(II);
+      clang::DeclContext *Owner = SemaRef.getCurClangDeclContext();
+      Declaration *TheDecl = createDeclaration(S, nullptr, nullptr);
+      clang::Decl *Cur = SemaRef.getCurrentDecl()->getCxx();
+      if (!Cur || !isa<clang::CXXRecordDecl>(Cur)) {
+        unsigned DiagID =
+          getCxxSema().Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                "'that' parameter can only be used in a "
+                                "method declaration");
+        getCxxSema().Diags.Report(Id->getLocation(), DiagID);
+        return nullptr;
+      }
+
+      clang::QualType ClassTy =
+        CxxAST.getTagDeclType(cast<clang::CXXRecordDecl>(Cur));
+      clang::CppxTypeLiteral *TyLit =
+        SemaRef.buildTypeExpr(ClassTy, Id->getLocation());
+      clang::TypeSourceInfo *T = cast<clang::CppxTypeLiteral>(TyLit)->getValue();
+      clang::ParmVarDecl *PVD =
+        clang::ParmVarDecl::Create(CxxAST, Owner, Loc, Loc,
+                                   Name, T->getType(), T,
+                                   clang::SC_Auto, /*def=*/nullptr);
+      TheDecl->setCxx(SemaRef, PVD);
+      TheDecl->IsPureThatParam = true;
+      TheDecl->CurrentPhase = Phase::Initialization;
+      return PVD;
+    }
+  }
+
   Declarator *Dcl = getDeclarator(Def->getType());
   clang::Expr *Ty = elaborateDeclarator(Dcl);
   if (!Ty)
@@ -1641,6 +1675,9 @@ clang::Decl *Elaborator::elaborateDeclEarly(Declaration *D) {
 clang::Decl *Elaborator::makeValueDecl(Declaration *D) {
   BALANCE_DBG();
 
+  if (D->IsPureThatParam)
+    return D->getCxx();
+
   // FIXME: An ill-typed declaration isn't the end of the world. Can we
   // poison the declaration and move on?
   clang::Expr *E = elaborateDeclarator(D->Decl);
@@ -1836,10 +1873,7 @@ clang::CppxTypeLiteral *Elaborator::createFunctionType(Declaration *D,
   llvm::SmallVector<clang::QualType, 4> Types;
   llvm::SmallVector<clang::ParmVarDecl *, 4> Params;
   unsigned N = 0;
-  if (!ParamList) {
-    N = 0;
-
-  } else {
+  if (ParamList) {
     N = ParamList->getNumChildren();
     elaborateParameters(ParamList);
     bool hasThisParam = false;
@@ -4011,6 +4045,9 @@ void Elaborator::elaborateVarDef(Declaration *D) {
     // That includes complex types.
     getCxxSema().ActOnUninitializedDecl(VD);
     getCxxSema().FinalizeDeclaration(VD);
+    if (auto *CE = dyn_cast_or_null<clang::CXXConstructExpr>(VD->getInit()))
+      getCxxSema().ActOnDefaultCtorInitializers(CE->getConstructor());
+
     return;
   }
   clang::Expr *InitExpr = nullptr;
@@ -4163,7 +4200,6 @@ void Elaborator::elaborateFunctionDef(Declaration *D) {
               "that isn't a specail method");
       }
     } else {
-      // this is for elaborating anything that isn't a default or delete kw.
       clang::Expr *BodyE = elaborateExpression(D->Init);
       auto ReturnResult = SemaRef.getCxxSema().ActOnReturnStmt(
         D->Init->getLocation(), BodyE, SemaRef.getCurClangScope());
@@ -4171,7 +4207,11 @@ void Elaborator::elaborateFunctionDef(Declaration *D) {
       SemaRef.getCxxSema().ActOnFinishFunctionBody(FuncDecl, ReturnResult.get());
     }
   } else {
-    llvm_unreachable("unknown function body!");
+    clang::Expr *BodyE = elaborateExpression(D->Init);
+    auto ReturnResult = SemaRef.getCxxSema().ActOnReturnStmt(
+      D->Init->getLocation(), BodyE, SemaRef.getCurClangScope());
+    SemaRef.setClangDeclContext(cast<clang::FunctionDecl>(D->getCxx()));
+    SemaRef.getCxxSema().ActOnFinishFunctionBody(FuncDecl, ReturnResult.get());
   }
 
   // Return the current decl to whatever it was before.
@@ -7365,9 +7405,9 @@ void Elaborator::lateElaborateDefaultParams(ElaboratingClass &Class) {
   }
 }
 
-void Elaborator::lateElaborateMemberInitializers(ElaboratingClass &Class) {
+void Elaborator::lateElaborateMemberInitializers(ElaboratingClass &EClass) {
   BALANCE_DBG();
-  bool CurrentlyNested = !Class.IsTopLevelClass;
+  bool CurrentlyNested = !EClass.IsTopLevelClass;
 
   Sema::ClangScopeRAII MemberInitScope(SemaRef, clang::Scope::DeclScope |
     clang::Scope::ClassScope, clang::SourceLocation(), CurrentlyNested);
@@ -7377,26 +7417,26 @@ void Elaborator::lateElaborateMemberInitializers(ElaboratingClass &Class) {
 
   // This may need to be moved to somewhere else.
   if (CurrentlyNested) {
-    OptResumeScope.Init(Class.TagOrTemplate->SavedScope,
-      Class.TagOrTemplate->Def, false);
+    OptResumeScope.Init(EClass.TagOrTemplate->SavedScope,
+      EClass.TagOrTemplate->Def, false);
     SemaRef.getCxxSema().ActOnStartDelayedMemberDeclarations(
-      SemaRef.getCurClangScope(), Class.TagOrTemplate->getCxx());
-    DCTracking.Init(Class.TagOrTemplate, true);
+      SemaRef.getCurClangScope(), EClass.TagOrTemplate->getCxx());
+    DCTracking.Init(EClass.TagOrTemplate, true);
   }
 
   clang::Sema::CXXThisScopeRAII PushThisIntoScope(SemaRef.getCxxSema(),
-      Class.TagOrTemplate->getCxx(), clang::Qualifiers());
+      EClass.TagOrTemplate->getCxx(), clang::Qualifiers());
 
-  for (size_t i = 0; i < Class.LateElaborations.size(); ++i) {
-    Class.LateElaborations[i]->ElaborateMemberInitializers();
+  for (size_t i = 0; i < EClass.LateElaborations.size(); ++i) {
+    EClass.LateElaborations[i]->ElaborateMemberInitializers();
   }
 
   if (CurrentlyNested)
     SemaRef.getCxxSema().ActOnFinishDelayedMemberDeclarations(
-      SemaRef.getCurClangScope(), Class.TagOrTemplate->getCxx());
+      SemaRef.getCurClangScope(), EClass.TagOrTemplate->getCxx());
 
   SemaRef.getCxxSema().ActOnFinishDelayedMemberInitializers(
-    Class.TagOrTemplate->getCxx());
+    EClass.TagOrTemplate->getCxx());
 }
 
 void Elaborator::lateElaborateMethodDefs(ElaboratingClass &Class) {
@@ -7445,9 +7485,8 @@ void Elaborator::lateElaborateMethodDecl(
       clang::SourceLocation());
   Sema::LateMethodRAII MethodTracking(SemaRef, &Method);
   elaborateDeclarationTyping(Method.D);
-  // This is to check if the method delcaration was a success and in the event
-  // that it is we need to finish the exception specifier after the end of the
-  // class.
+  // Check if the method declaration was a success and, in the event that it is,
+  // we need to finish the exception specifier after the end of the class.
   if (Method.D->getCxx()) {
     if (auto FD = dyn_cast<clang::FunctionDecl>(Method.D->getCxx())) {
       if (FD->getExceptionSpecType() == clang::EST_Unparsed) {
