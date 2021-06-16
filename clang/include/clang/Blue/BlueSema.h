@@ -54,11 +54,9 @@ class DeclContext;
 class CppxDependentMemberAccessExpr;
 class CppxPartialEvalExpr;
 class CXXConstructorDecl;
+class CompilerInstance;
 
 } // namespace clang
-
-
-
 
 namespace blue {
 
@@ -83,11 +81,15 @@ class Sema {
 
   /// Translation unit decl.
   Declaration *TUDecl = nullptr;
+  clang::CompilerInstance *ClangInstance = nullptr;
 public:
   clang::AttributeFactory AttrFactory;
 
   Sema(SyntaxContext &Context, clang::Sema &S);
   ~Sema();
+
+  clang::CompilerInstance *getCompilerInstance() const { return ClangInstance; }
+  void setCompilerInstance(clang::CompilerInstance *CI) { ClangInstance = CI; }
 
   void setTUDecl(Declaration *TU) { TUDecl = TU; }
   Declaration *getTUDecl() const { return TUDecl; }

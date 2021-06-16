@@ -457,9 +457,90 @@ Syntax *Parser::parseCppCodeBlock() {
   return new CppCodeBlockSyntax(Extern, CppLiteral, Enclosure);
 }
 
+Syntax *Parser::parseCppInclude() {
+  Token Hash;
+  Token IncludeKw;
+
+  Hash = requireToken(tok::Hash);
+  if (!Hash)
+    return nullptr;
+
+  IncludeKw = requireToken(tok::IncludeKeyword);
+  if (!IncludeKw)
+    return nullptr;
+
+  // if (atEndOfFile()) {
+  //   Diags.Report(getInputLocation(), clang::diag::err_blue_parsing)
+  //         << "unexpected end of file";
+  //   return nullptr;
+  // }
+
+  Syntax *Body = nullptr;
+  if (nextTokenIs(tok::Less)) {
+    // we may have to do the special tokenize a string of characters?
+    unsigned Depth = 0;
+    auto OpenTokenId = tok::Less;
+    auto CloseTokenId = tok::Greater;
+    Token EnclosureOpen = requireToken(OpenTokenId);
+    if (!EnclosureOpen)
+      return nullptr;
+
+    llvm::SmallVector<Token, 64> Tokens;
+    while(true) {
+      if (atEndOfFile()) {
+        Diags.Report(getInputLocation(), clang::diag::err_blue_parsing)
+              << "unexpected end of file";
+        return nullptr;
+      }
+
+      if (Depth == 0)
+        if (nextTokenIs(CloseTokenId))
+          break;
+
+      // Keeping track of the current depth.
+      if (nextTokenIs(OpenTokenId)) {
+        ++Depth;
+      } else if (nextTokenIs(CloseTokenId)) {
+        --Depth;
+      }
+
+      Tokens.emplace_back(consumeToken());
+    }
+
+    Token EnclosureClose = requireToken(CloseTokenId);
+    if (!EnclosureClose)
+      return nullptr;
+    Token *Toks = nullptr;
+    if (Tokens.size()) {
+      Toks = new Token[Tokens.size()];
+      unsigned Idx = 0;
+
+      // Copying the vector of tokens into the array of tokens.
+      for (auto T : Tokens) {
+        Toks[Idx] = T;
+        ++Idx;
+      }
+    }
+    // Creating the TokenListSyntax first by attempting to create the array.
+    Syntax *TokList = new TokenListSyntax(Toks, Tokens.size());
+    Syntax *Enclosure = new EnclosureSyntax(EnclosureOpen, EnclosureClose, TokList);
+    Body = new CppCodeBlockSyntax(Token(), Token(), Enclosure);
+  } else if (nextTokenIs(tok::String)) {
+    Token Value = consumeToken();
+    Body = new LiteralSyntax(Value);
+  } else {
+    Diags.Report(Hash.getLocation(), clang::diag::err_blue_parsing)
+          << "invalid include syntax";
+    return nullptr;
+  }
+  return new CppIncludeSyntax(Hash, IncludeKw, Body);
+}
+
 Syntax *Parser::parseTopLevelDeclaration() {
   if (nextTokenIs(tok::ExternKeyword))
     return parseCppCodeBlock();
+  if (nextTokenIs(tok::Hash))
+    return parseCppInclude();
   return parseDeclaration();
 }
 

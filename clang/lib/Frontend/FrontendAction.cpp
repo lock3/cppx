@@ -1072,7 +1072,7 @@ void ASTFrontendAction::ExecuteAction() {
     CI.getLangOpts().CPlusPlus11 = true;
     CI.getLangOpts().CPlusPlus14 = true;
     CI.getLangOpts().CPlusPlus17 = true;
-    blue::ParseBlueAST(CI.getASTContext(), CI.getPreprocessor(), CI.getSema());
+    blue::ParseBlueAST(&CI, CI.getASTContext(), CI.getPreprocessor(), CI.getSema());
     break;
   default:
     clang::ParseAST(CI.getSema(), CI.getFrontendOpts().ShowStats,

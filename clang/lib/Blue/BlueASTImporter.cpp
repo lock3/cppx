@@ -2004,6 +2004,7 @@ Error BlueASTNodeImporter::ImportInitializer(VarDecl *From, VarDecl *To) {
     ToEval->HasConstantDestruction = FromEval->HasConstantDestruction;
     // FIXME: Also import the initializer value.
   }
+  To->setInitStyle(From->getInitStyle());
 
   // FIXME: Other bits to merge?
   return Error::success();
@@ -3416,7 +3417,6 @@ ExpectedDecl BlueASTNodeImporter::VisitFunctionDecl(FunctionDecl *D) {
     // evaluated noexcept.  A call to adjustExceptionSpec() on the imported
     // decl and its redeclarations may be required.
   }
-
   ToFunction->setQualifierInfo(ToQualifierLoc);
   ToFunction->setAccess(D->getAccess());
   ToFunction->setLexicalDeclContext(LexicalDC);
@@ -3886,6 +3886,8 @@ ExpectedDecl BlueASTNodeImporter::VisitVarDecl(VarDecl *D) {
   if (ToD)
     return ToD;
 
+  // llvm::outs() << "We have imported a declaration?\n";
+
   // Try to find a variable in our own ("to") context with the same name and
   // in the same context as the variable we're importing.
   VarDecl *FoundByLookup = nullptr;
@@ -4121,7 +4123,7 @@ ExpectedDecl BlueASTNodeImporter::VisitObjCMethodDecl(ObjCMethodDecl *D) {
         Importer.ToDiag(FoundMethod->getLocation(),
                         diag::note_odr_objc_method_here)
           << D->isInstanceMethod() << Name;
-
+  
         return make_error<ImportError>(ImportError::NameConflict);
       }
 
@@ -4133,7 +4135,7 @@ ExpectedDecl BlueASTNodeImporter::VisitObjCMethodDecl(ObjCMethodDecl *D) {
         Importer.ToDiag(FoundMethod->getLocation(),
                         diag::note_odr_objc_method_here)
           << D->isInstanceMethod() << Name;
-
+  
         return make_error<ImportError>(ImportError::NameConflict);
       }
 
@@ -4149,7 +4151,7 @@ ExpectedDecl BlueASTNodeImporter::VisitObjCMethodDecl(ObjCMethodDecl *D) {
             << (*P)->getType() << (*FoundP)->getType();
           Importer.ToDiag((*FoundP)->getLocation(), diag::note_odr_value_here)
             << (*FoundP)->getType();
-
+    
           return make_error<ImportError>(ImportError::NameConflict);
         }
       }
@@ -4162,7 +4164,7 @@ ExpectedDecl BlueASTNodeImporter::VisitObjCMethodDecl(ObjCMethodDecl *D) {
         Importer.ToDiag(FoundMethod->getLocation(),
                         diag::note_odr_objc_method_here)
           << D->isInstanceMethod() << Name;
-
+  
         return make_error<ImportError>(ImportError::NameConflict);
       }
 
@@ -5032,7 +5034,7 @@ ExpectedDecl BlueASTNodeImporter::VisitObjCPropertyDecl(ObjCPropertyDecl *D) {
           << Name << D->getType() << FoundProp->getType();
         Importer.ToDiag(FoundProp->getLocation(), diag::note_odr_value_here)
           << FoundProp->getType();
-
+  
         return make_error<ImportError>(ImportError::NameConflict);
       }
 
@@ -5481,7 +5483,6 @@ ExpectedDecl BlueASTNodeImporter::VisitClassTemplateSpecializationDecl(
         return PrevDefinition;
       }
     } else { // ODR violation.
-      // FIXME HandleNameConflict
       return make_error<ImportError>(ImportError::NameConflict);
     }
   }
@@ -8033,4 +8034,5 @@ llvm::Expected<clang::Decl *> BlueASTImporter::ImportImpl(clang::Decl *From) {
   clang::BlueASTNodeImporter Importer(*this);
   return Importer.Visit(From);
 }
+
 } // end blue namespace

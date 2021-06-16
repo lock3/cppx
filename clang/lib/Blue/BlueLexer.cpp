@@ -230,7 +230,8 @@ Token Lexer::operator()() {
 
     case '"':
       return matchString();
-
+    case '#':
+      return matchToken(tok::Hash);
     case '0':
       if (nthCharacterIs(1, 'x') || nthCharacterIs(1, 'X'))
         return matchHexadecimalNumber();

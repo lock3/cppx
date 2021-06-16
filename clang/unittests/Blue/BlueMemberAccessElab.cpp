@@ -1255,3 +1255,14 @@ bar:()->void = {
   auto ToMatch = callExpr(callee(functionDecl(hasName("foo"))));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
+
+// point: type = {
+//     public x: int = 1;
+//     public y: int = 2;
+//     operator=: (out this) = { x = 1; y = 2; }
+// }
+
+// main: () -> int = {
+//     p: point = ();
+//     return p.x + p.y;
+// }

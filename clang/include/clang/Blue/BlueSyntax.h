@@ -566,6 +566,45 @@ struct CppCodeBlockSyntax : UnarySyntax {
   }
 };
 
+struct CppIncludeSyntax : UnarySyntax {
+  static constexpr KindType Kind = CppInclude;
+
+  CppIncludeSyntax(Token HashTok, Token IncludeTok, Syntax *T)
+    : UnarySyntax(Kind, T),
+    Hash(HashTok),
+    Include(IncludeTok)
+  { }
+
+  /// Returns the opening token.
+  Token getHash() const
+  {
+    return Hash;
+  }
+
+  /// Returns the closing token.
+  Token getInclude() const
+  {
+    return Include;
+  }
+
+  /// Returns the inner term.
+  Syntax *getTerm() const
+  {
+    return Term;
+  }
+
+  Token Hash;
+  Token Include;
+
+  clang::SourceLocation getLocation() const {
+    return Hash.getLocation();
+  }
+
+  static bool classof(const Syntax *S) {
+    return S->getKind() == Kind;
+  }
+};
+
 /// A pair of terms.
 struct PairSyntax : BinarySyntax
 {

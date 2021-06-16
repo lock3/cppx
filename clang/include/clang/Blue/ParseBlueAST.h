@@ -19,13 +19,15 @@ namespace clang {
 class ASTContext;
 class Preprocessor;
 class Sema;
+class CompilerInstance;
 
 } // namespace clang
 
 
 namespace blue {
 
-void ParseBlueAST(clang::ASTContext &ClangContext, clang::Preprocessor &PP,
+void ParseBlueAST(clang::CompilerInstance *CI,
+                  clang::ASTContext &ClangContext, clang::Preprocessor &PP,
                   clang::Sema &ClangSema);
 
 } // namespace blue
