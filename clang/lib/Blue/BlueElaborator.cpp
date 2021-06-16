@@ -2967,7 +2967,7 @@ clang::Decl *Elaborator::makeFieldDecl(Declaration *D, clang::Expr *Ty) {
   //   Field = VDecl;
   // } else {
     bool Mutable = false;
-    clang::AccessSpecifier AS = clang::AS_public;
+    clang::AccessSpecifier AS = clang::AS_private;
     if (D->getAccessSpecifier() != clang::AS_none) {
       AS = D->getAccessSpecifier();
     }
