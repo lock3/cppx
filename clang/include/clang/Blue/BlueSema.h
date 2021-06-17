@@ -55,7 +55,7 @@ class CppxDependentMemberAccessExpr;
 class CppxPartialEvalExpr;
 class CXXConstructorDecl;
 class CompilerInstance;
-
+class CppxPartialExpr;
 } // namespace clang
 
 namespace blue {
@@ -277,12 +277,11 @@ public:
 
   clang::Expr *completeScopeAsType(clang::Expr *E);
   clang::Expr *completeScopeAsNamespace(clang::Expr *E);
-
-  /// This can be a namespace alias, namespace, type, incomplete template,
-  /// or type alias. The result type depends on the current state of
-  /// the expression.
-  clang::Expr *completeScopeAsGiven(clang::Expr *E);
   ///}
+
+  clang::CppxPartialEvalExpr *buildMemberFunctionTransform(clang::Expr *E,
+                                                clang::DeclarationNameInfo DNI);
+
 
   /// This function dispatches to other functions to handle other declarations
   /// It is the job of this function to determine of the declaration should be

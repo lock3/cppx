@@ -5823,11 +5823,21 @@ clang::Expr *Elaborator::elaborateFunctionCall(clang::Expr *Base,
       ArgExprs.push_back(Argument);
     }
   }
+  clang::SourceLocation B = Enc->getOpen().getLocation();
+  clang::SourceLocation E = Enc->getClose().getLocation();
+  if (auto PartialFunc = dyn_cast<clang::CppxPartialEvalExpr>(Base)) {
+    std::string DeclName = PartialFunc->getName().getName().getAsString();
+    auto CalleeExpr = buildIdExpr(SemaRef, DeclName,
+                                  PartialFunc->getName().getLoc());
+    ArgExprs.insert(ArgExprs.begin(), PartialFunc->getLhsExpr());
+    Base = CalleeExpr;
+    if (!Base)
+      return nullptr;
+  }
 
   // try and make the call and see what happens.
-  clang::ExprResult Call = CxxSema.ActOnCallExpr(
-    CxxSema.getCurScope(), Base, Enc->getOpen().getLocation(),
-    ArgExprs, Enc->getClose().getLocation());
+  clang::ExprResult Call = CxxSema.ActOnCallExpr(CxxSema.getCurScope(), Base,
+                                                 B, ArgExprs, E);
 
   return Call.get();
 }

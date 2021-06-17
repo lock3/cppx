@@ -63,8 +63,8 @@ clang::Expr *DependentExprTransformer::transformDependentExpr(clang::Expr *E) {
   if (auto LT = dyn_cast<clang::CppxTypeLiteral>(E))
     return transformCppxLiteralType(LT);
 
-  if (auto PartialExpr = dyn_cast<clang::CppxPartialEvalExpr>(E))
-    return transformDependentExpr(PartialExpr->completeExpr());
+  // if (auto PartialExpr = dyn_cast<clang::CppxPartialEvalExpr>(E))
+  //   return transformDependentExpr(PartialExpr->completeExpr());
 
   // if (auto DerefOrPtr = dyn_cast<clang::CppxDerefOrPtrExpr>(E))
   //   return transformCppxDerefOrPtrExpr(DerefOrPtr);

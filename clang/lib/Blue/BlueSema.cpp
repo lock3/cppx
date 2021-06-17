@@ -32,6 +32,7 @@
 #include "clang/Blue/BlueElaborator.h"
 #include "clang/Blue/BlueScope.h"
 #include "clang/Blue/BlueSyntax.h"
+#include "clang/Blue/BluePartialImplicitMember.h"
 
 namespace blue {
 
@@ -1310,16 +1311,14 @@ clang::Expr *Sema::completeScopeAsNamespace(clang::Expr *E) {
   return nullptr;
 }
 
-// clang::Decl *Sema::completeScopeAsGiven(clang::Expr *E) {
-//   // auto SSE = dyn_cast<clang::CppxCXXScopeSpecExpr>(E);
-//   // if (!SSE) {
-//   //   CxxSema.Diags.Report(Loc, clang::diag::err_blue_elaboration)
-//   //     << "not a namespace";
-//   //   return nullptr;
-//   // }
-//   // auto Ty = SSE->getType();
-//   // if (SSE->get)
-// }
+clang::CppxPartialEvalExpr *Sema::buildMemberFunctionTransform(clang::Expr *E,
+                                                clang::DeclarationNameInfo DNI) {
+  auto Tr = new CppxPartialImplicitMemberTransform(*this);
+  Tr->setIncompleteExpr(E);
+  Tr->setLhsExpr(E);
+  Tr->setName(DNI);
+  return clang::CppxPartialEvalExpr::Create(CxxAST, Tr, DNI.getLoc());
+}
 
 
 static bool checkSimplNameMatchRedecl(Sema &SemaRef, Declaration *D) {
