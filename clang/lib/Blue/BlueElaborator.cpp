@@ -4090,6 +4090,8 @@ void Elaborator::elaborateVarDef(Declaration *D) {
     }
   } else {
     InitExpr = elaborateExpression(D->getInitializer());
+    if (!InitExpr)
+      return;
     if (auto PartialFunc = dyn_cast<clang::CppxPartialEvalExpr>(InitExpr)) {
       SemaRef.getCxxSema().Diags.Report(InitExpr->getExprLoc(), clang::diag::err_no_member)
               << PartialFunc->getName().getName().getAsString()
