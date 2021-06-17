@@ -34,7 +34,7 @@ C : type = {
 )BLUE";
   auto ToMatch = cxxRecordDecl(hasName("C"),
     hasDescendant(fieldDecl(hasName("x"), hasType(asString("int")),
-      isPublic()))
+      isPrivate()))
   );
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
@@ -71,9 +71,9 @@ x:C;
       cxxRecordDecl(
         hasName("C"),
         hasDescendant(fieldDecl(hasName("x"), hasType(asString("int")),
-          isPublic())),
+          isPrivate())),
         hasDescendant(fieldDecl(hasName("y"), hasType(asString("_Bool")),
-          isPublic())),
+          isPrivate())),
         hasDescendant(cxxConstructorDecl(isDefaultConstructor(), isImplicit(),
           isDefaulted(), isNoThrow(),
           hasDescendant(cxxCtorInitializer(forField(hasName("x")),
@@ -101,7 +101,7 @@ x:C;
       cxxRecordDecl(
         hasName("C"),
         hasDescendant(fieldDecl(hasName("x"), hasType(asString("struct C *")),
-          isPublic())),
+          isPrivate())),
         hasDescendant(cxxConstructorDecl(isDefaultConstructor(), isImplicit(),
           isDefaulted(), isNoThrow(),
           hasDescendant(cxxCtorInitializer(forField(hasName("x")),
@@ -119,8 +119,8 @@ x:C;
 TEST(BlueClass, MemberUse)  {
   StringRef Code = R"BLUE(
 C : type = {
-  x : int = 4;
-  y : bool = 1;
+  public x : int = 4;
+  public y : bool = 1;
 }
 x:C;
 z:=x.x;
@@ -168,8 +168,8 @@ z:=x.x;
 TEST(BlueClass, MemberUse_ThroughPtr)  {
   StringRef Code = R"BLUE(
 C : type = {
-  x : int = 4;
-  y : bool = 1;
+  public x : int = 4;
+  public y : bool = 1;
 }
 x:^C;
 z:=x.x;
@@ -220,9 +220,9 @@ u : outer.nested;
       hasName("outer"),
       has(recordDecl(hasName("nested"),
         hasDescendant(fieldDecl(hasName("a"), hasType(asString("int")),
-          isPublic())),
+          isPrivate())),
         hasDescendant(fieldDecl(hasName("b"), hasType(asString("float")),
-          isPublic()))
+          isPrivate()))
       ))
     )),
     has(varDecl(
@@ -254,9 +254,9 @@ u : c.nested.nested2;
       has(recordDecl(hasName("nested"),
         has(recordDecl(hasName("nested2"),
           hasDescendant(fieldDecl(hasName("a"), hasType(asString("int")),
-            isPublic())),
+            isPrivate())),
           hasDescendant(fieldDecl(hasName("b"), hasType(asString("float")),
-            isPublic()))
+            isPrivate()))
         ))
       ))
     )),
@@ -286,8 +286,8 @@ outer : type = {
 TEST(BlueClass, TypeAliasDecl_OutOfOrderUse) {
   StringRef Code = R"BLUE(
 outer : type = {
-  y : x;
-  x : = int;
+  public y : x;
+  public x : = int;
 }
 )BLUE";
 
