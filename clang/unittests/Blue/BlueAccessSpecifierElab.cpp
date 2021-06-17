@@ -46,7 +46,7 @@ c : type = {
   ASSERT_TRUE(matches(Code.str(), ClassC));
 }
 
-TEST(BlueClass, Access_ImplicitPublicMember) {
+TEST(BlueClass, Access_ImplicitPrivateMember) {
   StringRef Code = R"(
 c : type = {
   x : int;
@@ -54,7 +54,7 @@ c : type = {
 )";
   DeclarationMatcher ClassC = recordDecl(recordDecl(hasName("c")),
     hasDescendant(
-      fieldDecl(hasName("x"), hasType(asString("int")), isPublic())
+      fieldDecl(hasName("x"), hasType(asString("int")), isPrivate())
     )
   );
   ASSERT_TRUE(matches(Code.str(), ClassC));

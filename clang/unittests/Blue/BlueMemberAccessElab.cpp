@@ -22,12 +22,12 @@ using namespace blue;
 TEST(BlueMemberAccess, BaseClassMemberDisambiguationAccess_InsideClass) {
   StringRef Code = R"BLUE(
 B : type = {
-  i:int;
+  public i:int;
 }
 
 C : type = {
   :B;
-  i:int;
+  public i:int;
   foo:(inout this) -> void = {
     this.(B).i = 4;
   }
@@ -49,12 +49,12 @@ C : type = {
 TEST(BlueMemberAccess, BaseClassMemberDisambiguationAccess) {
   StringRef Code = R"BLUE(
 B : type = {
-  i:int;
+  public i:int;
 }
 
 C : type = {
   :B;
-  i:int;
+  public i:int;
 }
 
 foo:() = {
@@ -81,12 +81,12 @@ foo:() = {
 TEST(BlueMemberAccess, ImplicitThisBaseClassMemberDisambiguationAccess) {
   StringRef Code = R"BLUE(
 B : type = {
-  i:int;
+  public i:int;
 }
 
 C : type = {
   :B;
-  i:int;
+  public i:int;
   foo: (this) -> void = {
     B.i = 4;
   }
@@ -105,12 +105,12 @@ C : type = {
 TEST(BlueMemberAccess, TemplateInstantiationInsideOfBaseDisambiguationExpr_ImplicitThis) {
   StringRef Code = R"BLUE(
 B : [T:type] -> type = {
-  i:int;
+  public i:int;
 }
 
 C : type = {
   :B[int];
-  i:int;
+  public i:int;
   foo: (this) -> void = {
     B[int].i = 4;
   }
@@ -128,12 +128,12 @@ C : type = {
 TEST(BlueMemberAccess, TemplateInstantiationInsideOfBaseDisambiguationExpr) {
   StringRef Code = R"BLUE(
 B : [T:type] -> type = {
-  i:int;
+  public i:int;
 }
 
 C : type = {
   :B[int];
-  i:int;
+  public i:int;
   foo: (inout this) -> void = {
     this.(B[int]).i = 4;
   }
@@ -153,13 +153,13 @@ TEST(BlueMemberAccess, NamespaceSpecifierForAsPartOfNameDisambiguation) {
   StringRef Code = R"BLUE(
 ns:namespace = {
   B : type = {
-    i:int;
+    public i:int;
   }
 }
 
 C : type = {
   :ns.B;
-  i:int;
+  public i:int;
   foo: (inout this) -> void = {
     this.(ns.B).i = 4;
   }
@@ -182,13 +182,13 @@ TEST(BlueMemberAccess, NamespaceSpecifierNotInsideOfParens) {
   StringRef Code = R"BLUE(
 ns:namespace = {
   B : type = {
-    i:int;
+    public i:int;
   }
 }
 
 C : type = {
   :ns.B;
-  i:int;
+  public i:int;
   foo: (inout this) -> void = {
     this.ns.B.i = 4;
   }
@@ -201,13 +201,13 @@ TEST(BlueMemberAccess, NamespaceSpecifierForAsPartOfNameDisambiguation_ImplicitT
   StringRef Code = R"BLUE(
 ns:namespace = {
   B : type = {
-    i:int;
+    public i:int;
   }
 }
 
 C : type = {
   :ns.B;
-  i:int;
+  public i:int;
   foo: (this) -> void = {
     ns.B.i = 4;
   }
@@ -226,14 +226,14 @@ TEST(BlueMemberAccess, NamespaceSpecifierForAsPartOfNameDisambiguationNonMemberC
   StringRef Code = R"BLUE(
 ns:namespace = {
   B : type = {
-    i:int;
+    public i:int;
   }
   bar:()->void= { }
 }
 
 C : type = {
   :ns.B;
-  i:int;
+  public i:int;
   foo: (inout this) -> void = {
     ns.bar();
   }
@@ -247,7 +247,7 @@ TEST(BlueMemberAccess, NameDisambiguationThroughTypeAlias) {
   StringRef Code = R"BLUE(
 ns:namespace = {
   B : type = {
-    i:int;
+    public i:int;
   }
   bar:(this)->void= { }
 }
@@ -255,7 +255,7 @@ ns:namespace = {
 C : type = {
   :ns.B;
   A :type = ns.B;
-  i:int;
+  public i:int;
   foo: (this) -> void = {
     A.i = 4;
   }
@@ -273,13 +273,13 @@ C : type = {
 TEST(BlueMemberAccess, FunctionCallWithDisambiguationExprImplicitThis) {
   StringRef Code = R"BLUE(
 B : type = {
-  i:int;
+  public i:int;
   bar:(inout this) -> void = { }
 }
 
 C : type = {
   :B;
-  i:int;
+  public i:int;
   foo: (inout this) -> void = {
     B.bar();
   }
@@ -292,13 +292,13 @@ C : type = {
 TEST(BlueMemberAccess, FunctionCallWithDisambiguationExpr) {
   StringRef Code = R"BLUE(
 B : type = {
-  i:int;
+  public i:int;
   bar:(inout this) -> void = { }
 }
 
 C : type = {
   :B;
-  i:int;
+  public i:int;
   foo: (inout this) -> void = {
     this.(B).bar();
   }
@@ -311,12 +311,12 @@ C : type = {
 TEST(BlueMemberAccess, DependentExpressionDisambiguation) {
   StringRef Code = R"BLUE(
 B : type = {
-  i:int;
+  public i:int;
 }
 
 C :[T:type] -> type = {
   :B;
-  i:int;
+  public i:int;
 
   foo:(this) -> void = {
     this.(B).i = 4;
@@ -333,12 +333,12 @@ C :[T:type] -> type = {
 TEST(BlueMemberAccess, AccessingNonDependent_ImplicitThis) {
   StringRef Code = R"BLUE(
 B : type = {
-  i:int;
+  public i:int;
 }
 
 C :[T:type] -> type = {
   :B;
-  i:int;
+  public i:int;
 
   foo:(this) -> void = {
     B.i = 4;
@@ -355,12 +355,12 @@ C :[T:type] -> type = {
 TEST(BlueMemberAccess, DependentDisambiguationExpression) {
   StringRef Code = R"BLUE(
 B :[T:type] -> type = {
-  i:int;
+  public i:int;
 }
 
 C : [T:type] -> type = {
   :B[T];
-  i:int;
+  public i:int;
   foo:(this) -> void = {
     this.(B[T]).i = 4;
   }
@@ -374,12 +374,12 @@ C : [T:type] -> type = {
 TEST(BlueMemberAccess, DependendBaseClassFunctionCall) {
   StringRef Code = R"BLUE(
 B :[T:type] -> type = {
-  i:int;
+  public i:int;
 }
 
 C : [T:type] -> type = {
   :B[T];
-  i:int;
+  public i:int;
   foo:(this) -> void = {
     this.(B[T]).foo() = 4;
   }
@@ -402,7 +402,7 @@ ns:namespace = {
 }
 
 C : type = {
-  i:int;
+  public i:int;
   foo:(this) -> void = {
     ns.foo(1);
   }
@@ -419,13 +419,13 @@ C : type = {
 TEST(BlueMemberAccess, BaseClassThroughLocalAlias_InsideClass) {
   StringRef Code = R"BLUE(
 B : type = {
-  i:int;
+  public i:int;
 }
 
 C : type = {
   :B;
   Base :type = B;
-  i:int;
+  public i:int;
   foo:(inout this) -> void = {
     this.(Base).i = 4;
   }
@@ -446,12 +446,12 @@ C : type = {
 TEST(BlueMemberAccess, BaseClassThroughLocalAlias_InsideCurrentCall) {
   StringRef Code = R"BLUE(
 B : type = {
-  i:int;
+  public i:int;
 }
 
 C : type = {
   :B;
-  i:int;
+  public i:int;
   foo:(inout this) -> void = {
     Base :type = B;
     this.(Base).i = 4;
@@ -477,12 +477,12 @@ NS:namespace = {
   Base : type = B;
 }
 B : type = {
-  i:int;
+  public i:int;
 }
 
 C : type = {
   :B;
-  i:int;
+  public i:int;
   foo:(inout this) -> void = {
     this.(NS.Base).i = 4;
   }
@@ -508,12 +508,12 @@ A : type = {
 }
 
 B : type = {
-  i:int;
+  public i:int;
 }
 
 C : type = {
   :B;
-  i:int;
+  public i:int;
   foo:(inout this) -> void = {
     this.(A.Base).i = 4;
   }
@@ -545,7 +545,7 @@ B: type = {
 
 C : type = {
   : B;
-  i:int;
+  public i:int;
   bar:(this) -> void = {
     this.(B).foo(1);
   }
@@ -595,7 +595,7 @@ TEST(BlueMemberAccess, NamespaceAlias_InsideNamespace) {
   StringRef Code = R"BLUE(
 NS:namespace = {
   B:type = {
-    i:int;
+    public i:int;
   }
 }
 
@@ -624,7 +624,7 @@ TEST(BlueMemberAccess, NamespaceAlias_InsideNamespace_ImplicitThis) {
   StringRef Code = R"BLUE(
 NS:namespace = {
   B:type = {
-    i:int;
+    public i:int;
   }
 }
 
@@ -653,7 +653,7 @@ TEST(BlueMemberAccess, NamespaceAlias_InsideNamespace_DeclaredInFunction) {
   StringRef Code = R"BLUE(
 NS:namespace = {
   B:type = {
-    i:int;
+    public i:int;
   }
 }
 
@@ -681,13 +681,13 @@ TEST(BlueMemberAccess, NamespaceAlias_InsideNamespace_ImplicitThis_DeclaredInFun
   StringRef Code = R"BLUE(
 NS:namespace = {
   B:type = {
-    i:int;
+    public i:int;
   }
 }
 
 C : type = {
   :NS.B;
-  i:int;
+  public i:int;
   foo:(inout this) -> void = {
     NS2 :namespace = NS;
     NS2.B.i = 4;
@@ -748,7 +748,7 @@ C : type = {
 TEST(BlueMemberAccess, PointerToAMemberOfAnotherClass_Field) {
   StringRef Code = R"BLUE(
 B : type = {
-  i:int;
+  public i:int;
 }
 C : type = {
   foo:(inout this) -> void = {
@@ -774,7 +774,7 @@ B : type = {
 
 C : type = {
   :B;
-  i:int;
+  public i:int;
   foo: (inout this) -> void = {
     var:A[B.IntegerType].Ty;
   }
@@ -797,7 +797,7 @@ A :[Template:[T:type]->type] ->type = {
 }
 
 A2 :[T:type] ->type = {
-  i:int;
+  public i:int;
 }
 
 B : type = {
@@ -806,7 +806,7 @@ B : type = {
 
 C : type = {
   :B;
-  i:int;
+  public i:int;
   foo: (inout this) -> void = {
     var:A[A2].Ty;
   }
@@ -830,7 +830,7 @@ A :[Template:[T:type]->type] ->type = {
 NS:namespace = {
 
   A2 :[T:type] -> type = {
-    i:int;
+    public i:int;
   }
 }
 
@@ -840,7 +840,7 @@ B : type = {
 
 C : type = {
   :B;
-  i:int;
+  public i:int;
   foo: (inout this) -> void = {
     var:A[NS.A2].Ty;
   }
@@ -860,13 +860,13 @@ TEST(BlueMemberAccess, BaseClassDisambiguationThroughTemplateAlias_InDerived) {
 
 B : [T:type] -> type = {
   IntegerType : type = int;
-  i:int;
+  public i:int;
 }
 
 C : type = {
   :B[int];
   TAlias : [T:type] -> type = B[T];
-  i:int;
+  public i:int;
   foo: (inout this) -> void = {
     this.(TAlias[int]).i = 5;
   }
@@ -888,14 +888,14 @@ TEST(BlueMemberAccess, BaseClassDisambiguationThroughTemplateAlias_Global) {
 
 B : [T:type] -> type = {
   IntegerType : type = int;
-  i:int;
+  public i:int;
 }
 
 TAlias : [T:type] -> type = B[T];
 
 C : type = {
   :B[int];
-  i:int;
+  public i:int;
   foo: (inout this) -> void = {
     this.(TAlias[int]).i = 5;
   }
@@ -917,7 +917,7 @@ TEST(BlueMemberAccess, BaseClassDisambiguationThroughTemplateAlias_Namespace) {
 
 B : [T:type] -> type = {
   IntegerType : type = int;
-  i:int;
+  public i:int;
 }
 NS:namespace = {
 
@@ -926,7 +926,7 @@ NS:namespace = {
 
 C : type = {
   :B[int];
-  i:int;
+  public i:int;
   foo: (inout this) -> void = {
     this.(NS.TAlias[int]).i = 5;
   }
@@ -950,7 +950,7 @@ B : type = { }
 
 C : type = {
   :B;
-  i:int;
+  public i:int;
   foo: (inout this) -> void = {
     B.IntegerType = 5;
   }
@@ -962,7 +962,7 @@ C : type = {
 TEST(BlueMemberAccess, BaseTypeErr_VariableFoundIsNotAMember_LocalVar) {
   StringRef Code = R"BLUE(
 C : type = {
-  i:int;
+  public i:int;
   foo: (inout this) -> void = {
     x:int;
     this.x = 5;
@@ -976,7 +976,7 @@ C : type = {
 TEST(BlueMemberAccess, BaseTypeErr_VariableFoundIsNotAMember_Parameter) {
   StringRef Code = R"BLUE(
 C : type = {
-  i:int;
+  public i:int;
   foo: (inout this, x:int) -> void = {
     this.x = 5;
   }
@@ -989,7 +989,7 @@ TEST(BlueMemberAccess, BaseTypeErr_VariableFoundIsNotAMember_Global) {
   StringRef Code = R"BLUE(
 x:int;
 C : type = {
-  i:int;
+  public i:int;
   foo: (inout this) -> void = {
     this.x = 5;
   }
@@ -1006,7 +1006,7 @@ B : [T:type] -> type = {
 }
 C : type = {
   :B[int];
-  i:int;
+  public i:int;
   foo: (inout this) -> void = {
     this.(B).i = 5;
   }
@@ -1022,7 +1022,7 @@ B : [T:type] -> type = {
   IntegerType : type = int;
 }
 C : type = {
-  i:int;
+  public i:int;
   foo: (inout this) -> void = {
     B.i = 5;
   }
@@ -1040,7 +1040,7 @@ A :[T:type] ->type = {
 
 NS:namespace = {
   A2 :[T:type] ->type = {
-    i:int;
+    public i:int;
   }
 }
 
@@ -1050,7 +1050,7 @@ B : type = {
 
 C : type = {
   :B;
-  i:int;
+  public i:int;
   foo: (inout this) -> void = {
     var:A[this.NS].Ty;
   }
@@ -1069,7 +1069,7 @@ A :[T:type] ->type = {
 
 NS:namespace = {
   A2 :[T:type] ->type = {
-    i:int;
+    public i:int;
   }
 }
 
@@ -1079,7 +1079,7 @@ B : type = {
 
 C : type = {
   :B;
-  i:int;
+  public i:int;
   foo: (inout this) -> void = {
     var:A[NS].Ty;
   }
@@ -1097,7 +1097,7 @@ A :[T:type] ->type = {
 
 NS:namespace = {
   A2 :[T:type] ->type = {
-    i:int;
+    public i:int;
   }
 }
 
@@ -1107,7 +1107,7 @@ B : type = {
 
 C : type = {
   :B;
-  i:int;
+  public i:int;
   foo: (inout this) -> void = {
     var:A[this.B].Ty;
   }
@@ -1126,7 +1126,7 @@ A :[T:type] ->type = {
 
 NS:namespace = {
   A2 :[T:type] ->type = {
-    i:int;
+    public i:int;
   }
 }
 
@@ -1136,7 +1136,7 @@ B : type = {
 
 C : type = {
   :B;
-  i:int;
+  public i:int;
   foo: (inout this) -> void = {
     var:A[this.i].Ty;
   }
@@ -1158,7 +1158,7 @@ B : [T:type] -> type = {
 
 C : type = {
   :B;
-  i:int;
+  public i:int;
   foo: (inout this) -> void = {
     var:A[this.B].Ty;
   }
@@ -1176,7 +1176,7 @@ NS:namespace = {
 
 }
 C : type = {
-  i:int;
+  public i:int;
   foo: (inout this) -> void = {
     this.NS[int].y = 5;
   }
@@ -1188,11 +1188,11 @@ C : type = {
 TEST(BlueMemberAccess, InvalidInstantiation_NonTemplateBaseClass) {
   StringRef Code = R"BLUE(
 B : type = {
-  i:int;
+  public i:int;
 }
 C : type = {
   :B;
-  i:int;
+  public i:int;
   foo: (inout this) -> void = {
     this.B[int].i = 5;
   }
@@ -1204,10 +1204,10 @@ C : type = {
 TEST(BlueMemberAccess, InvalidInstantiation_NonBaseClassNonTemplate) {
   StringRef Code = R"BLUE(
 B : type = {
-  i:int;
+  public i:int;
 }
 C : type = {
-  i:int;
+  public i:int;
   foo: (inout this) -> void = {
     B[int].i = 5;
   }
@@ -1220,12 +1220,12 @@ C : type = {
 TEST(BlueMemberAccess, GloballyQualifiedMemberAccess) {
   StringRef Code = R"BLUE(
 B : type = {
-  i:int;
+  public i:int;
 }
 
 C : type = {
   :B;
-  i:int;
+  public i:int;
   foo:(inout this) -> void = {
     this.(.B).i = 4;
   }
