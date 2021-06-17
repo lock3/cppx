@@ -770,6 +770,13 @@ static clang::Decl *handleUsing(Sema &SemaRef,
   if (!E)
     return nullptr;
 
+  if (auto PartialFunc = dyn_cast<clang::CppxPartialEvalExpr>(E)) {
+    SemaRef.getCxxSema().Diags.Report(E->getExprLoc(), clang::diag::err_no_member)
+            << PartialFunc->getName().getName().getAsString()
+            << PartialFunc->getLhsExpr()->getType();
+    return nullptr;
+  }
+
   clang::Scope *CxxScope = SemaRef.getCurClangScope();
   clang::CXXScopeSpec SS;
   clang::ParsedAttributesView AttrView;
@@ -1163,7 +1170,12 @@ clang::Decl *Elaborator::elaborateTypeAliasOrVariableTemplate(Declaration *D) {
     clang::Expr *InitTyExpr = elaborateExpression(Init);
     if (!InitTyExpr)
       return nullptr;
-
+    if (auto PartialFunc = dyn_cast<clang::CppxPartialEvalExpr>(InitTyExpr)) {
+      SemaRef.getCxxSema().Diags.Report(InitTyExpr->getExprLoc(), clang::diag::err_no_member)
+              << PartialFunc->getName().getName().getAsString()
+              << PartialFunc->getLhsExpr()->getType();
+      return nullptr;
+    }
     if (isACppxDependentExpr(InitTyExpr)) {
       InitTyExpr = SemaRef.buildTypeExprTypeFromExpr(InitTyExpr,
                                                      InitTyExpr->getExprLoc());
@@ -1702,6 +1714,12 @@ clang::Decl *Elaborator::makeValueDecl(Declaration *D) {
       if (!E)
         // TODO: May want an invalid declaration error here.
         return nullptr;
+      if (auto PartialFunc = dyn_cast<clang::CppxPartialEvalExpr>(E)) {
+        SemaRef.getCxxSema().Diags.Report(E->getExprLoc(), clang::diag::err_no_member)
+                << PartialFunc->getName().getName().getAsString()
+                << PartialFunc->getLhsExpr()->getType();
+        return nullptr;
+      }
 
       if (E->getType()->isKindType()) {
         return makeTypeDecl(D, T);
@@ -1780,6 +1798,13 @@ clang::Decl *Elaborator::makeTypeDecl(Declaration *D, clang::QualType T) {
   clang::Expr *TyExpr = elaborateExpression(Init);
   if (!TyExpr)
     return nullptr;
+
+  if (auto PartialFunc = dyn_cast<clang::CppxPartialEvalExpr>(TyExpr)) {
+    SemaRef.getCxxSema().Diags.Report(TyExpr->getExprLoc(), clang::diag::err_no_member)
+            << PartialFunc->getName().getName().getAsString()
+            << PartialFunc->getLhsExpr()->getType();
+    return nullptr;
+  }
   if (isACppxDependentExpr(TyExpr)) {
     TyExpr = SemaRef.buildTypeExprTypeFromExprLiteral(TyExpr, Init->getLocation());
   }
@@ -2873,6 +2898,12 @@ bool Elaborator::makeBases(unsigned &DeclIndex,
       getCxxSema().Diags.Report(CurrentBase->getErrorLocation(),
                            clang::diag::err_failed_to_translate_expr);
       ++DeclIndex;
+      continue;
+    }
+    if (auto PartialFunc = dyn_cast<clang::CppxPartialEvalExpr>(BaseExpr)) {
+      SemaRef.getCxxSema().Diags.Report(BaseExpr->getExprLoc(), clang::diag::err_no_member)
+              << PartialFunc->getName().getName().getAsString()
+              << PartialFunc->getLhsExpr()->getType();
       continue;
     }
 
@@ -4059,6 +4090,12 @@ void Elaborator::elaborateVarDef(Declaration *D) {
     }
   } else {
     InitExpr = elaborateExpression(D->getInitializer());
+    if (auto PartialFunc = dyn_cast<clang::CppxPartialEvalExpr>(InitExpr)) {
+      SemaRef.getCxxSema().Diags.Report(InitExpr->getExprLoc(), clang::diag::err_no_member)
+              << PartialFunc->getName().getName().getAsString()
+              << PartialFunc->getLhsExpr()->getType();
+      return;
+    }
   }
 
   if (!InitExpr)
@@ -4084,19 +4121,33 @@ clang::Expr *Elaborator::elaborateConstructorCall(clang::VarDecl *D,
         auto E = elaborateExpression(Arg);
         if (!E)
           continue;
+        if (auto PartialFunc = dyn_cast<clang::CppxPartialEvalExpr>(E)) {
+          SemaRef.getCxxSema().Diags.Report(E->getExprLoc(), clang::diag::err_no_member)
+                  << PartialFunc->getName().getName().getAsString()
+                  << PartialFunc->getLhsExpr()->getType();
+          continue;
+        }
         Args.emplace_back(E);
       }
     } else {
       auto E = elaborateExpression(ES->getOperand());
-      if (E)
-        Args.emplace_back(E);
+      if (E) {
+        if (auto PartialFunc = dyn_cast<clang::CppxPartialEvalExpr>(E)) {
+          SemaRef.getCxxSema().Diags.Report(E->getExprLoc(), clang::diag::err_no_member)
+                  << PartialFunc->getName().getName().getAsString()
+                  << PartialFunc->getLhsExpr()->getType();
+        } else {
+          Args.emplace_back(E);
+        }
+      }
     }
   }
+
   clang::ParsedType PTy;
   PTy = getCxxSema().CreateParsedType(TInfo->getType(), TInfo);
   clang::ExprResult ConstructorExpr =
-      getCxxSema().ActOnCXXTypeConstructExpr(PTy, Begin, Args, End,
-                                             /*ListInitialization*/false);
+             getCxxSema().ActOnCXXTypeConstructExpr(PTy, Begin, Args, End,
+                                                   /*ListInitialization*/false);
   if (!ConstructorExpr.get()) {
     Error(ES->getOpen().getLocation(), "invalid constructor");
     return nullptr;
@@ -4123,6 +4174,13 @@ void Elaborator::elaborateFieldInit(Declaration *D) {
                                                     D->getCxx());
   clang::Expr *InitExpr = elaborateExpression(D->getInitializer());
   if (!InitExpr) {
+    return;
+  }
+
+  if (auto PartialFunc = dyn_cast<clang::CppxPartialEvalExpr>(InitExpr)) {
+    SemaRef.getCxxSema().Diags.Report(InitExpr->getExprLoc(), clang::diag::err_no_member)
+            << PartialFunc->getName().getName().getAsString()
+            << PartialFunc->getLhsExpr()->getType();
     return;
   }
 
@@ -4201,6 +4259,12 @@ void Elaborator::elaborateFunctionDef(Declaration *D) {
       }
     } else {
       clang::Expr *BodyE = elaborateExpression(D->Init);
+      if (auto PartialFunc = dyn_cast<clang::CppxPartialEvalExpr>(BodyE)) {
+        SemaRef.getCxxSema().Diags.Report(BodyE->getExprLoc(), clang::diag::err_no_member)
+                << PartialFunc->getName().getName().getAsString()
+                << PartialFunc->getLhsExpr()->getType();
+        return;
+      }
       auto ReturnResult = SemaRef.getCxxSema().ActOnReturnStmt(
         D->Init->getLocation(), BodyE, SemaRef.getCurClangScope());
       SemaRef.setClangDeclContext(cast<clang::FunctionDecl>(D->getCxx()));
@@ -4208,6 +4272,12 @@ void Elaborator::elaborateFunctionDef(Declaration *D) {
     }
   } else {
     clang::Expr *BodyE = elaborateExpression(D->Init);
+    if (auto PartialFunc = dyn_cast<clang::CppxPartialEvalExpr>(BodyE)) {
+      SemaRef.getCxxSema().Diags.Report(BodyE->getExprLoc(), clang::diag::err_no_member)
+              << PartialFunc->getName().getName().getAsString()
+              << PartialFunc->getLhsExpr()->getType();
+      return;
+    }
     auto ReturnResult = SemaRef.getCxxSema().ActOnReturnStmt(
       D->Init->getLocation(), BodyE, SemaRef.getCurClangScope());
     SemaRef.setClangDeclContext(cast<clang::FunctionDecl>(D->getCxx()));
@@ -4362,6 +4432,12 @@ clang::Expr *Elaborator::elaborateCallExpression(const CallSyntax *S) {
         clang::Expr *Arg = elaborateExpression(SS);
         if (!Arg)
           continue;
+        if (auto PartialFunc = dyn_cast<clang::CppxPartialEvalExpr>(Arg)) {
+          SemaRef.getCxxSema().Diags.Report(Arg->getExprLoc(), clang::diag::err_no_member)
+                  << PartialFunc->getName().getName().getAsString()
+                  << PartialFunc->getLhsExpr()->getType();
+          continue;
+        }
         ArgExprs.emplace_back(Arg);
       }
       return clang::CppxTemplateOrArrayExpr::Create(SemaRef.getCxxAST(),
@@ -4449,6 +4525,14 @@ clang::Expr *Elaborator::elaboratePrefixExpression(const PrefixSyntax *S) {
   auto Operand = elaborateExpression(S->getOperand());
   if (!Operand)
     return Operand;
+
+  // This may be allowed eventually but for not it is forbidden.
+  if (auto PartialFunc = dyn_cast<clang::CppxPartialEvalExpr>(Operand)) {
+    SemaRef.getCxxSema().Diags.Report(Operand->getExprLoc(), clang::diag::err_no_member)
+            << PartialFunc->getName().getName().getAsString()
+            << PartialFunc->getLhsExpr()->getType();
+    return nullptr;
+  }
   clang::SourceLocation Loc = S->getLocation();
   clang::QualType Ty = Operand->getType();
   if (Ty->isTypeOfTypes()) {
@@ -4608,6 +4692,12 @@ clang::Expr *Elaborator::elaboratePostfixExpression(const PostfixSyntax *S) {
   auto Operand = elaborateExpression(S->getOperand());
   if (!Operand)
     return Operand;
+  if (auto PartialFunc = dyn_cast<clang::CppxPartialEvalExpr>(Operand)) {
+    SemaRef.getCxxSema().Diags.Report(Operand->getExprLoc(), clang::diag::err_no_member)
+            << PartialFunc->getName().getName().getAsString()
+            << PartialFunc->getLhsExpr()->getType();
+    return nullptr;
+  }
   clang::SourceLocation Loc = S->getLocation();
   clang::QualType Ty = Operand->getType();
   if (Ty->isTypeOfTypes() || Ty->isNamespaceType() || Ty->isTemplateType()) {
@@ -4740,6 +4830,20 @@ clang::Expr *Elaborator::elaborateInfixExpression(const InfixSyntax *S) {
     Error(S->getLocation(), "invalid binary operator");
     return nullptr;
   }
+  // Making sure that non of the supplied arguments are partial expressions
+  // that can't be evaluated.
+  if (auto PartialFunc = dyn_cast<clang::CppxPartialEvalExpr>(LHS)) {
+    SemaRef.getCxxSema().Diags.Report(LHS->getExprLoc(), clang::diag::err_no_member)
+            << PartialFunc->getName().getName().getAsString()
+            << PartialFunc->getLhsExpr()->getType();
+    return nullptr;
+  }
+  if (auto PartialFunc = dyn_cast<clang::CppxPartialEvalExpr>(RHS)) {
+    SemaRef.getCxxSema().Diags.Report(RHS->getExprLoc(), clang::diag::err_no_member)
+            << PartialFunc->getName().getName().getAsString()
+            << PartialFunc->getLhsExpr()->getType();
+    return nullptr;
+  }
 
   clang::ExprResult Res = SemaRef.getCxxSema().BuildBinOp(/*Scope=*/nullptr,
                                                           S->getLocation(),
@@ -4859,7 +4963,7 @@ clang::Expr *Elaborator::elaborateQualifiedMemberAccess(const QualifiedMemberAcc
     // llvm_unreachable("Qualified typename member access not implemented yet.");
     // return elaborateNestedLookupAccess(ElaboratedLHS, Op, RHS);
 
- clang::Expr *QualExpr = elaborateExpression(Qualifier);
+  clang::Expr *QualExpr = elaborateExpression(Qualifier);
   if (!QualExpr)
     return nullptr;
 
@@ -5483,10 +5587,25 @@ clang::Stmt *Elaborator::elaborateSequenceStmt(const SequenceSyntax *S) {
   llvm_unreachable("Working on it.");
 }
 
+
 clang::Stmt *Elaborator::elaborateStatement(const Syntax *S) {
-  if (!S)
+  clang::Stmt *Ret = doElaborateStatement(S);
+  if (!Ret)
     return nullptr;
 
+  if (auto PartialFunc = dyn_cast<clang::CppxPartialEvalExpr>(Ret)) {
+    SemaRef.getCxxSema().Diags.Report(PartialFunc->getExprLoc(),
+              clang::diag::err_no_member)
+            << PartialFunc->getName().getName().getAsString()
+            << PartialFunc->getLhsExpr()->getType();
+    return nullptr;
+  }
+  return Ret;
+}
+
+clang::Stmt *Elaborator::doElaborateStatement(const Syntax *S) {
+if (!S)
+    return nullptr;
   if (auto DS = dyn_cast<DeclarationSyntax>(S))
     return elaborateDeclStmt(DS);
 
@@ -5520,6 +5639,7 @@ clang::Stmt *Elaborator::elaborateStatement(const Syntax *S) {
   return ExprStmt.get();
 }
 
+
 clang::Stmt *Elaborator::elaborateDeclStmt(const DeclarationSyntax *S) {
   auto D = buildDeclaration(S);
   if (!D) {
@@ -5538,15 +5658,23 @@ clang::Stmt *Elaborator::elaborateDeclStmt(const DeclarationSyntax *S) {
   return DclStmt.get();
 }
 
+
+
 clang::Stmt *Elaborator::elaborateReturnStmt(const PrefixSyntax *S) {
   assert(S->getOperation().hasKind(tok::ReturnKeyword)
          && "Invalid return statement");
   clang::Expr *Val = nullptr;
 
-  if (S->getOperand())
+  if (S->getOperand()) {
     // if this elaborates to null, we'll just let clang::Sema handle the error
     Val = elaborateExpression(S->getOperand());
-
+    if (auto PartialFunc = dyn_cast<clang::CppxPartialEvalExpr>(Val)) {
+      SemaRef.getCxxSema().Diags.Report(Val->getExprLoc(), clang::diag::err_no_member)
+              << PartialFunc->getName().getName().getAsString()
+              << PartialFunc->getLhsExpr()->getType();
+      return nullptr;
+    }
+  }
   auto ReturnResult = SemaRef.getCxxSema().ActOnReturnStmt(
     S->getOperation().getLocation(), Val, SemaRef.getCurClangScope());
 
@@ -5585,6 +5713,12 @@ clang::Stmt *Elaborator::elaborateIfStmt(const ControlSyntax *S) {
   clang::Expr *ConditionExpr = elaborateExpression(S->getHead());
   if (!ConditionExpr)
     return nullptr;
+  if (auto PartialFunc = dyn_cast<clang::CppxPartialEvalExpr>(ConditionExpr)) {
+    SemaRef.getCxxSema().Diags.Report(ConditionExpr->getExprLoc(), clang::diag::err_no_member)
+            << PartialFunc->getName().getName().getAsString()
+            << PartialFunc->getLhsExpr()->getType();
+    return nullptr;
+  }
   clang::Sema::ConditionResult Condition =
     SemaRef.getCxxSema().ActOnCondition(/*Scope=*/nullptr,
                                         S->getLocation(), ConditionExpr,
@@ -5632,6 +5766,12 @@ clang::Stmt *Elaborator::elaborateWhileStmt(const ControlSyntax *S) {
     elaborateExpression(S->getHead());
   if (!CondExpr)
     return nullptr;
+  if (auto PartialFunc = dyn_cast<clang::CppxPartialEvalExpr>(CondExpr)) {
+    SemaRef.getCxxSema().Diags.Report(CondExpr->getExprLoc(), clang::diag::err_no_member)
+            << PartialFunc->getName().getName().getAsString()
+            << PartialFunc->getLhsExpr()->getType();
+    return nullptr;
+  }
   clang::Sema::ConditionResult Condition =
     SemaRef.getCxxSema().ActOnCondition(/*Scope=*/nullptr, S->getLocation(),
                                         CondExpr,
@@ -5685,12 +5825,26 @@ clang::Stmt *Elaborator::elaborateForStmt(const ControlSyntax *S) {
 
   clang::Stmt *TheDeclStmt = elaborateStatement(Conditions[0]);
   clang::Expr *CondExpr = elaborateExpression(Conditions[1]);
+  if (CondExpr) {
+    if (auto PartialFunc = dyn_cast<clang::CppxPartialEvalExpr>(CondExpr)) {
+      SemaRef.getCxxSema().Diags.Report(CondExpr->getExprLoc(), clang::diag::err_no_member)
+              << PartialFunc->getName().getName().getAsString()
+              << PartialFunc->getLhsExpr()->getType();
+    }
+  }
   clang::SourceLocation CondLoc = Conditions[1] ?
     Conditions[1]->getLocation() : S->getLocation();
   clang::Sema::ConditionResult Condition =
     CxxSema.ActOnCondition(CxxSema.getCurScope(), CondLoc, CondExpr,
                            clang::Sema::ConditionKind::Boolean);
   clang::Expr *IncExpr = elaborateExpression(Conditions[2]);
+  if(IncExpr) {
+    if (auto PartialFunc = dyn_cast<clang::CppxPartialEvalExpr>(IncExpr)) {
+      SemaRef.getCxxSema().Diags.Report(IncExpr->getExprLoc(), clang::diag::err_no_member)
+              << PartialFunc->getName().getName().getAsString()
+              << PartialFunc->getLhsExpr()->getType();
+    }
+  }
   clang::Sema::FullExprArg FullIncExpr =
     CxxSema.MakeFullDiscardedValueExpr(IncExpr);
 
@@ -5716,7 +5870,12 @@ clang::Stmt *Elaborator::elaborateDoStmt(const ControlSyntax *S) {
     elaborateExpression(S->getHead());
   if (!CondExpr)
     return nullptr;
-
+  if (auto PartialFunc = dyn_cast<clang::CppxPartialEvalExpr>(CondExpr)) {
+    SemaRef.getCxxSema().Diags.Report(CondExpr->getExprLoc(), clang::diag::err_no_member)
+            << PartialFunc->getName().getName().getAsString()
+            << PartialFunc->getLhsExpr()->getType();
+    return nullptr;
+  }
   // Elaborate the block
   const Syntax *BlockSyntax = S->getBody();
   SemaRef.enterScope(Scope::Block, BlockSyntax);
@@ -5784,6 +5943,14 @@ clang::Stmt *Elaborator::elaborateLetStmt(const ControlSyntax *S) {
 
 clang::Expr *Elaborator::elaborateArraySubscriptExpr(clang::Expr *Base,
                                                      const ListSyntax *Args) {
+  // Checking to see if the array template is a partial expression or not.
+  if (auto PartialFunc = dyn_cast<clang::CppxPartialEvalExpr>(Base)) {
+    SemaRef.getCxxSema().Diags.Report(Base->getExprLoc(), clang::diag::err_no_member)
+            << PartialFunc->getName().getName().getAsString()
+            << PartialFunc->getLhsExpr()->getType();
+    return nullptr;
+  }
+
   if (Args->getNumChildren() != 1) {
     Error(Args->getLocation(), "too many arguments in array subscript");
     return nullptr;
@@ -5792,6 +5959,12 @@ clang::Expr *Elaborator::elaborateArraySubscriptExpr(clang::Expr *Base,
   clang::Expr *IndexExpr = elaborateExpression(Args->getOperand(0));
   if (!IndexExpr)
     return nullptr;
+  if (auto PartialFunc = dyn_cast<clang::CppxPartialEvalExpr>(IndexExpr)) {
+    SemaRef.getCxxSema().Diags.Report(IndexExpr->getExprLoc(), clang::diag::err_no_member)
+            << PartialFunc->getName().getName().getAsString()
+            << PartialFunc->getLhsExpr()->getType();
+    // return nullptr;
+  }
 
   auto SubscriptExpr = CxxSema.ActOnArraySubscriptExpr(
     SemaRef.getCurClangScope(), Base, IndexExpr->getExprLoc(),
@@ -5820,6 +5993,13 @@ clang::Expr *Elaborator::elaborateFunctionCall(clang::Expr *Base,
       if (!A)
         continue;
 
+      // Invalid argument expression.
+      if (auto PartialFunc = dyn_cast<clang::CppxPartialEvalExpr>(Argument)) {
+        SemaRef.getCxxSema().Diags.Report(Argument->getExprLoc(), clang::diag::err_no_member)
+                << PartialFunc->getName().getName().getAsString()
+                << PartialFunc->getLhsExpr()->getType();
+        continue;
+      }
       ArgExprs.push_back(Argument);
     }
   }
@@ -6081,6 +6261,12 @@ clang::Expr *
 Elaborator::elaborateClassTemplateSelection(clang::Expr *IdExpr,
                                             const EnclosureSyntax *Enc,
                                             const ListSyntax *ArgList) {
+  if (auto PartialFunc = dyn_cast<clang::CppxPartialEvalExpr>(IdExpr)) {
+    SemaRef.getCxxSema().Diags.Report(IdExpr->getExprLoc(), clang::diag::err_no_member)
+            << PartialFunc->getName().getName().getAsString()
+            << PartialFunc->getLhsExpr()->getType();
+    return nullptr;
+  }
   clang::SourceLocation LocStart = Enc->getOpen().getLocation();
   clang::SourceLocation LocEnd = Enc->getClose().getLocation();
   clang::TemplateArgumentListInfo TemplateArgs(LocEnd, LocStart);
@@ -6755,6 +6941,12 @@ clang::Expr *Elaborator::elaborateNNS(clang::NamedDecl *NS,
 
 clang::Expr *Elaborator::elaborateMemberAccessOp(clang::Expr *LHS,
                                                  const InfixSyntax *S) {
+  if (auto PartialFunc = dyn_cast<clang::CppxPartialEvalExpr>(LHS)) {
+    SemaRef.getCxxSema().Diags.Report(LHS->getExprLoc(), clang::diag::err_no_member)
+            << PartialFunc->getName().getName().getAsString()
+            << PartialFunc->getLhsExpr()->getType();
+    return nullptr;
+  }
   if (auto IdSyntax = dyn_cast<IdentifierSyntax>(S->getOperand(1))) {
     clang::UnqualifiedId Id;
     clang::IdentifierInfo *IdInfo =
@@ -6883,6 +7075,12 @@ clang::Expr *Elaborator::elaboratorInplaceNew(const CallSyntax *Call) {
   clang::Expr *PlacementArg = elaborateExpression(ArgList->getOperand(0));
   if (!PlacementArg)
     return nullptr;
+  if (auto PartialFunc = dyn_cast<clang::CppxPartialEvalExpr>(PlacementArg)) {
+    SemaRef.getCxxSema().Diags.Report(PlacementArg->getExprLoc(), clang::diag::err_no_member)
+            << PartialFunc->getName().getName().getAsString()
+            << PartialFunc->getLhsExpr()->getType();
+    return nullptr;
+  }
   clang::QualType PlacementArgTy = PlacementArg->getType();
   if (PlacementArgTy->isKindType() || PlacementArgTy->isNamespaceType()
       || PlacementArgTy->isTemplateType()) {
@@ -6911,6 +7109,12 @@ clang::Expr *Elaborator::elaboratorInplaceNew(const CallSyntax *Call) {
     clang::Expr *Arg = elaborateExpression(ArgList->getOperand(Index));
     if (!Arg)
       continue;
+    if (auto PartialFunc = dyn_cast<clang::CppxPartialEvalExpr>(Arg)) {
+      SemaRef.getCxxSema().Diags.Report(Arg->getExprLoc(), clang::diag::err_no_member)
+              << PartialFunc->getName().getName().getAsString()
+              << PartialFunc->getLhsExpr()->getType();
+      return nullptr;
+    }
     clang::QualType ArgTy = Arg->getType();
     if (ArgTy->isKindType() || ArgTy->isNamespaceType()
         || ArgTy->isTemplateType()) {
@@ -6990,6 +7194,12 @@ clang::Expr *Elaborator::elaboratorInplaceDelete(const CallSyntax *Call) {
   clang::Expr *ToDelete = elaborateExpression(ArgList->getOperand(0));
   if (!ToDelete)
     return nullptr;
+  if (auto PartialFunc = dyn_cast<clang::CppxPartialEvalExpr>(ToDelete)) {
+    SemaRef.getCxxSema().Diags.Report(ToDelete->getExprLoc(), clang::diag::err_no_member)
+            << PartialFunc->getName().getName().getAsString()
+            << PartialFunc->getLhsExpr()->getType();
+    return nullptr;
+  }
   clang::QualType ToDeleteTy = ToDelete->getType();
   if (ToDeleteTy->isKindType() || ToDeleteTy->isNamespaceType()
       || ToDeleteTy->isTemplateType()) {

@@ -37,3 +37,68 @@ bar:()->void = {
   auto ToMatch = callExpr(callee(functionDecl(hasName("foo"))));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
+
+TEST(BlueMemberTransform, InvalidMemberAccess) {
+  StringRef Code = R"BLUE(
+A : type = {
+}
+
+foo:(x:A) -> void = {
+}
+
+
+bar:()->void = {
+  x : A;
+  x.b.foo();
+}
+
+)BLUE";
+  BlueFailureTest(Code);
+}
+
+TEST(BlueMemberTransform, InvalidExplicitTemplate) {
+  StringRef Code = R"BLUE(
+A : type = {
+}
+
+bar:()->void = {
+  x : A;
+  x.foo[int]();
+}
+
+)BLUE";
+  BlueFailureTest(Code);
+}
+
+TEST(BlueMemberTransform, InvalidUseInBinaryExpr) {
+  StringRef Code = R"BLUE(
+A : type = {
+}
+
+bar:()->void = {
+  x : A;
+  x.foo + 5;
+}
+
+)BLUE";
+  BlueFailureTest(Code);
+}
+
+
+TEST(BlueMemberTransform, UsedAsFunctionArgument) {
+  StringRef Code = R"BLUE(
+A : type = {
+}
+
+foo:(a:A, x:int) -> void = {
+
+}
+
+bar:()->void = {
+  x : A;
+  foo(x.bar, 5);
+}
+
+)BLUE";
+  BlueFailureTest(Code);
+}
