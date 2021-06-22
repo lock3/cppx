@@ -4065,19 +4065,38 @@ void Elaborator::elaborateVarDef(Declaration *D) {
     return;
 
   // Update the initializer.
-  getCxxSema().AddInitializerToDecl(VD, InitExpr, /*DirectInit=*/false);
+  bool DirectInit = isa<clang::ParenListExpr>(InitExpr);
+  getCxxSema().AddInitializerToDecl(VD, InitExpr, DirectInit);
+  getCxxSema().FinalizeDeclaration(VD);
+
+  // If the initializer is some type of constructor,
+  // act on its default initializers.
+  clang::CXXConstructExpr *CE = dyn_cast<clang::CXXConstructExpr>(VD->getInit());
+  if (!CE) {
+    for (clang::Stmt *EE : VD->getInit()->children()) {
+      if (isa<clang::CXXConstructExpr>(EE)) {
+        CE = cast<clang::CXXConstructExpr>(EE);
+        break;
+      }
+    }
+  }
+  if (CE) {
+    ClangDeclContextRAII DC(SemaRef, CE->getConstructor());
+    getCxxSema().ActOnDefaultCtorInitializers(CE->getConstructor());
+  }
 }
 
 clang::Expr *Elaborator::elaborateConstructorCall(clang::VarDecl *D,
                                                     const EnclosureSyntax *ES) {
   BALANCE_DBG();
-  llvm::SmallVector<clang::Expr *, 8> Args;
   clang::SourceLocation Begin, End;
   if (ES) {
     Begin = ES->getOpen().getLocation();
     End = ES->getClose().getLocation();
   }
-  auto TInfo = D->getTypeSourceInfo();
+
+  llvm::SmallVector<clang::Expr *, 8> Args;
+  clang::TypeSourceInfo *TInfo = D->getTypeSourceInfo();
   if (ES->getOperand()) {
     if (auto ArgList = dyn_cast<ListSyntax>(ES->getOperand())) {
       for(const Syntax *Arg : ArgList->children()) {
@@ -4092,18 +4111,49 @@ clang::Expr *Elaborator::elaborateConstructorCall(clang::VarDecl *D,
         Args.emplace_back(E);
     }
   }
-  clang::ParsedType PTy;
-  PTy = getCxxSema().CreateParsedType(TInfo->getType(), TInfo);
-  clang::ExprResult ConstructorExpr =
+
+  clang::ExprResult ConstructorExpr;
+
+  clang::CXXRecordDecl *RD = TInfo->getType()->getAsCXXRecordDecl();
+  if (RD) {
+    clang::CXXConstructorDecl *CD = nullptr;
+    if (Args.empty())
+      CD = getCxxSema().LookupDefaultConstructor(RD);
+    else
+      return getCxxSema().ActOnParenListExpr(Begin, End, Args).get();
+
+    if (!CD) {
+      Error(ES->getOpen().getLocation(), "invalid constructor");
+      return nullptr;
+    }
+
+   ConstructorExpr =
+    getCxxSema().BuildCXXConstructExpr(Begin, TInfo->getType(), D, CD,
+                                       Args, false, false, false, false,
+                                       clang::CXXConstructExpr::CK_Complete,
+                                       clang::SourceRange(Begin, End));
+  } else {
+    clang::ParsedType PTy;
+    PTy = getCxxSema().CreateParsedType(TInfo->getType(), TInfo);
+    ConstructorExpr =
       getCxxSema().ActOnCXXTypeConstructExpr(PTy, Begin, Args, End,
                                              /*ListInitialization*/false);
-  if (!ConstructorExpr.get()) {
+    if (ConstructorExpr.isInvalid()) {
+      Error(ES->getOpen().getLocation(), "invalid constructor");
+      return nullptr;
+    }
+
+    auto Temp = getCxxSema().TemporaryMaterializationConversion(
+      ConstructorExpr.get());
+    return Temp.get();
+  }
+
+  if (ConstructorExpr.isInvalid()) {
     Error(ES->getOpen().getLocation(), "invalid constructor");
     return nullptr;
   }
-  auto Temp = getCxxSema().TemporaryMaterializationConversion(
-      ConstructorExpr.get());
-  return Temp.get();
+
+  return ConstructorExpr.get();
 }
 
 // clang::Expr *Elaborator::elaborateConstructorCall(clang::VarDecl *D,
