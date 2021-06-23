@@ -4723,6 +4723,48 @@ static bool hasOperator(Sema &SemaRef, clang::ASTContext &CxxAST,
   return CxxSema.LookupQualifiedName(Res, RD);
 }
 
+// Handle a base constructor call of the form `base = (args)`
+static void HandleBaseInitializer(Sema &SemaRef,
+                                  clang::CppxCXXScopeSpecExpr *SSE,
+                                  clang::Expr *InitExpr,
+                                  clang::SourceLocation Loc) {
+  clang::Sema &CxxSema = SemaRef.getCxxSema();
+  clang::CXXConstructorDecl *CurCtor =
+    dyn_cast<clang::CXXConstructorDecl>(SemaRef.getCurClangDeclContext());
+  if (!CurCtor) {
+    // FIXME: these can probably appear anywhere in a class.
+    Error(SemaRef, Loc)
+      << "Base constructor expression outside of constructor";
+    return;
+  }
+
+  if (SSE->getLastExpr()->getType()->isTypeOfTypes()) {
+    auto *BaseLit = cast<clang::CppxTypeLiteral>(SSE->getLastExpr());
+    clang::CXXRecordDecl *BaseRD = BaseLit->getValue()->getType()
+      ->getAsCXXRecordDecl();
+    clang::CXXRecordDecl *DerRD = CurCtor->getParent();
+    if (!DerRD->isDerivedFrom(BaseRD)) {
+      unsigned DiagID =
+        CxxSema.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                      "class %0 does not derive from %1");
+      CxxSema.Diags.Report(Loc, DiagID)
+        << DerRD->getIdentifier() << BaseRD->getIdentifier();
+      return;
+    }
+
+    clang::TypeSourceInfo *BaseTInfo =
+      gold::BuildAnyTypeLoc(SemaRef.getCxxAST(),
+                            clang::QualType(BaseRD->getTypeForDecl(), 0), Loc);
+    // FIXME: add an ellipsis location, if there is one.
+    llvm::SmallVector<clang::CXXCtorInitializer *, 1> BaseInits;
+    clang::MemInitResult BaseInit =
+      CxxSema.BuildBaseInitializer(BaseTInfo->getType(), BaseTInfo,
+                                   InitExpr, DerRD, clang::SourceLocation());
+    BaseInits.push_back(BaseInit.get());
+    CxxSema.ActOnMemInitializers(CurCtor, Loc, BaseInits, /*AnyErrors=*/false);
+  }
+}
+
 clang::Expr *Elaborator::elaborateInfixExpression(const InfixSyntax *S) {
   auto LHS = elaborateExpression(S->getOperand(0));
   if (!LHS)
@@ -4790,43 +4832,8 @@ clang::Expr *Elaborator::elaborateInfixExpression(const InfixSyntax *S) {
   // this might be a call to the base constructor, as in
   // operator=: (out this) = { base = (arg); }
   if (auto *SSE = dyn_cast<clang::CppxCXXScopeSpecExpr>(LHS)) {
-    clang::CXXConstructorDecl *CurCtor =
-      dyn_cast<clang::CXXConstructorDecl>(SemaRef.getCurClangDeclContext());
-    if (!CurCtor) {
-      // FIXME: these can probably appear anywhere in a class.
-      Error(S->getLocation(),
-            "Base constructor expression outside of constructor");
-      return nullptr;
-    }
-
-    if (SSE->getLastExpr()->getType()->isTypeOfTypes()) {
-      auto *BaseLit = cast<clang::CppxTypeLiteral>(SSE->getLastExpr());
-      clang::CXXRecordDecl *BaseRD = BaseLit->getValue()->getType()
-        ->getAsCXXRecordDecl();
-      clang::CXXRecordDecl *DerRD = CurCtor->getParent();
-      if (!DerRD->isDerivedFrom(BaseRD)) {
-        unsigned DiagID =
-          getCxxSema().Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
-                                             "class %0 does not derive from %1");
-        getCxxSema().Diags.Report(S->getLocation(), DiagID)
-          << DerRD->getIdentifier() << BaseRD->getIdentifier();
-        return nullptr;
-      }
-
-      clang::TypeSourceInfo *BaseTInfo =
-        gold::BuildAnyTypeLoc(CxxAST,
-                              clang::QualType(BaseRD->getTypeForDecl(), 0),
-                              S->getLocation());
-      // FIXME: add an ellipsis location, if there is one.
-      llvm::SmallVector<clang::CXXCtorInitializer *, 1> BaseInits;
-      clang::MemInitResult BaseInit =
-        getCxxSema().BuildBaseInitializer(BaseTInfo->getType(), BaseTInfo,
-                                          RHS, DerRD, clang::SourceLocation());
-      BaseInits.push_back(BaseInit.get());
-      getCxxSema().ActOnMemInitializers(CurCtor, S->getLocation(), BaseInits,
-                                        /*AnyErrors=*/false);
-      return nullptr;
-    }
+    HandleBaseInitializer(SemaRef, SSE, RHS, S->getLocation());
+    return nullptr;
   }
 
   auto OpIter = SemaRef.BinOpMap.find(S->getOperation().getSpelling());
