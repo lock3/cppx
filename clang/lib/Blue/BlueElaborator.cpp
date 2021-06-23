@@ -420,7 +420,8 @@ bool Elaborator::elaborateAllCppCode(const std::string &CodeBuffer) {
     "-frtti", "-fexceptions",
     // Ensure that tests specify the C++ standard version that they need.
     // "-Werror=c++14-extensions", "-Werror=c++17-extensions"
-    "-std=c++17"
+    "-std=c++17",
+    "-stdlib=libc++"
   };
 
   std::string WD = SemaRef.getCompilerInstance()->getFileSystemOpts().WorkingDir;
@@ -464,7 +465,6 @@ bool Elaborator::elaborateAllCppCode(const std::string &CodeBuffer) {
       if (clang::IdentifierInfo *II = ND->getIdentifier())
         if (II->isStr("__va_list_tag") || II->isStr("__builtin_va_list"))
           continue;
-
     llvm::Expected<clang::Decl *> ToDOrError = Importer.Import(D);
     if (!ToDOrError) {
       llvm::Error Err = ToDOrError.takeError();
@@ -488,9 +488,13 @@ void Elaborator::elaborateCppNsDecls(clang::CppxNamespaceDecl *NSD) {
   blue::Scope *SC = NSD->getBlueScopeRep();
   const Syntax *ScopeTerm = nullptr;
   if (!SC) {
+    if (NSD->isAnonymousNamespace()) {
+      llvm::outs() << "Anonymous namespace detected\n";
+      return;
+    }
     // Creating a dummy syntax node.
     Token T(tok::Identifier, NSD->getLocation(),
-            const_cast<char*>(NSD->getIdentifier()->getName().data()));
+            const_cast<char*>(NSD->getOriginalNamespace()->getIdentifier()->getName().data()));
     ScopeTerm = new IdentifierSyntax(T);
     SC = new Scope(Scope::Namespace, ScopeTerm, SemaRef.getCurrentScope());
     NSD->setBlueScope(SC);
@@ -519,8 +523,6 @@ void Elaborator::elaborateCppNsDecls(clang::CppxNamespaceDecl *NSD) {
 }
 
 void Elaborator::elaborateCppDC(clang::DeclContext *DC) {
-  // auto Iter = DC->decls_begin();
-  // auto End = DC->decls_end();
   for (clang::Decl *D : DC->decls () )
     elaborateSingleCppImport(D);
 }
@@ -570,7 +572,16 @@ void Elaborator::elaborateSingleCppImport(clang::Decl *ProcessedDecl) {
   if (auto ND = dyn_cast<clang::NamedDecl>(ProcessedDecl)) {
     if (!ND->getIdentifier())
       return;
-
+    if (ND->getIdentifier()->getName() == "cout") {
+      llvm::outs() << "Found cout\n";
+      ND->dump();
+      // auto TempDC = ND->getDeclContext();
+      // auto ParentDecl = dyn_cast<clang::Decl>(TempDC);
+      // assert(ParentDecl);
+      // ParentDecl->dump();
+    }
+    // llvm::outs() << "Dumping decl name = "
+    //              << ND->getIdentifier()->getName() << "\n";
     Token T(tok::Identifier, ND->getLocation(),
             const_cast<char*>(ND->getIdentifier()->getName().data()));
     const Syntax *IdSyn = new IdentifierSyntax(T);
@@ -586,96 +597,6 @@ void Elaborator::elaborateSingleCppImport(clang::Decl *ProcessedDecl) {
     TheDecl->setCxx(SemaRef, ND);
     CurScope->addDeclLookup(TheDecl);
   }
-}
-
-void Elaborator::elaborateCppLinkageDecls(clang::LinkageSpecDecl *LSD) {
-  // blue::Scope *SC = NSD->getBlueScopeRep();
-  // const Syntax *ScopeTerm = nullptr;
-  // if (!SC) {
-  //   // Creating a dummy syntax node.
-  //   Token T(tok::Identifier, NSD->getLocation(),
-  //           const_cast<char*>(NSD->getIdentifier()->getName().data()));
-  //   ScopeTerm = new IdentifierSyntax(T);
-  //   SC = new Scope(Scope::Namespace, ScopeTerm, SemaRef.getCurrentScope());
-  //   NSD->setBlueScope(SC);
-  // } else {
-  //   ScopeTerm = SC->getTerm();
-  // }
-  // // Building namespace declaration.
-  // Token NSIdTok(tok::Identifier, NSD->getLocation(),
-  //         const_cast<char*>(NSD->getIdentifier()->getName().data()));
-  // const Syntax *NsIdSyn = new IdentifierSyntax(NSIdTok);
-  // Declaration *TheNSDecl = new Declaration(SemaRef.getCurrentDecl(), NsIdSyn,
-  //                                         nullptr, nullptr);
-  // clang::IdentifierInfo *Id = NSD->getIdentifier();
-  // Scope *ParentScope = SemaRef.getCurrentScope();
-  // TheNSDecl->Id = Id;
-  // TheNSDecl->DeclaringContext = cast<clang::DeclContext>(SemaRef.getCurrentDecl()->getCxx());
-  // TheNSDecl->ScopeForDecl = ParentScope;
-  // TheNSDecl->CurrentPhase = Phase::Initialization;
-  // TheNSDecl->setCxx(SemaRef, NSD);
-  // ParentScope->addDeclLookup(TheNSDecl);
-  // // Make sure to enter the new decl context.
-  // Sema::DeclContextRAII DCTracking(SemaRef, TheNSDecl);
-  // auto Iter = NSD->decls_begin();
-  // auto End = NSD->decls_end();
-
-  // ResumeScopeRAII ScopeTracker(SemaRef, SC, ScopeTerm);
-  // TheNSDecl->SavedScope = SemaRef.getCurrentScope();
-  // for (;Iter != End; ++Iter) {
-  //   clang::Decl *ProcessedDecl = *Iter;
-  //   if (SemaRef.getDeclaration(ProcessedDecl)) {
-  //     continue;
-  //   }
-  //   if (auto CppNS = dyn_cast<clang::CppxNamespaceDecl>(ProcessedDecl)) {
-  //     elaborateCppNsDecls(CppNS);
-  //     continue;
-  //   }
-  //   if (auto CTD = dyn_cast<clang::ClassTemplateDecl>(ProcessedDecl)) {
-  //     ProcessedDecl = CTD->getTemplatedDecl();
-  //   } else if (auto FTD = dyn_cast<clang::FunctionTemplateDecl>(ProcessedDecl)) {
-  //     ProcessedDecl = FTD->getAsFunction();
-  //   } else if (auto TATD = dyn_cast<clang::TypeAliasTemplateDecl>(ProcessedDecl)) {
-  //     ProcessedDecl = TATD->getTemplatedDecl();
-  //   } else if (auto VTD = dyn_cast<clang::VarTemplateDecl>(ProcessedDecl)) {
-  //     ProcessedDecl = VTD->getTemplatedDecl();
-  //   }
-  //   // Don't include static data members that are defined outside the body
-  //   // of a class.
-  //   if (auto VD = dyn_cast<clang::VarDecl>(ProcessedDecl))
-  //     if (VD->isStaticDataMember())
-  //       continue;
-
-  //   // Make sure that we don't create declarations for any method defined
-  //   // outside the body of a class because it doesn't matter for lookup.
-  //   if (isa<clang::CXXMethodDecl>(ProcessedDecl))
-  //     continue;
-
-  //   // We don't want to look up anything that is the definition for
-  //   // something else.
-  //   if (auto DD = dyn_cast<clang::DeclaratorDecl>(ProcessedDecl))
-  //     if (DD->getQualifier())
-  //       continue;
-
-  //   if (auto ND = dyn_cast<clang::NamedDecl>(ProcessedDecl)) {
-  //     if (!ND->getIdentifier())
-  //       continue;
-
-  //     Token T(tok::Identifier, ND->getLocation(),
-  //             const_cast<char*>(ND->getIdentifier()->getName().data()));
-  //     const Syntax *IdSyn = new IdentifierSyntax(T);
-  //     Declaration *TheDecl = new Declaration(SemaRef.getCurrentDecl(), IdSyn,
-  //                                             nullptr, nullptr);
-  //     clang::IdentifierInfo *Id = ND->getIdentifier();
-  //     Scope *CurScope = SemaRef.getCurrentScope();
-  //     TheDecl->Id = Id;
-  //     TheDecl->DeclaringContext = NSD;
-  //     TheDecl->ScopeForDecl = CurScope;
-  //     TheDecl->CurrentPhase = Phase::Initialization;
-  //     TheDecl->setCxx(SemaRef, ND);
-  //     CurScope->addDeclLookup(TheDecl);
-  //   }
-  // }
 }
 
 Declaration *Elaborator::buildDeclaration(const DeclarationSyntax *S) {

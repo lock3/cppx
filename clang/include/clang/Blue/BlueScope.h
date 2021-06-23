@@ -190,6 +190,7 @@ public:
 
   void dump(llvm::raw_ostream &os) const;
   void dump() const;
+  void dumpLookups() const;
 
   void dumpScopeChain() const;
 };

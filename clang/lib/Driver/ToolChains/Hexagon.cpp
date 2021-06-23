@@ -291,7 +291,7 @@ constructHexagonLinkArgs(Compilation &C, const JobAction &JA,
       CmdArgs.push_back("-lclang_rt.builtins-hexagon");
       CmdArgs.push_back("-lc");
     }
-    if (D.CCCIsCXX()) {
+    if (D.CCCIsCXX() || D.IsBlueMode()) {
       if (HTC.ShouldLinkCXXStdlib(Args))
         HTC.AddCXXStdlibLibArgs(Args, CmdArgs);
     }
@@ -367,7 +367,7 @@ constructHexagonLinkArgs(Compilation &C, const JobAction &JA,
   // Libraries
   //----------------------------------------------------------------------------
   if (IncStdLib && IncDefLibs) {
-    if (D.CCCIsCXX()) {
+    if (D.CCCIsCXX() || D.IsBlueMode()) {
       if (HTC.ShouldLinkCXXStdlib(Args))
         HTC.AddCXXStdlibLibArgs(Args, CmdArgs);
       CmdArgs.push_back("-lm");

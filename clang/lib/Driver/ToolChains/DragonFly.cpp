@@ -127,7 +127,7 @@ void dragonfly::Linker::ConstructJob(Compilation &C, const JobAction &JA,
       CmdArgs.push_back("/usr/lib/gcc80");
     }
 
-    if (D.CCCIsCXX()) {
+    if (D.CCCIsCXX() || D.IsBlueMode()) {
       if (getToolChain().ShouldLinkCXXStdlib(Args))
         getToolChain().AddCXXStdlibLibArgs(Args, CmdArgs);
       CmdArgs.push_back("-lm");

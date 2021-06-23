@@ -70,7 +70,8 @@ void tools::MinGW::Linker::AddLibGCC(const ArgList &Args,
     bool Static = Args.hasArg(options::OPT_static_libgcc) ||
                   Args.hasArg(options::OPT_static);
     bool Shared = Args.hasArg(options::OPT_shared);
-    bool CXX = getToolChain().getDriver().CCCIsCXX();
+    bool CXX = getToolChain().getDriver().CCCIsCXX()
+                                     || getToolChain().getDriver().IsBlueMode();
 
     if (Static || (!CXX && !Shared)) {
       CmdArgs.push_back("-lgcc");

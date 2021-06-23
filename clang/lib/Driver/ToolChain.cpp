@@ -75,7 +75,7 @@ ToolChain::ToolChain(const Driver &D, const llvm::Triple &T,
                      const ArgList &Args)
     : D(D), Triple(T), Args(Args), CachedRTTIArg(GetRTTIArgument(Args)),
       CachedRTTIMode(CalculateRTTIMode(Args, Triple, CachedRTTIArg)) {
-  if (D.CCCIsCXX()) {
+  if (D.CCCIsCXX()|| D.IsBlueMode()) {
     if (auto CXXStdlibPath = getCXXStdlibPath())
       getFilePaths().push_back(*CXXStdlibPath);
   }
@@ -1044,7 +1044,7 @@ void ToolChain::AddClangCXXStdlibIsystemArgs(
 }
 
 bool ToolChain::ShouldLinkCXXStdlib(const llvm::opt::ArgList &Args) const {
-  return getDriver().CCCIsCXX() &&
+  return (getDriver().CCCIsCXX() || getDriver().IsBlueMode()) &&
          !Args.hasArg(options::OPT_nostdlib, options::OPT_nodefaultlibs,
                       options::OPT_nostdlibxx);
 }

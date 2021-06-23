@@ -348,7 +348,6 @@ static Arg *MakeInputArg(DerivedArgList &Args, const OptTable &Opts,
 DerivedArgList *Driver::TranslateInputArgs(const InputArgList &Args) const {
   const llvm::opt::OptTable &Opts = getOpts();
   DerivedArgList *DAL = new DerivedArgList(Args);
-
   bool HasNostdlib = Args.hasArg(options::OPT_nostdlib);
   bool HasNostdlibxx = Args.hasArg(options::OPT_nostdlibxx);
   bool HasNodefaultlib = Args.hasArg(options::OPT_nodefaultlibs);
@@ -1207,6 +1206,7 @@ Compilation *Driver::BuildCompilation(ArrayRef<const char *> ArgList) {
       });
   if (IsBlue)
     Mode = BlueMode;
+
   assert(!(IsBlue && IsGold) && "Blue and gold are not inter-operable.");
 
   // Construct the list of abstract actions to perform for this compilation. On

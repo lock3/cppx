@@ -72,4 +72,13 @@ void Scope::dumpScopeChain() const {
   llvm::outs() << "-----------------------\n";
 }
 
+void Scope::dumpLookups() const {
+  llvm::outs() << "Dumping current scope lookup!\n";
+  using IDMapTy = IdMapType<const clang::IdentifierInfo *, Declaration *>;
+  for(auto it = IdMap.begin(), end = IdMap.end(); it != end; it = IdMap.upper_bound(it->first))
+  {
+    llvm::outs() << "  " << it->first->getName() << "\n";
+  }
+}
+
 } // end namespace blue

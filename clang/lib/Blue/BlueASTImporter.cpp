@@ -2326,6 +2326,7 @@ ExpectedDecl BlueASTNodeImporter::VisitNamespaceDecl(NamespaceDecl *D) {
   // Create the "to" namespace, if needed.
   NamespaceDecl *ToNamespace = MergeWithNamespace;
   if (!ToNamespace) {
+    llvm::outs() << "Creating new namespace = " << D->getName() <<"\n";
     CppxNamespaceDecl *TempNS = nullptr;
     blue::Scope *SC = nullptr;
     if (GetImportedOrCreateDecl(

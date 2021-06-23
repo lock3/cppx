@@ -46,7 +46,7 @@ inline void SimpleBlueParseTest(llvm::StringRef Code) {
   // MatchFinder Finder;
   std::unique_ptr<FrontendActionFactory> Factory(
       newFrontendActionFactory<BlueSyntaxAction>());
-  if (!runToolOnCodeWithArgs(Factory->create(), Code, {"-x", "blue", "-c"},
+  if (!runToolOnCodeWithArgs(Factory->create(), Code, {"-x", "blue", "-c", "-stdlib=libc++"},
                             "temp.blue")) {
     ASSERT_FALSE(true) << "Parsing error in \"" << Code.str() << "\"";
   }
@@ -59,7 +59,7 @@ inline void BlueFailureTest(llvm::StringRef Code) {
   std::unique_ptr<FrontendActionFactory> Factory(
       newFrontendActionFactory<BlueSyntaxAction>());
   if (runToolOnCodeWithArgs(Factory->create(), Code,
-                            {"-x", "blue", "-c", "-Wall", "-Werror"},
+                            {"-x", "blue", "-c", "-Wall", "-Werror", "-stdlib=libc++"},
                             "temp.blue")) {
     ASSERT_FALSE(true) << "Unexpected success \"" << Code.str() << "\"";
   }

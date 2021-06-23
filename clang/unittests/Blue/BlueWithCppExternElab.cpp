@@ -59,6 +59,19 @@ foo:()->void = {
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
+
+TEST(BlueExternCpp, SimpleHelloWorld) {
+  StringRef Code = R"BLUE(
+#include <iostream>
+
+foo:()->void = {
+  std.cout << "Also hello world.\n";
+}
+)BLUE";
+  auto ToMatch = cxxOperatorCallExpr(hasOperatorName("<<"));
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
 TEST(BlueExternCpp, MultipleExternCppBlocks) {
   StringRef Code = R"BLUE(
 extern "C++" {

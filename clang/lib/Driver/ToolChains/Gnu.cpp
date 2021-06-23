@@ -166,7 +166,7 @@ void tools::gcc::Common::ConstructJob(Compilation &C, const JobAction &JA,
   const char *GCCName;
   if (!customGCCName.empty())
     GCCName = customGCCName.c_str();
-  else if (D.CCCIsCXX()) {
+  else if (D.CCCIsCXX() || D.IsBlueMode()) {
     GCCName = "g++";
   } else
     GCCName = "gcc";
@@ -570,7 +570,7 @@ void tools::gnutools::Linker::ConstructJob(Compilation &C, const JobAction &JA,
   // The profile runtime also needs access to system libraries.
   getToolChain().addProfileRTLibs(Args, CmdArgs);
 
-  if (D.CCCIsCXX() &&
+  if ((D.CCCIsCXX() || D.IsBlueMode()) &&
       !Args.hasArg(options::OPT_nostdlib, options::OPT_nodefaultlibs)) {
     if (ToolChain.ShouldLinkCXXStdlib(Args)) {
       bool OnlyLibstdcxxStatic = Args.hasArg(options::OPT_static_libstdcxx) &&

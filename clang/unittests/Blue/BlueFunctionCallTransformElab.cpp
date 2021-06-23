@@ -102,3 +102,25 @@ bar:()->void = {
 )BLUE";
   BlueFailureTest(Code);
 }
+
+TEST(BlueMemberTransform, InDependentContext) {
+  StringRef Code = R"BLUE(
+A : type = {
+}
+
+foo:(x:A) -> void = {
+}
+
+
+bar:[T:type] -> () -> void = {
+  x : T;
+  x.foo();
+}
+fig:()->void = {
+  bar[A]();
+}
+
+)BLUE";
+  auto ToMatch = callExpr(callee(functionDecl(hasName("foo"))));
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}

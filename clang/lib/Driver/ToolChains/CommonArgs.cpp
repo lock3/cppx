@@ -1377,7 +1377,7 @@ static LibGccType getLibGccType(const ToolChain &TC, const Driver &D,
   // The Android NDK only provides libunwind.a, not libunwind.so.
   if (TC.getTriple().isAndroid())
     return LibGccType::StaticLibGcc;
-  if (D.CCCIsCXX())
+  if (D.CCCIsCXX() || D.IsBlueMode())
     return LibGccType::SharedLibGcc;
   return LibGccType::UnspecifiedLibGcc;
 }

@@ -296,7 +296,7 @@ void netbsd::Linker::ConstructJob(Compilation &C, const JobAction &JA,
                         !Args.hasArg(options::OPT_static);
     addOpenMPRuntime(CmdArgs, getToolChain(), Args, StaticOpenMP);
 
-    if (D.CCCIsCXX()) {
+    if (D.CCCIsCXX() || D.IsBlueMode()) {
       if (ToolChain.ShouldLinkCXXStdlib(Args))
         ToolChain.AddCXXStdlibLibArgs(Args, CmdArgs);
       CmdArgs.push_back("-lm");
