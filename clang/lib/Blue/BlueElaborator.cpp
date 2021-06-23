@@ -17,6 +17,7 @@
 #include "clang/Blue/BlueExprMarker.h"
 #include "clang/Blue/BlueSyntax.h"
 #include "clang/Basic/Diagnostic.h"
+#include "clang/AST/DeclCXX.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExprCppx.h"
 #include "clang/AST/ExprCXX.h"
@@ -3398,8 +3399,8 @@ clang::Expr *Elaborator::doElaborateExpression(const Syntax *S) {
     E = elaborateTripleExpression(cast<TripleSyntax>(S));
     break;
   case Syntax::Enclosure:
-    S->dump();
-    llvm_unreachable("Enclosure syntax is unavailable.");
+    E = elaborateParenExpression(cast<EnclosureSyntax>(S));
+    break;
   case Syntax::List:
     E = elaborateListExpression(cast<ListSyntax>(S));
     break;
@@ -4080,7 +4081,7 @@ void Elaborator::elaborateVarDef(Declaration *D) {
       }
     }
   }
-  if (CE) {
+  if (CE && !CE->getConstructor()->getNumCtorInitializers()) {
     ClangDeclContextRAII DC(SemaRef, CE->getConstructor());
     getCxxSema().ActOnDefaultCtorInitializers(CE->getConstructor());
   }
@@ -4729,7 +4730,7 @@ clang::Expr *Elaborator::elaborateInfixExpression(const InfixSyntax *S) {
 
   if (S->getOperation().hasKind(tok::Dot))
     return elaborateMemberAccess(LHS, S);
-  
+
   // TODO: We need to figure out if this is necessary or not. I say that because
   // it doesn't do what's expected of it, in that it doesn't check for
   // non-member versions of the << operator from inside of C++
@@ -4785,6 +4786,49 @@ clang::Expr *Elaborator::elaborateInfixExpression(const InfixSyntax *S) {
   auto RHS = elaborateExpression(S->getOperand(1));
   if (!RHS)
     return nullptr;
+
+  // this might be a call to the base constructor, as in
+  // operator=: (out this) = { base = (arg); }
+  if (auto *SSE = dyn_cast<clang::CppxCXXScopeSpecExpr>(LHS)) {
+    clang::CXXConstructorDecl *CurCtor =
+      dyn_cast<clang::CXXConstructorDecl>(SemaRef.getCurClangDeclContext());
+    if (!CurCtor) {
+      // FIXME: these can probably appear anywhere in a class.
+      Error(S->getLocation(),
+            "Base constructor expression outside of constructor");
+      return nullptr;
+    }
+
+    if (SSE->getLastExpr()->getType()->isTypeOfTypes()) {
+      auto *BaseLit = cast<clang::CppxTypeLiteral>(SSE->getLastExpr());
+      clang::CXXRecordDecl *BaseRD = BaseLit->getValue()->getType()
+        ->getAsCXXRecordDecl();
+      clang::CXXRecordDecl *DerRD = CurCtor->getParent();
+      if (!DerRD->isDerivedFrom(BaseRD)) {
+        unsigned DiagID =
+          getCxxSema().Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                             "class %0 does not derive from %1");
+        getCxxSema().Diags.Report(S->getLocation(), DiagID)
+          << DerRD->getIdentifier() << BaseRD->getIdentifier();
+        return nullptr;
+      }
+
+      clang::TypeSourceInfo *BaseTInfo =
+        gold::BuildAnyTypeLoc(CxxAST,
+                              clang::QualType(BaseRD->getTypeForDecl(), 0),
+                              S->getLocation());
+      // FIXME: add an ellipsis location, if there is one.
+      llvm::SmallVector<clang::CXXCtorInitializer *, 1> BaseInits;
+      clang::MemInitResult BaseInit =
+        getCxxSema().BuildBaseInitializer(BaseTInfo->getType(), BaseTInfo,
+                                          RHS, DerRD, clang::SourceLocation());
+      BaseInits.push_back(BaseInit.get());
+      getCxxSema().ActOnMemInitializers(CurCtor, S->getLocation(), BaseInits,
+                                        /*AnyErrors=*/false);
+      return nullptr;
+    }
+  }
+
   auto OpIter = SemaRef.BinOpMap.find(S->getOperation().getSpelling());
   if (OpIter == SemaRef.BinOpMap.end()) {
     Error(S->getLocation(), "invalid binary operator");
@@ -4819,6 +4863,22 @@ clang::Expr *Elaborator::elaboratePairExpression(const PairSyntax *S) {
 
 clang::Expr *Elaborator::elaborateTripleExpression(const TripleSyntax *S) {
   llvm_unreachable("elaborateTripleExpression not implemented yet");
+}
+
+clang::Expr *Elaborator::elaborateParenExpression(const EnclosureSyntax *S) {
+  assert(S->isParenEnclosure() && "invalid paren expression");
+
+  llvm::SmallVector<clang::Expr *, 8> Args;
+  for (const Syntax *SS : S->getTerm()->children()) {
+    clang::Expr *E = elaborateExpression(SS);
+    if (!E)
+      continue;
+    Args.push_back(E);
+  }
+
+  clang::SourceLocation Open = S->getOpen().getLocation();
+  clang::SourceLocation Close = S->getClose().getLocation();
+  return getCxxSema().ActOnParenListExpr(Open, Close, Args).get();
 }
 
 clang::Expr *Elaborator::elaborateListExpression(const ListSyntax *S) {

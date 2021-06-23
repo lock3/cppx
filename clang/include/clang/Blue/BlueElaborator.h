@@ -187,6 +187,7 @@ public:
   clang::Expr *elaborateIndexExpression(const IndexSyntax *S);
   clang::Expr *elaboratePairExpression(const PairSyntax *S);
   clang::Expr *elaborateTripleExpression(const TripleSyntax *S);
+  clang::Expr *elaborateParenExpression(const EnclosureSyntax *S);
   clang::Expr *elaborateListExpression(const ListSyntax *S);
   clang::Expr *elaborateSequenceExpression(const SequenceSyntax *S);
   clang::Expr *elaborateQualifiedMemberAccess(const QualifiedMemberAccessSyntax *S);
