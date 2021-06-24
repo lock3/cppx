@@ -421,7 +421,7 @@ bool Elaborator::elaborateAllCppCode(const std::string &CodeBuffer) {
     // Ensure that tests specify the C++ standard version that they need.
     // "-Werror=c++14-extensions", "-Werror=c++17-extensions"
     "-std=c++17",
-    "-stdlib=libc++"
+    "-stdlib=libstdc++"
   };
 
   std::string WD = SemaRef.getCompilerInstance()->getFileSystemOpts().WorkingDir;
@@ -572,14 +572,6 @@ void Elaborator::elaborateSingleCppImport(clang::Decl *ProcessedDecl) {
   if (auto ND = dyn_cast<clang::NamedDecl>(ProcessedDecl)) {
     if (!ND->getIdentifier())
       return;
-    if (ND->getIdentifier()->getName() == "cout") {
-      llvm::outs() << "Found cout\n";
-      ND->dump();
-      // auto TempDC = ND->getDeclContext();
-      // auto ParentDecl = dyn_cast<clang::Decl>(TempDC);
-      // assert(ParentDecl);
-      // ParentDecl->dump();
-    }
     // llvm::outs() << "Dumping decl name = "
     //              << ND->getIdentifier()->getName() << "\n";
     Token T(tok::Identifier, ND->getLocation(),

@@ -166,7 +166,7 @@ void tools::gcc::Common::ConstructJob(Compilation &C, const JobAction &JA,
   const char *GCCName;
   if (!customGCCName.empty())
     GCCName = customGCCName.c_str();
-  else if (D.CCCIsCXX() || D.IsBlueMode()) {
+  else if (D.CCCIsCXX()) {
     GCCName = "g++";
   } else
     GCCName = "gcc";

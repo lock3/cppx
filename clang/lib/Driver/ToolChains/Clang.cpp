@@ -4639,7 +4639,7 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
       D.Diag(diag::err_cmse_pi_are_incompatible) << !IsRWPI;
   }
 
-  if (IsROPI && types::isCXX(Input.getType()) &&
+  if (IsROPI && (types::isCXX(Input.getType()) || types::isBlue(Input.getType())) &&
       !Args.hasArg(options::OPT_fallow_unsupported))
     D.Diag(diag::err_drv_ropi_incompatible_with_cxx);
 
@@ -5648,7 +5648,8 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   }
 
   if (Args.getLastArg(options::OPT_fapple_kext) ||
-      (Args.hasArg(options::OPT_mkernel) && types::isCXX(InputType)))
+      (Args.hasArg(options::OPT_mkernel) &&
+      (types::isCXX(InputType) || types::isBlue(InputType))))
     CmdArgs.push_back("-fapple-kext");
 
   Args.AddLastArg(CmdArgs, options::OPT_flax_vector_conversions_EQ);
