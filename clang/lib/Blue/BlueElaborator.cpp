@@ -4855,6 +4855,58 @@ clang::Expr *Elaborator::elaborateInfixExpression(const InfixSyntax *S) {
     return nullptr;
   }
 
+  // We might be reassigning a constructor, such as:
+  // p := (0, 0);
+  // p = (1, 1);     /// reassignment
+  if (clang::ParenListExpr *PLE = dyn_cast<clang::ParenListExpr>(RHS)) {
+    Token Op = S->getOperation();
+    if (Op.hasKind(tok::Equal)) {
+      if (LHS->getType().isNull()) {
+        Error(LHS->getExprLoc(), "expected object");
+        return nullptr;
+      }
+
+      // clang::RecordType *ObjTy = LHS->getType()->getAsStructureType();
+      // if (!ObjTy) {
+      //   Error(LHS->getExprLoc(), "expected object of user-defined type");
+      //   return nullptr;
+      // }
+
+      clang::TypeSourceInfo *TInfo = gold::BuildAnyTypeLoc(
+        CxxAST, LHS->getType(), LHS->getExprLoc());
+      clang::ParsedType PTy;
+      PTy = getCxxSema().CreateParsedType(TInfo->getType(), TInfo);
+      clang::SourceLocation Loc = RHS->getExprLoc();
+      llvm::SmallVector<clang::Expr *, 4> Args;
+      for (clang::Expr *E : PLE->exprs())
+        Args.push_back(E);
+
+      // clang::CXXConstructorDecl *Constructor =
+      //   CxxSema.LookupCopyingConstructor(LHS->getType()->getAsCXXRecordDecl(), 0);
+      // clang::ExprResult ConstructorExpr =
+      //   CxxSema.BuildCXXConstructExpr(Loc, LHS->getType(),
+      //                                 LHS->getType()->getAsCXXRecordDecl(),
+      //                                 Constructor, Args, false,
+      //                                 /*listinit=true?*/false, false, false,
+      //                                 clang::CXXConstructExpr::CK_Complete,
+      //                                 PLE->getSourceRange());
+
+      clang::ExprResult ConstructorExpr =
+        getCxxSema().ActOnCXXTypeConstructExpr(PTy, Loc, Args, Loc,
+                                               /*ListInitialization*/false);
+      if (ConstructorExpr.isInvalid()) {
+        Error(Op.getLocation(), "invalid constructor");
+        return nullptr;
+      }
+
+      RHS = ConstructorExpr.get();
+    } else {
+      Error(Op.getLocation(), "parentheses-initializer can only be assigned");
+      return nullptr;
+    }
+  }
+
+  // At this point, just build the appropriate, normal binary operator.
   auto OpIter = SemaRef.BinOpMap.find(S->getOperation().getSpelling());
   if (OpIter == SemaRef.BinOpMap.end()) {
     Error(S->getLocation(), "invalid binary operator");
@@ -5714,6 +5766,9 @@ clang::Stmt *Elaborator::elaborateReturnStmt(const PrefixSyntax *S) {
   if (S->getOperand()) {
     // if this elaborates to null, we'll just let clang::Sema handle the error
     Val = elaborateExpression(S->getOperand());
+    if (!Val)
+      return nullptr;
+
     if (auto PartialFunc = dyn_cast<clang::CppxPartialEvalExpr>(Val)) {
       SemaRef.getCxxSema().Diags.Report(Val->getExprLoc(), clang::diag::err_no_member)
               << PartialFunc->getName().getName().getAsString()

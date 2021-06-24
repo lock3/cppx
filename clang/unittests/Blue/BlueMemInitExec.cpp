@@ -72,7 +72,7 @@ point: type = {
     y: int = 0;
     operator=: (out this)                 = { x=0;      y=0;      }
     operator=: (out this, xx:int, yy:int) = { x=xx;     y=yy;     }
-    operator=: (out this, that: point)    = { x=that.x; y=that.y; }
+    operator=: (out this, in that: point) = { x=that.x; y=that.y; }
     sum: (this) = x+y;
 }
 
