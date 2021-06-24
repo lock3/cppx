@@ -363,7 +363,6 @@ clang::Decl *Elaborator::elaborateFile(const Syntax *S) {
     }
   }
 
-
   for (const Syntax *SS : Declarations->children())
     identifyDeclaration(SS);
 
@@ -435,7 +434,6 @@ bool Elaborator::elaborateAllCppCode(const std::string &CodeBuffer) {
       Args.emplace_back("-cxx-isystem" + IncludeDir.Prefix);
     else
       Args.emplace_back("-I" + IncludeDir.Prefix);
-
 
   for(auto En : HeaderOptions.UserEntries)
     Args.emplace_back("-I" + En.Path);
@@ -524,11 +522,43 @@ void Elaborator::elaborateCppNsDecls(clang::CppxNamespaceDecl *NSD) {
 }
 
 void Elaborator::elaborateCppDC(clang::DeclContext *DC) {
-  for (clang::Decl *D : DC->decls () )
+  for (clang::Decl *D : DC->decls())
     elaborateSingleCppImport(D);
 }
 
+template<typename Range>
+static void generateSpecializations(Elaborator& Elab, Range Specs) {
+  clang::Sema &SemaRef = Elab.getCxxSema();
+  clang::ASTConsumer *Consumer = &SemaRef.getASTConsumer();
+  for (clang::Decl *S : Specs) {
+    auto DG = SemaRef.ConvertDeclToDeclGroup(S);
+    Consumer->HandleTopLevelDecl(DG.get());
+  }
+}
+
+// Call Handle:TopLevelDecl, which triggers code generation.
+static void generateDecl(Elaborator& Elab, clang::Decl *D) {
+  clang::Sema &SemaRef = Elab.getCxxSema();
+  clang::ASTConsumer *Consumer = &SemaRef.getASTConsumer();
+
+  auto DG = SemaRef.ConvertDeclToDeclGroup(D);
+  Consumer->HandleTopLevelDecl(DG.get());
+
+  // Specializations are not namespace-level nodes, but we need to emit
+  // them as if they were.
+  if (auto CTD = dyn_cast<clang::ClassTemplateDecl>(D)) {
+    return generateSpecializations(Elab, CTD->specializations());
+  } else if (auto FTD = dyn_cast<clang::FunctionTemplateDecl>(D)) {
+    return generateSpecializations(Elab, FTD->specializations());
+  } else if (auto VTD = dyn_cast<clang::VarTemplateDecl>(D)) {
+    return generateSpecializations(Elab, VTD->specializations());
+  }
+}
+
 void Elaborator::elaborateSingleCppImport(clang::Decl *ProcessedDecl) {
+  // Give the declaration to the code generator before anything else.
+  generateDecl(*this, ProcessedDecl);
+
   if (auto CppNS = dyn_cast<clang::CppxNamespaceDecl>(ProcessedDecl)) {
     elaborateCppNsDecls(CppNS);
     return;
@@ -540,6 +570,7 @@ void Elaborator::elaborateSingleCppImport(clang::Decl *ProcessedDecl) {
     return;
   }
 
+  // Get the templated declaration.
   if (auto CTD = dyn_cast<clang::ClassTemplateDecl>(ProcessedDecl)) {
     ProcessedDecl = CTD->getTemplatedDecl();
   } else if (auto FTD = dyn_cast<clang::FunctionTemplateDecl>(ProcessedDecl)) {
