@@ -1311,6 +1311,46 @@ void Elaborator::elaborateParameterList(const ListSyntax *S) {
   // Then this should be equivalent to a : int, b: int.
 }
 
+static clang::TypeSourceInfo *getParamSpecType(Sema &SemaRef,
+                                               const Token &Spec,
+                                               clang::TypeSourceInfo *T) {
+  clang::ASTContext &CxxAST = SemaRef.getCxxAST();
+  switch (Spec.getKind()) {
+  case tok::OutKeyword:
+    T = SemaRef.buildTypeExpr(
+      CxxAST.getLValueReferenceType(T->getType()),
+      T->getTypeLoc().getBeginLoc())
+      ->getValue();
+    break;
+  case tok::InoutKeyword:
+    T = SemaRef.buildTypeExpr(
+      CxxAST.getLValueReferenceType(T->getType()),
+      T->getTypeLoc().getBeginLoc())
+      ->getValue();
+    break;
+  case tok::MoveKeyword:
+    T = SemaRef.buildTypeExpr(
+      CxxAST.getRValueReferenceType(T->getType()),
+      T->getTypeLoc().getBeginLoc())
+      ->getValue();
+    break;
+  case tok::ForwardKeyword:
+    llvm_unreachable("Not sure about 'forward' .");
+    break;
+  case tok::InKeyword:
+    // This is const ref.
+    T = SemaRef.buildTypeExpr(
+      CxxAST.getLValueReferenceType(CxxAST.getConstType(T->getType())),
+      T->getTypeLoc().getBeginLoc())
+      ->getValue();
+    break;
+  default:
+    llvm_unreachable("Invalid/uknown parameter specifier");
+  }
+
+  return T;
+}
+
 clang::Decl *Elaborator::elaborateParameter(const Syntax *S, bool CtrlParam) {
   BALANCE_DBG();
   if (!isa<DeclarationSyntax>(S) && !isa<IdentifierSyntax>(S)) {
@@ -1388,6 +1428,11 @@ clang::Decl *Elaborator::elaborateParameter(const Syntax *S, bool CtrlParam) {
       clang::CppxTypeLiteral *TyLit =
         SemaRef.buildTypeExpr(ClassTy, Id->getLocation());
       clang::TypeSourceInfo *T = cast<clang::CppxTypeLiteral>(TyLit)->getValue();
+      Token Spec = Def->getParamPassingSpecifier();
+      if (!Spec)
+        Spec = Token(tok::InKeyword, Id->getLocation(), gold::getSymbol("that"));
+
+      T = getParamSpecType(SemaRef, Spec, T);
       clang::ParmVarDecl *PVD =
         clang::ParmVarDecl::Create(CxxAST, Owner, Loc, Loc,
                                    Name, T->getType(), T,
@@ -1420,50 +1465,8 @@ clang::Decl *Elaborator::elaborateParameter(const Syntax *S, bool CtrlParam) {
   if (!T)
     return nullptr;
   Token Spec = Def->getParamPassingSpecifier();
-  if (Spec) {
-    switch (Spec.getKind()) {
-    case tok::OutKeyword:
-      T = SemaRef.buildTypeExpr(
-        getCxxContext().getLValueReferenceType(
-          T->getType()
-        ),
-        T->getTypeLoc().getBeginLoc()
-      )->getValue();
-      break;
-    case tok::InoutKeyword:
-      T = SemaRef.buildTypeExpr(
-        getCxxContext().getLValueReferenceType(
-          T->getType()
-        ),
-        T->getTypeLoc().getBeginLoc()
-      )->getValue();
-      break;
-    case tok::MoveKeyword:
-      T = SemaRef.buildTypeExpr(
-        getCxxContext().getRValueReferenceType(
-          T->getType()
-        ),
-        T->getTypeLoc().getBeginLoc()
-      )->getValue();
-      break;
-    case tok::ForwardKeyword:
-      llvm_unreachable("Not sure about 'forward' .");
-      break;
-    case tok::InKeyword:
-      // This is const ref.
-      T = SemaRef.buildTypeExpr(
-        getCxxContext().getLValueReferenceType(
-          getCxxContext().getConstType(
-            T->getType()
-          )
-        ),
-        T->getTypeLoc().getBeginLoc()
-      )->getValue();
-      break;
-    default:
-      llvm_unreachable("Invalid/uknown parameter specifier");
-    }
-  }
+  if (Spec)
+    T = getParamSpecType(SemaRef, Spec, T);
 
   // Create the parameters in the translation unit decl for now, we'll
   // move them into the function later.
@@ -2793,6 +2796,7 @@ clang::Decl *Elaborator::makeClass(Declaration *D) {
   clang::Decl *TempDeclPtr = Tag;
   SemaRef.getCxxSema().ActOnTagFinishDefinition(SemaRef.getCurClangScope(),
                                                 TempDeclPtr, SourceRange());
+
   return Tag;
 }
 
