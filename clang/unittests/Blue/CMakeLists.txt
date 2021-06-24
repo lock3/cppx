@@ -45,6 +45,7 @@ add_clang_unittest(BlueTests
   BlueClassElab.cpp
   BlueClassTemplateElab.cpp
   BlueComparisonOp.cpp
+  BlueCompileRun.cpp
   BlueConstructorElab.cpp
   BlueConstTypeElab.cpp
   BlueDefaultAndDeleteFunctionElab.cpp
@@ -61,6 +62,7 @@ add_clang_unittest(BlueTests
   BlueLiteralElab.cpp
   BlueLogicalOpElab.cpp
   BlueMemberAccessElab.cpp
+  BlueMemInitExec.cpp
   BlueNamespaceAliasElab.cpp
   BlueNamespaceElab.cpp
   BlueOperatorOverloadingElab.cpp
