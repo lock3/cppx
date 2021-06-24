@@ -250,6 +250,7 @@ public:
   clang::Stmt *elaborateListSyntaxStmt(const ListSyntax *S);
   clang::Stmt *elaborateSequenceStmt(const SequenceSyntax *S);
   clang::Stmt *elaborateStatement(const Syntax *S);
+  clang::Stmt *doElaborateStatement(const Syntax *S);
 
   clang::Stmt *elaborateDeclStmt(const DeclarationSyntax *S);
   clang::Stmt *elaborateReturnStmt(const PrefixSyntax *S);

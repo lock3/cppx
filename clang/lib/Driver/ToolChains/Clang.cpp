@@ -432,7 +432,7 @@ static void addExceptionArgs(const ArgList &Args, types::ID InputType,
     EH |= shouldUseExceptionTablesForObjCExceptions(objcRuntime, Triple);
   }
 
-  if (types::isCXX(InputType) || types::isGold(InputType)) {
+  if (types::isCXX(InputType) || types::isGold(InputType) || types::isBlue(InputType)) {
     // Disable C++ EH by default on XCore and PS4.
     bool CXXExceptionsEnabled =
         Triple.getArch() != llvm::Triple::xcore && !Triple.isPS4CPU();
@@ -1377,7 +1377,7 @@ void Clang::AddPreprocessingOptions(Compilation &C, const JobAction &JA,
   // of an offloading programming model.
 
   // Add C++ include arguments, if needed.
-  if (types::isCXX(Inputs[0].getType())) {
+  if (types::isCXX(Inputs[0].getType()) || types::isBlue(Inputs[0].getType())) {
     bool HasStdlibxxIsystem = Args.hasArg(options::OPT_stdlibxx_isystem);
     forAllAssociatedToolChains(
         C, JA, getToolChain(),
@@ -3003,7 +3003,7 @@ static void RenderAnalyzerOptions(const ArgList &Args, ArgStringList &CmdArgs,
 
     CmdArgs.push_back("-analyzer-checker=deadcode");
 
-    if (types::isCXX(Input.getType()))
+    if (types::isCXX(Input.getType()) || types::isBlue(Input.getType()))
       CmdArgs.push_back("-analyzer-checker=cplusplus");
 
     if (!Triple.isPS4CPU()) {
@@ -3368,7 +3368,7 @@ static void RenderModulesOptions(Compilation &C, const Driver &D,
   if (Args.hasFlag(options::OPT_fmodules, options::OPT_fno_modules, false)) {
     bool AllowedInCXX = Args.hasFlag(options::OPT_fcxx_modules,
                                      options::OPT_fno_cxx_modules, true);
-    if (AllowedInCXX || !types::isCXX(Input.getType())) {
+    if (AllowedInCXX || (!types::isCXX(Input.getType()) && !types::isBlue(Input.getType()))) {
       CmdArgs.push_back("-fmodules");
       HaveClangModules = true;
     }
@@ -4191,7 +4191,7 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
     IsWindowsMSVC |= AuxTriple && AuxTriple->isWindowsMSVCEnvironment();
 
   // C++ is not supported for IAMCU.
-  if (IsIAMCU && types::isCXX(Input.getType()))
+  if (IsIAMCU && (types::isCXX(Input.getType()) || types::isBlue(Input.getType())))
     D.Diag(diag::err_drv_clang_unsupported) << "C++ for IAMCU";
 
   // Invoke ourselves in -cc1 mode.
@@ -5069,7 +5069,7 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   // ignore.
   if (!Args.hasArg(options::OPT_fallow_unsupported)) {
     Arg *Unsupported;
-    if (types::isCXX(InputType) && RawTriple.isOSDarwin() &&
+    if ((types::isCXX(InputType) || types::isBlue(InputType)) && RawTriple.isOSDarwin() &&
         TC.getArch() == llvm::Triple::x86) {
       if ((Unsupported = Args.getLastArg(options::OPT_fapple_kext)) ||
           (Unsupported = Args.getLastArg(options::OPT_mkernel)))
@@ -5284,7 +5284,7 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
     // doesn't match. For the time being just ignore this for C++ inputs;
     // eventually we want to do all the standard defaulting here instead of
     // splitting it between the driver and clang -cc1.
-    if (!types::isCXX(InputType)) {
+    if (!types::isCXX(InputType) && !types::isBlue(InputType)) {
       if (!Args.hasArg(options::OPT__SLASH_std)) {
         Args.AddAllArgsTranslated(CmdArgs, options::OPT_std_default_EQ, "-std=",
                                   /*Joined=*/true);
@@ -5312,7 +5312,7 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   // Implementing this warning correctly in C is hard, so we follow GCC's
   // behavior for now. FIXME: Directly diagnose uses of a string literal as
   // a non-const char* in C, rather than using this crude hack.
-  if (!types::isCXX(InputType)) {
+  if (!types::isCXX(InputType) && !types::isBlue(InputType)) {
     // FIXME: This should behave just like a warning flag, and thus should also
     // respect -Weverything, -Wno-everything, -Werror=write-strings, and so on.
     Arg *WriteStrings =
@@ -5326,7 +5326,7 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   // GCC provides a macro definition '__DEPRECATED' when -Wdeprecated is active
   // during C++ compilation, which it is by default. GCC keeps this define even
   // in the presence of '-w', match this behavior bug-for-bug.
-  if (types::isCXX(InputType) &&
+  if ((types::isCXX(InputType) || types::isBlue(InputType)) &&
       Args.hasFlag(options::OPT_Wdeprecated, options::OPT_Wno_deprecated,
                    true)) {
     CmdArgs.push_back("-fdeprecated-macro");
@@ -5821,7 +5821,7 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
 
   if (Args.hasFlag(options::OPT_fcoroutines_ts, options::OPT_fno_coroutines_ts,
                    false) &&
-      types::isCXX(InputType)) {
+      (types::isCXX(InputType) || types::isBlue(InputType))) {
     CmdArgs.push_back("-fcoroutines-ts");
   }
 
@@ -5840,7 +5840,7 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
 
   ToolChain::RTTIMode RTTIMode = TC.getRTTIMode();
 
-  if (KernelOrKext || (types::isCXX(InputType) &&
+  if (KernelOrKext || ((types::isCXX(InputType) || types::isBlue(InputType)) &&
                        (RTTIMode == ToolChain::RM_Disabled)))
     CmdArgs.push_back("-fno-rtti");
 
@@ -6978,11 +6978,11 @@ void Clang::AddClangCLArgs(const ArgList &Args, types::ID InputType,
   const Driver &D = getToolChain().getDriver();
   EHFlags EH = parseClangCLEHFlags(D, Args);
   if (!isNVPTX && (EH.Synch || EH.Asynch)) {
-    if (types::isCXX(InputType))
+    if (types::isCXX(InputType) || types::isBlue(InputType))
       CmdArgs.push_back("-fcxx-exceptions");
     CmdArgs.push_back("-fexceptions");
   }
-  if (types::isCXX(InputType) && EH.Synch && EH.NoUnwindC)
+  if ((types::isCXX(InputType) || types::isBlue(InputType)) && EH.Synch && EH.NoUnwindC)
     CmdArgs.push_back("-fexternc-nounwind");
 
   // /EP should expand to -E -P.

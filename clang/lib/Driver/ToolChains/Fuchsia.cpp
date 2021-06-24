@@ -131,7 +131,7 @@ void fuchsia::Linker::ConstructJob(Compilation &C, const JobAction &JA,
     if (Args.hasArg(options::OPT_static))
       CmdArgs.push_back("-Bdynamic");
 
-    if (D.CCCIsCXX()) {
+    if (D.CCCIsCXX() || D.IsBlueMode()) {
       if (ToolChain.ShouldLinkCXXStdlib(Args)) {
         bool OnlyLibstdcxxStatic = Args.hasArg(options::OPT_static_libstdcxx) &&
                                    !Args.hasArg(options::OPT_static);
@@ -187,7 +187,7 @@ Fuchsia::Fuchsia(const Driver &D, const llvm::Triple &Triple,
 
   auto FilePaths = [&](const Multilib &M) -> std::vector<std::string> {
     std::vector<std::string> FP;
-    if (D.CCCIsCXX()) {
+    if (D.CCCIsCXX() || D.IsBlueMode()) {
       if (auto CXXStdlibPath = getCXXStdlibPath()) {
         SmallString<128> P(*CXXStdlibPath);
         llvm::sys::path::append(P, M.gccSuffix());

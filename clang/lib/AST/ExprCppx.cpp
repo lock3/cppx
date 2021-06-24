@@ -54,7 +54,7 @@ CppxPartialEvalExpr *CppxPartialEvalExpr::Create(ASTContext &Ctx,
 }
 
 CppxPartialEvalExpr *CppxPartialEvalExpr::Create(ASTContext &Ctx,
-                                             blue::CppxPartialNameAccessBase *E,
+                                             blue::CppxMemberAccessTransfrom *E,
                                                  SourceLocation Loc) {
   return new (Ctx) CppxPartialEvalExpr(Ctx.VoidTy, E, Loc);
 }

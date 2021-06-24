@@ -14395,12 +14395,7 @@ TreeTransform<Derived>::TransformCppxDependentMemberAccessExpr(
     = getDerived().TransformDeclarationNameInfo(E->getMemberNameInfo());
   if (!NameInfo.getName())
     return ExprError();
-  if (SemaRef.getLangOpts().Blue) {
-    if (auto PE = dyn_cast<clang::CppxPartialEvalExpr>(Base.get())) {
-      return PE->appendName(NameInfo.getLoc(),
-                            NameInfo.getName().getAsIdentifierInfo());
-    }
-  }
+
   return getDerived().RebuildCppxDependentMemberAccessExpr(Base.get(),
                                                            BaseType,
                                                            E->getOperatorLoc(),

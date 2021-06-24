@@ -130,7 +130,7 @@ void nacltools::Linker::ConstructJob(Compilation &C, const JobAction &JA,
 
   AddLinkerInputs(ToolChain, Inputs, Args, CmdArgs, JA);
 
-  if (D.CCCIsCXX() &&
+  if ((D.CCCIsCXX() || D.IsBlueMode()) &&
       !Args.hasArg(options::OPT_nostdlib, options::OPT_nodefaultlibs)) {
     if (ToolChain.ShouldLinkCXXStdlib(Args)) {
       bool OnlyLibstdcxxStatic =
@@ -152,7 +152,7 @@ void nacltools::Linker::ConstructJob(Compilation &C, const JobAction &JA,
       // NaCl's libc++ currently requires libpthread, so just always include it
       // in the group for C++.
       if (Args.hasArg(options::OPT_pthread) ||
-          Args.hasArg(options::OPT_pthreads) || D.CCCIsCXX()) {
+          Args.hasArg(options::OPT_pthreads) || D.CCCIsCXX() || D.IsBlueMode()) {
         // Gold, used by Mips, handles nested groups differently than ld, and
         // without '-lnacl' it prefers symbols from libpthread.a over libnacl.a,
         // which is not a desired behaviour here.

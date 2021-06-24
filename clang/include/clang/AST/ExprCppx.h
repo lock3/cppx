@@ -100,20 +100,22 @@ namespace gold {
 }
 
 namespace blue {
-
+  class Sema;
   class Syntax;
   using ExprList = llvm::SmallVectorImpl<clang::Expr *>;
 
-  enum class PartialExprKind : std::size_t;
-  class CppxPartialNameAccessBase {
+  enum class PartialExprKind : std::size_t {
+    ImplicitMemberTransform
+  };
+  class CppxMemberAccessTransfrom {
     PartialExprKind Kind;
     clang::Expr *IncompleteExprValue = nullptr;
     bool IsInTemplate = false;
   public:
-    CppxPartialNameAccessBase(PartialExprKind K)
+    CppxMemberAccessTransfrom(PartialExprKind K)
       :Kind(K)
     { }
-    virtual ~CppxPartialNameAccessBase() = default;
+    virtual ~CppxMemberAccessTransfrom() = default;
 
     clang::SourceLocation BeginLocation;
     clang::SourceLocation EndLocation;
@@ -136,27 +138,24 @@ namespace blue {
 
     PartialExprKind getKind() const { return Kind; }
 
-    virtual clang::Expr *setIsWithinClass(bool IsInClassScope) = 0;
-    virtual clang::Expr *allowUseOfImplicitThis(bool AllowImplicitThis) = 0;
-    virtual clang::Expr *setBaseExpr(clang::Expr *) = 0;
-
-
+    virtual clang::Expr *setLhsExpr(clang::Expr *E) = 0;
+    virtual clang::Expr *getLhsExpr() = 0;
 
     /// Return true if the given arguments can be handled applied to the
     /// partial expression, this could be template parameters or array access.
-    virtual clang::Expr *appendName(clang::SourceLocation L, clang::IdentifierInfo *Id) = 0;
-    virtual clang::Expr *appendElementExpr(clang::SourceLocation B,
-                                           clang::SourceLocation E,
-                              clang::TemplateArgumentListInfo &TemplateArgs,
-                llvm::SmallVectorImpl<clang::ParsedTemplateArgument> &ActualArgs,
+    virtual void setName(clang::DeclarationNameInfo DNI) = 0;
+    virtual const clang::DeclarationNameInfo &getName() = 0;
+
+    virtual clang::Expr *appendCall(clang::SourceLocation B,
+                                    clang::SourceLocation E,
+                                    const ExprList &Args) = 0;
+    virtual clang::Expr *appendElementExpr(clang::SourceLocation Beginning,
+                                           clang::SourceLocation EndingLoc,
+                                  clang::TemplateArgumentListInfo &TemplateArgs,
+               llvm::SmallVectorImpl<clang::ParsedTemplateArgument> &ActualArgs,
                 llvm::SmallVectorImpl<clang::Expr *> &OnlyExprArgs) = 0;
 
-
-    /// This is used to generate the complete expression.
-    virtual clang::Expr *completeExpr() = 0;
-
-    static bool classof(const CppxPartialNameAccessBase *) { return true; }
-  private:
+    static bool classof(const CppxMemberAccessTransfrom *) { return true; }
   };
 
 }
@@ -268,7 +267,7 @@ class CppxPartialEvalExpr : public Expr {
   // SourceLocation Loc;
   union Partial {
     gold::CppxPartialExprBase *GImpl;
-    blue::CppxPartialNameAccessBase *BImpl;
+    blue::CppxMemberAccessTransfrom *BImpl;
   } PImpl;
 
   enum class Tag {
@@ -292,7 +291,7 @@ public:
     PImpl.GImpl = E;
   }
 
-  CppxPartialEvalExpr(QualType ResultTy, blue::CppxPartialNameAccessBase* E,
+  CppxPartialEvalExpr(QualType ResultTy, blue::CppxMemberAccessTransfrom* E,
                       SourceLocation L)
     :Expr(CppxPartialEvalExprClass, ResultTy, VK_RValue, OK_Ordinary),
     PImpl(), PartialKind(Tag::BlueLang), Loc(L)
@@ -335,11 +334,11 @@ public:
     PImpl.GImpl = Base;
   }
 
-  blue::CppxPartialNameAccessBase *getBImpl() const {
+  blue::CppxMemberAccessTransfrom *getBImpl() const {
     assert(PartialKind == Tag::BlueLang && "invalid language set");
     return PImpl.BImpl;
   }
-  void setBImpl(blue::CppxPartialNameAccessBase *Base) {
+  void setBImpl(blue::CppxMemberAccessTransfrom *Base) {
     PartialKind = Tag::BlueLang;
     PImpl.BImpl = Base;
   }
@@ -388,9 +387,24 @@ public:
 
   /// Return true if the given arguments can be handled applied to the
   /// partial expression, this could be template parameters or array access.
-  clang::Expr *appendName(clang::SourceLocation L, IdentifierInfo *Id) {
+  void setName(clang::DeclarationNameInfo Id) {
     assert(PartialKind == Tag::BlueLang && "Incorrect language.");
-    return PImpl.BImpl->appendName(L, Id);
+    return PImpl.BImpl->setName(Id);
+  }
+
+  const clang::DeclarationNameInfo &getName() {
+    assert(PartialKind == Tag::BlueLang && "Incorrect language.");
+    return PImpl.BImpl->getName();
+  }
+
+  clang::Expr *setLhsExpr(clang::Expr *E) {
+    assert(PartialKind == Tag::BlueLang && "Incorrect language.");
+    return PImpl.BImpl->setLhsExpr(E);
+  }
+
+  clang::Expr *getLhsExpr() {
+    assert(PartialKind == Tag::BlueLang && "Incorrect language.");
+    return PImpl.BImpl->getLhsExpr();
   }
 
   clang::Expr *appendElementExpr(clang::SourceLocation Beginning,
@@ -402,30 +416,14 @@ public:
     return PImpl.BImpl->appendElementExpr(Beginning, EndingLoc, TemplateArgs,
                                           ActualArgs, OnlyExprArgs);
   }
-
-  /// This is used to generate the complete expression that is represented
-  /// by a derived version of this class.
-  clang::Expr *completeExpr() {
+  clang::Expr *appendCall(clang::SourceLocation B,
+                          clang::SourceLocation E,
+                          const blue::ExprList &Args) {
     assert(PartialKind == Tag::BlueLang && "Incorrect language.");
-    return PImpl.BImpl->completeExpr();
+    return PImpl.BImpl->appendCall(B, E, Args);
   }
 
-  /// This is true when we are both inside of a class and the initial expression
-  /// is not a CXXThisExpr.
-  clang::Expr *allowUseOfImplicitThis(bool AllowImplicitThis) {
-    assert(PartialKind == Tag::BlueLang && "Incorrect language.");
-    return PImpl.BImpl->allowUseOfImplicitThis(AllowImplicitThis);
-  }
 
-  clang::Expr *setIsWithinClass(bool IsInClassScope) {
-    assert(PartialKind == Tag::BlueLang && "Incorrect language.");
-    return PImpl.BImpl->setIsWithinClass(IsInClassScope);
-  }
-
-  clang::Expr *setBaseExpr(clang::Expr *E) {
-    assert(PartialKind == Tag::BlueLang && "Incorrect language.");
-    return PImpl.BImpl->setBaseExpr(E);
-  }
 
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == CppxPartialEvalExprClass;
@@ -436,7 +434,7 @@ public:
                                      SourceLocation Loc);
 
   static CppxPartialEvalExpr *Create(ASTContext &Ctx,
-                                     blue::CppxPartialNameAccessBase *E,
+                                     blue::CppxMemberAccessTransfrom *E,
                                      SourceLocation Loc);
 };
 

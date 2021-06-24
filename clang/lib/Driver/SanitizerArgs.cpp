@@ -881,7 +881,7 @@ SanitizerArgs::SanitizerArgs(const ToolChain &TC,
   LinkCXXRuntimes = Args.hasArg(options::OPT_fsanitize_link_cxx_runtime,
                                 options::OPT_fno_sanitize_link_cxx_runtime,
                                 LinkCXXRuntimes) ||
-                    D.CCCIsCXX();
+                    D.CCCIsCXX() || D.IsBlueMode();
 
   NeedsMemProfRt = Args.hasFlag(options::OPT_fmemory_profile,
                                 options::OPT_fmemory_profile_EQ,
@@ -996,7 +996,7 @@ void SanitizerArgs::addArgs(const ToolChain &TC, const llvm::opt::ArgList &Args,
     CmdArgs.push_back(
         Args.MakeArgString("--dependent-lib=" +
                            TC.getCompilerRTBasename(Args, "ubsan_standalone")));
-    if (types::isCXX(InputType))
+    if (types::isCXX(InputType) || types::isBlue(InputType))
       CmdArgs.push_back(Args.MakeArgString(
           "--dependent-lib=" +
           TC.getCompilerRTBasename(Args, "ubsan_standalone_cxx")));

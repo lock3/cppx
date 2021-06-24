@@ -53,6 +53,7 @@ add_clang_unittest(BlueTests
   BlueDependentMemberAccessElab.cpp
   BlueDestructorElab.cpp
   BlueForElab.cpp
+  BlueFunctionCallTransformElab.cpp
   BlueFunctionElab.cpp
   BlueFunctionTemplateElab.cpp
   BlueIfElab.cpp

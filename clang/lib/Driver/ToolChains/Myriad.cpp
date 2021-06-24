@@ -173,7 +173,7 @@ void tools::Myriad::Linker::ConstructJob(Compilation &C, const JobAction &JA,
   if (UseDefaultLibs) {
     if (NeedsSanitizerDeps)
       linkSanitizerRuntimeDeps(TC, CmdArgs);
-    if (C.getDriver().CCCIsCXX()) {
+    if (C.getDriver().CCCIsCXX() || C.getDriver().IsBlueMode()) {
       if (TC.GetCXXStdlibType(Args) == ToolChain::CST_Libcxx) {
         CmdArgs.push_back("-lc++");
         CmdArgs.push_back("-lc++abi");

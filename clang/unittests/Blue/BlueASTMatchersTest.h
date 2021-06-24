@@ -275,7 +275,7 @@ testing::AssertionResult matchesConditionally(
   // equivalent of runToolOnCodeWithArgs without instantiating a full Driver.
   // We should consider having a function, at least for tests, that invokes cc1.
   std::vector<std::string> Args;
-  if (!runToolOnCodeWithArgs(Factory->create(), Code, {"-x", "blue", "-c"},
+  if (!runToolOnCodeWithArgs(Factory->create(), Code, {"-x", "blue", "-c", "-stdlib=libc++"},
       Filename)) {
     return testing::AssertionFailure() << "Parsing error in \"" << Code << "\"";
   }
@@ -298,7 +298,7 @@ testing::AssertionResult matchesConditionally(
     std::unique_ptr<FrontendActionFactory> DumpingActionFactory(
         new DumpingFrontEndAction());
     runToolOnCodeWithArgs(DumpingActionFactory->create(), Code,
-        {"-x", "blue", "-c"}, Filename);
+        {"-x", "blue", "-c", "-stdlib=libc++"}, Filename);
     return testing::AssertionFailure()
       << "Could not find match in \"" << Code << "\"";
   } else if (Found && !ExpectMatch) {
@@ -419,7 +419,7 @@ matchAndVerifyResultConditionally(const std::string &Code, const T &AMatcher,
   // unknown-unknown triple is good for a large speedup, because it lets us
   // avoid constructing a full system triple.
   std::vector<std::string> Args = {"blue"};
-  if (!runToolOnCodeWithArgs(Factory->create(), Code, {"-x", "blue", "-c"}, "temp.blue")) {
+  if (!runToolOnCodeWithArgs(Factory->create(), Code, {"-x", "blue", "-c", "-stdlib=libc++"}, "temp.blue")) {
     return testing::AssertionFailure() << "Parsing error in \"" << Code << "\"";
   }
   if (!VerifiedResult && ExpectResult) {

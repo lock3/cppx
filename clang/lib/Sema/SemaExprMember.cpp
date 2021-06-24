@@ -21,6 +21,7 @@
 #include "clang/Sema/Scope.h"
 #include "clang/Sema/ScopeInfo.h"
 #include "clang/Sema/SemaInternal.h"
+#include "clang/Blue/BlueSema.h"
 
 using namespace clang;
 using namespace sema;
@@ -1001,6 +1002,10 @@ Sema::BuildMemberReferenceExpr(Expr *BaseExpr, QualType BaseExprType,
         << isa<CXXDestructorDecl>(FD);
 
   if (R.empty()) {
+    if (getLangOpts().Blue) {
+      return getBlueSema()->buildMemberFunctionTransform(BaseExpr,
+                                                         R.getLookupNameInfo());
+    }
     // Rederive where we looked up.
     DeclContext *DC = (SS.isSet()
                        ? computeDeclContext(SS, false)

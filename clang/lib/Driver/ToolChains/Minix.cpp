@@ -72,7 +72,7 @@ void tools::minix::Linker::ConstructJob(Compilation &C, const JobAction &JA,
   getToolChain().addProfileRTLibs(Args, CmdArgs);
 
   if (!Args.hasArg(options::OPT_nostdlib, options::OPT_nodefaultlibs)) {
-    if (D.CCCIsCXX()) {
+    if (D.CCCIsCXX() || D.IsBlueMode()) {
       if (getToolChain().ShouldLinkCXXStdlib(Args))
         getToolChain().AddCXXStdlibLibArgs(Args, CmdArgs);
       CmdArgs.push_back("-lm");
