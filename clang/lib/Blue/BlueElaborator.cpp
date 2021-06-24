@@ -2713,6 +2713,9 @@ clang::Decl *Elaborator::makeClass(Declaration *D) {
     Sema::ElaboratingClassDefRAII ClsElabState(SemaRef, D,
                                               !SemaRef.isElaboratingClass());
     CXXRecordDecl *ClsDecl = cast<CXXRecordDecl>(Tag);
+    ClsDecl->setImplicitCopyConstructorIsDeleted();
+    // ClsDecl->setImplicitMoveConstructorIsDeleted();
+    ClsDecl->setImplicitCopyAssignmentIsDeleted();
     llvm::SmallVector<blue::Declaration *, 64> DeclBodyList;
     //   Declaration(Declaration *Ctx, const Syntax *Def, Declarator *Decl,
     //           const Syntax *Init)
