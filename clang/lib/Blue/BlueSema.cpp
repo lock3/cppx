@@ -487,11 +487,8 @@ bool Sema::lookupQualifiedName(clang::LookupResult &R) {
   case NNSK_Global:
     LookupScope = CurNNSLookupDecl.Global.Scope;
     break;
-  case NNSK_Namespace:{
-      llvm::outs() << "Doing qualified namespace lookup!\n";
+  case NNSK_Namespace:
       LookupScope = CurNNSLookupDecl.NNS->BlueScope;
-      LookupScope->dumpLookups();
-    }
     break;
   case NNSK_NamespaceAlias: {
     if (auto *Ns = dyn_cast<clang::CppxNamespaceDecl>(
