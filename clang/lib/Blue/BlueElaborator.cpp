@@ -513,7 +513,7 @@ void Elaborator::elaborateCppNsDecls(clang::CppxNamespaceDecl *NSD) {
   TheNSDecl->ScopeForDecl = ParentScope;
   TheNSDecl->CurrentPhase = Phase::Initialization;
   TheNSDecl->setCxx(SemaRef, NSD);
-  TheDecl->IsFromCpp = true;
+  TheNSDecl->IsFromCpp = true;
   ParentScope->addDeclLookup(TheNSDecl);
   // Make sure to enter the new decl context.
   Sema::DeclContextRAII DCTracking(SemaRef, TheNSDecl);
