@@ -795,8 +795,7 @@ public:
   /// Determine whether this class needs an implicit copy
   /// constructor to be lazily declared.
   bool needsImplicitCopyConstructor() const {
-    return !(data().DeclaredSpecialMembers & SMF_CopyConstructor) &&
-      !getLangOpts().Blue;
+    return !(data().DeclaredSpecialMembers & SMF_CopyConstructor);
   }
 
   /// Determine whether we need to eagerly declare a defaulted copy
@@ -855,22 +854,18 @@ public:
   /// Set that we attempted to declare an implicit copy
   /// constructor, but overload resolution failed so we deleted it.
   void setImplicitCopyConstructorIsDeleted() {
-    if (!getLangOpts().Blue) {
     assert((data().DefaultedCopyConstructorIsDeleted ||
             needsOverloadResolutionForCopyConstructor()) &&
            "Copy constructor should not be deleted");
-    }
     data().DefaultedCopyConstructorIsDeleted = true;
   }
 
   /// Set that we attempted to declare an implicit move
   /// constructor, but overload resolution failed so we deleted it.
   void setImplicitMoveConstructorIsDeleted() {
-    if (!getLangOpts().Blue) {
-      assert((data().DefaultedMoveConstructorIsDeleted ||
-              needsOverloadResolutionForMoveConstructor()) &&
-             "move constructor should not be deleted");
-    }
+    assert((data().DefaultedMoveConstructorIsDeleted ||
+            needsOverloadResolutionForMoveConstructor()) &&
+           "move constructor should not be deleted");
     data().DefaultedMoveConstructorIsDeleted = true;
   }
 
@@ -890,8 +885,7 @@ public:
            !hasUserDeclaredCopyConstructor() &&
            !hasUserDeclaredCopyAssignment() &&
            !hasUserDeclaredMoveAssignment() &&
-           !hasUserDeclaredDestructor() &&
-           !getLangOpts().Blue;
+           !hasUserDeclaredDestructor();
   }
 
   /// Determine whether we need to eagerly declare a defaulted move
@@ -911,19 +905,16 @@ public:
   /// Set that we attempted to declare an implicit copy assignment
   /// operator, but overload resolution failed so we deleted it.
   void setImplicitCopyAssignmentIsDeleted() {
-    if (!getLangOpts().Blue) {
-      assert((data().DefaultedCopyAssignmentIsDeleted ||
-              needsOverloadResolutionForCopyAssignment()) &&
-             "copy assignment should not be deleted");
-    }
+    assert((data().DefaultedCopyAssignmentIsDeleted ||
+            needsOverloadResolutionForCopyAssignment()) &&
+           "copy assignment should not be deleted");
     data().DefaultedCopyAssignmentIsDeleted = true;
   }
 
   /// Determine whether this class needs an implicit copy
   /// assignment operator to be lazily declared.
   bool needsImplicitCopyAssignment() const {
-    return !(data().DeclaredSpecialMembers & SMF_CopyAssignment) &&
-      !getLangOpts().Blue;
+    return !(data().DeclaredSpecialMembers & SMF_CopyAssignment);
   }
 
   /// Determine whether we need to eagerly declare a defaulted copy
@@ -986,8 +977,7 @@ public:
            !hasUserDeclaredCopyAssignment() &&
            !hasUserDeclaredMoveConstructor() &&
            !hasUserDeclaredDestructor() &&
-           (!isLambda() || lambdaIsDefaultConstructibleAndAssignable())  &&
-           !getLangOpts().Blue;
+           (!isLambda() || lambdaIsDefaultConstructibleAndAssignable());
   }
 
   /// Determine whether we need to eagerly declare a move assignment
