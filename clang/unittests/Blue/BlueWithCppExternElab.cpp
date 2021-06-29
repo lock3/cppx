@@ -149,3 +149,16 @@ foo:()->void = {
   auto ToMatch = callExpr(callee(functionDecl(hasName("printf"))));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
+
+
+TEST(BlueExternCpp, VectorInclude) {
+  StringRef Code = R"BLUE(
+#include <vector>
+
+foo:()->void = {
+  x:std.vector[int];
+}
+)BLUE";
+  auto ToMatch = cxxOperatorCallExpr(hasOperatorName("<<"));
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}

@@ -559,6 +559,9 @@ void Elaborator::elaborateSingleCppImport(clang::Decl *ProcessedDecl) {
   // Give the declaration to the code generator before anything else.
   generateDecl(*this, ProcessedDecl);
 
+  if (isa<clang::ClassTemplateSpecializationDecl>(ProcessedDecl))
+    return;
+
   if (auto CppNS = dyn_cast<clang::CppxNamespaceDecl>(ProcessedDecl)) {
     elaborateCppNsDecls(CppNS);
     return;
@@ -4316,7 +4319,6 @@ clang::Expr *buildIdExpr(Sema &SemaRef, llvm::StringRef Id,
     if (BuiltinMapIter != SemaRef.BuiltinTypes.end())
       return SemaRef.buildTypeExpr(BuiltinMapIter->second, Loc);
     SemaRef.lookupUnqualifiedName(R, SemaRef.getCurrentScope());
-
   }
 
   R.resolveKind();
