@@ -1342,6 +1342,46 @@ void Elaborator::elaborateParameterList(const ListSyntax *S) {
   // Then this should be equivalent to a : int, b: int.
 }
 
+static clang::TypeSourceInfo *getParamSpecType(Sema &SemaRef,
+                                               const Token &Spec,
+                                               clang::TypeSourceInfo *T) {
+  clang::ASTContext &CxxAST = SemaRef.getCxxAST();
+  switch (Spec.getKind()) {
+  case tok::OutKeyword:
+    T = SemaRef.buildTypeExpr(
+      CxxAST.getLValueReferenceType(T->getType()),
+      T->getTypeLoc().getBeginLoc())
+      ->getValue();
+    break;
+  case tok::InoutKeyword:
+    T = SemaRef.buildTypeExpr(
+      CxxAST.getLValueReferenceType(T->getType()),
+      T->getTypeLoc().getBeginLoc())
+      ->getValue();
+    break;
+  case tok::MoveKeyword:
+    T = SemaRef.buildTypeExpr(
+      CxxAST.getRValueReferenceType(T->getType()),
+      T->getTypeLoc().getBeginLoc())
+      ->getValue();
+    break;
+  case tok::ForwardKeyword:
+    llvm_unreachable("Not sure about 'forward' .");
+    break;
+  case tok::InKeyword:
+    // This is const ref.
+    T = SemaRef.buildTypeExpr(
+      CxxAST.getLValueReferenceType(CxxAST.getConstType(T->getType())),
+      T->getTypeLoc().getBeginLoc())
+      ->getValue();
+    break;
+  default:
+    llvm_unreachable("Invalid/uknown parameter specifier");
+  }
+
+  return T;
+}
+
 clang::Decl *Elaborator::elaborateParameter(const Syntax *S, bool CtrlParam) {
   BALANCE_DBG();
   if (!isa<DeclarationSyntax>(S) && !isa<IdentifierSyntax>(S)) {
@@ -1419,6 +1459,11 @@ clang::Decl *Elaborator::elaborateParameter(const Syntax *S, bool CtrlParam) {
       clang::CppxTypeLiteral *TyLit =
         SemaRef.buildTypeExpr(ClassTy, Id->getLocation());
       clang::TypeSourceInfo *T = cast<clang::CppxTypeLiteral>(TyLit)->getValue();
+      Token Spec = Def->getParamPassingSpecifier();
+      if (!Spec)
+        Spec = Token(tok::InKeyword, Id->getLocation(), gold::getSymbol("that"));
+
+      T = getParamSpecType(SemaRef, Spec, T);
       clang::ParmVarDecl *PVD =
         clang::ParmVarDecl::Create(CxxAST, Owner, Loc, Loc,
                                    Name, T->getType(), T,
@@ -1451,50 +1496,8 @@ clang::Decl *Elaborator::elaborateParameter(const Syntax *S, bool CtrlParam) {
   if (!T)
     return nullptr;
   Token Spec = Def->getParamPassingSpecifier();
-  if (Spec) {
-    switch (Spec.getKind()) {
-    case tok::OutKeyword:
-      T = SemaRef.buildTypeExpr(
-        getCxxContext().getLValueReferenceType(
-          T->getType()
-        ),
-        T->getTypeLoc().getBeginLoc()
-      )->getValue();
-      break;
-    case tok::InoutKeyword:
-      T = SemaRef.buildTypeExpr(
-        getCxxContext().getLValueReferenceType(
-          T->getType()
-        ),
-        T->getTypeLoc().getBeginLoc()
-      )->getValue();
-      break;
-    case tok::MoveKeyword:
-      T = SemaRef.buildTypeExpr(
-        getCxxContext().getRValueReferenceType(
-          T->getType()
-        ),
-        T->getTypeLoc().getBeginLoc()
-      )->getValue();
-      break;
-    case tok::ForwardKeyword:
-      llvm_unreachable("Not sure about 'forward' .");
-      break;
-    case tok::InKeyword:
-      // This is const ref.
-      T = SemaRef.buildTypeExpr(
-        getCxxContext().getLValueReferenceType(
-          getCxxContext().getConstType(
-            T->getType()
-          )
-        ),
-        T->getTypeLoc().getBeginLoc()
-      )->getValue();
-      break;
-    default:
-      llvm_unreachable("Invalid/uknown parameter specifier");
-    }
-  }
+  if (Spec)
+    T = getParamSpecType(SemaRef, Spec, T);
 
   // Create the parameters in the translation unit decl for now, we'll
   // move them into the function later.
@@ -2741,6 +2744,9 @@ clang::Decl *Elaborator::makeClass(Declaration *D) {
     Sema::ElaboratingClassDefRAII ClsElabState(SemaRef, D,
                                               !SemaRef.isElaboratingClass());
     CXXRecordDecl *ClsDecl = cast<CXXRecordDecl>(Tag);
+    ClsDecl->setImplicitCopyConstructorIsDeleted();
+    // ClsDecl->setImplicitMoveConstructorIsDeleted();
+    ClsDecl->setImplicitCopyAssignmentIsDeleted();
     llvm::SmallVector<blue::Declaration *, 64> DeclBodyList;
     //   Declaration(Declaration *Ctx, const Syntax *Def, Declarator *Decl,
     //           const Syntax *Init)
@@ -2824,6 +2830,7 @@ clang::Decl *Elaborator::makeClass(Declaration *D) {
   clang::Decl *TempDeclPtr = Tag;
   SemaRef.getCxxSema().ActOnTagFinishDefinition(SemaRef.getCurClangScope(),
                                                 TempDeclPtr, SourceRange());
+
   return Tag;
 }
 
@@ -4878,6 +4885,58 @@ clang::Expr *Elaborator::elaborateInfixExpression(const InfixSyntax *S) {
     return nullptr;
   }
 
+  // We might be reassigning a constructor, such as:
+  // p := (0, 0);
+  // p = (1, 1);     /// reassignment
+  if (clang::ParenListExpr *PLE = dyn_cast<clang::ParenListExpr>(RHS)) {
+    Token Op = S->getOperation();
+    if (Op.hasKind(tok::Equal)) {
+      if (LHS->getType().isNull()) {
+        Error(LHS->getExprLoc(), "expected object");
+        return nullptr;
+      }
+
+      // clang::RecordType *ObjTy = LHS->getType()->getAsStructureType();
+      // if (!ObjTy) {
+      //   Error(LHS->getExprLoc(), "expected object of user-defined type");
+      //   return nullptr;
+      // }
+
+      clang::TypeSourceInfo *TInfo = gold::BuildAnyTypeLoc(
+        CxxAST, LHS->getType(), LHS->getExprLoc());
+      clang::ParsedType PTy;
+      PTy = getCxxSema().CreateParsedType(TInfo->getType(), TInfo);
+      clang::SourceLocation Loc = RHS->getExprLoc();
+      llvm::SmallVector<clang::Expr *, 4> Args;
+      for (clang::Expr *E : PLE->exprs())
+        Args.push_back(E);
+
+      // clang::CXXConstructorDecl *Constructor =
+      //   CxxSema.LookupCopyingConstructor(LHS->getType()->getAsCXXRecordDecl(), 0);
+      // clang::ExprResult ConstructorExpr =
+      //   CxxSema.BuildCXXConstructExpr(Loc, LHS->getType(),
+      //                                 LHS->getType()->getAsCXXRecordDecl(),
+      //                                 Constructor, Args, false,
+      //                                 /*listinit=true?*/false, false, false,
+      //                                 clang::CXXConstructExpr::CK_Complete,
+      //                                 PLE->getSourceRange());
+
+      clang::ExprResult ConstructorExpr =
+        getCxxSema().ActOnCXXTypeConstructExpr(PTy, Loc, Args, Loc,
+                                               /*ListInitialization*/false);
+      if (ConstructorExpr.isInvalid()) {
+        Error(Op.getLocation(), "invalid constructor");
+        return nullptr;
+      }
+
+      RHS = ConstructorExpr.get();
+    } else {
+      Error(Op.getLocation(), "parentheses-initializer can only be assigned");
+      return nullptr;
+    }
+  }
+
+  // At this point, just build the appropriate, normal binary operator.
   auto OpIter = SemaRef.BinOpMap.find(S->getOperation().getSpelling());
   if (OpIter == SemaRef.BinOpMap.end()) {
     Error(S->getLocation(), "invalid binary operator");
@@ -5737,6 +5796,9 @@ clang::Stmt *Elaborator::elaborateReturnStmt(const PrefixSyntax *S) {
   if (S->getOperand()) {
     // if this elaborates to null, we'll just let clang::Sema handle the error
     Val = elaborateExpression(S->getOperand());
+    if (!Val)
+      return nullptr;
+
     if (auto PartialFunc = dyn_cast<clang::CppxPartialEvalExpr>(Val)) {
       SemaRef.getCxxSema().Diags.Report(Val->getExprLoc(), clang::diag::err_no_member)
               << PartialFunc->getName().getName().getAsString()
