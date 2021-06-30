@@ -11953,6 +11953,13 @@ TreeTransform<Derived>::TransformCallExpr(CallExpr *E) {
   ExprResult Callee = getDerived().TransformExpr(E->getCallee());
   if (Callee.isInvalid())
     return ExprError();
+  // if (SemaRef.getLangOpts().Blue) {
+  //   if (isa<CppxPartialEvalExpr>(Callee.get())) {
+
+  //   }
+  //   // return SemaRef.getBlueSema()->TransformCppxTypeExprType(TemplateArgs, Loc,
+  //   //     Entity, TLB, TL);
+  // }
 
   // Transform arguments.
   bool ArgChanged = false;

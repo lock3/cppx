@@ -113,7 +113,7 @@ struct Declaration {
 
   /// True when this is a non-explicitly typed `that` parameter
   bool IsPureThatParam = false;
-
+  bool IsFromCpp = false;
   /// This acts as a copy of the array of parameter specifies associated with
   /// the this parameter (so that we can apply and remove them as needed).
   llvm::SmallVector<Token, 16> ThisParamSpecifiers;

@@ -513,6 +513,7 @@ void Elaborator::elaborateCppNsDecls(clang::CppxNamespaceDecl *NSD) {
   TheNSDecl->ScopeForDecl = ParentScope;
   TheNSDecl->CurrentPhase = Phase::Initialization;
   TheNSDecl->setCxx(SemaRef, NSD);
+  TheNSDecl->IsFromCpp = true;
   ParentScope->addDeclLookup(TheNSDecl);
   // Make sure to enter the new decl context.
   Sema::DeclContextRAII DCTracking(SemaRef, TheNSDecl);
@@ -559,6 +560,8 @@ void Elaborator::elaborateSingleCppImport(clang::Decl *ProcessedDecl) {
   // Give the declaration to the code generator before anything else.
   generateDecl(*this, ProcessedDecl);
 
+
+
   if (auto CppNS = dyn_cast<clang::CppxNamespaceDecl>(ProcessedDecl)) {
     elaborateCppNsDecls(CppNS);
     return;
@@ -579,7 +582,11 @@ void Elaborator::elaborateSingleCppImport(clang::Decl *ProcessedDecl) {
     ProcessedDecl = TATD->getTemplatedDecl();
   } else if (auto VTD = dyn_cast<clang::VarTemplateDecl>(ProcessedDecl)) {
     ProcessedDecl = VTD->getTemplatedDecl();
+  } else if (auto CTSD = dyn_cast<clang::ClassTemplateSpecializationDecl>(ProcessedDecl)) {
+    ProcessedDecl = CTSD->getSpecializedTemplate();
   }
+
+
 
   if (isa<clang::UsingDecl>(ProcessedDecl))
     return;
@@ -618,6 +625,7 @@ void Elaborator::elaborateSingleCppImport(clang::Decl *ProcessedDecl) {
                                             SemaRef.getCurrentDecl()->getCxx());
     TheDecl->ScopeForDecl = CurScope;
     TheDecl->CurrentPhase = Phase::Initialization;
+    TheDecl->IsFromCpp = true;
     TheDecl->setCxx(SemaRef, ND);
     CurScope->addDeclLookup(TheDecl);
   }
@@ -4328,7 +4336,6 @@ clang::Expr *buildIdExpr(Sema &SemaRef, llvm::StringRef Id,
     if (BuiltinMapIter != SemaRef.BuiltinTypes.end())
       return SemaRef.buildTypeExpr(BuiltinMapIter->second, Loc);
     SemaRef.lookupUnqualifiedName(R, SemaRef.getCurrentScope());
-
   }
 
   R.resolveKind();

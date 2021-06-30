@@ -4483,6 +4483,10 @@ ExpectedDecl BlueASTNodeImporter::VisitLinkageSpecDecl(LinkageSpecDecl *D) {
   ToLinkageSpec->setLexicalDeclContext(LexicalDC);
   LexicalDC->addDeclInternal(ToLinkageSpec);
 
+  // Import each child, because otherwise they aren't imported.
+  for (Decl *D : D->decls())
+    import(D);
+
   return ToLinkageSpec;
 }
 
@@ -8012,8 +8016,6 @@ Error BlueASTNodeImporter::ImportOverriddenMethods(CXXMethodDecl *ToMethod,
   }
   return ImportErrors;
 }
-
-
 
 namespace blue {
 

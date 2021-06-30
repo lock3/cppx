@@ -147,6 +147,7 @@ clang::Expr *DependentExprTransformer::transformCppxDependentMemberAccessExpr(
                                       clang::CppxDependentMemberAccessExpr *E) {
   assert(!E->isImplicitAccess() && "Implicit access not implemented.");
   assert(!E->getNameQualifierExpr() && "Name qualifiers aren't deducable before this point in blue.");
+  // llvm::outs() << "We called transformCppxDependentMemberAccessExpr\n";
   // E->dump();
   // llvm_unreachable("transformCppxDependentMemberAccessExpr not implemented yet.");
   // if (E->isImplicitAccess()) {
@@ -266,18 +267,10 @@ clang::Expr *DependentExprTransformer::transformCppxDependentMemberAccessExpr(
   clang::LookupResult R(SemaRef.getCxxSema(), DNI,
                         clang::Sema::LookupMemberName,
                         clang::Sema::NotForRedeclaration);
-  // if (ClsDcl) {
-    // SemaRef.getCxxSema().LookupQualifiedName(R, ClsDcl, false);
-    // for(auto D : R.asUnresolvedSet()) {
-    //   R.addDecl(D, D->getAccess());
-    // }
-  // } else {
   auto Members = TD->lookup(MemberName);
   for(auto D : Members) {
     R.addDecl(D, D->getAccess());
   }
-  // }
-
   R.resolveKind();
   switch (R.getResultKind()) {
   case clang::LookupResult::FoundOverloaded: {
@@ -291,6 +284,8 @@ clang::Expr *DependentExprTransformer::transformCppxDependentMemberAccessExpr(
                                  R, Ret->getExprLoc(), NeedsArrow);
   case clang::LookupResult::NotFoundInCurrentInstantiation: {
   case clang::LookupResult::NotFound:
+    // llvm::outs() << "We failed to find a member function\n";
+    // return SemaRef.buildMemberFunctionTransform(Ret, R.getLookupNameInfo());
     SemaRef.getCxxSema().Diags.Report(Ret->getExprLoc(),
                           clang::diag::err_no_member)
                           << DNI.getName().getAsString() << Ty;
