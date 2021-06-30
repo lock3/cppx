@@ -4290,6 +4290,11 @@ void Elaborator::elaborateFunctionDef(Declaration *D) {
   // Return the current decl to whatever it was before.
   SemaRef.setCurrentDecl(CurrentDeclaration);
   SemaRef.setClangDeclContext(CurClangDC);
+
+  // Clone the copy constructor to include move and assignment constructors.
+  // if (auto *CD = dyn_cast<clang::CXXConstructorDecl>(D->getCxx()))
+  //   if (CD->isCopyConstructor())
+  //     CxxSema.DeclareImplicitBlueCopyConstructors(CD->getParent(), CD);
 }
 
 /// This creates the correct expression in order to correctly reference

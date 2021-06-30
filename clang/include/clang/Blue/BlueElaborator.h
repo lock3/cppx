@@ -143,6 +143,7 @@ public:
                 clang::CXXRecordDecl *R);
   clang::Decl *makeTemplateDecl(Declaration *D);
   clang::Decl *makeFieldDecl(Declaration *D, clang::Expr *Ty);
+  clang::Decl *makeImplicitCopyConstructors(Declaration *D);
   clang::Decl *makeNamespace(Declaration *D);
   clang::Decl *makeNamespaceAlias(Declaration *D);
 private:

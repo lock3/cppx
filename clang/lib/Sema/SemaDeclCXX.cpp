@@ -4736,7 +4736,7 @@ BuildImplicitBaseInitializer(Sema &SemaRef, CXXConstructorDecl *Constructor,
   }
 
   BaseInit = SemaRef.MaybeCreateExprWithCleanups(BaseInit);
-  if (BaseInit.isInvalid())
+   if (BaseInit.isInvalid())
     return true;
 
   CXXBaseInit =
@@ -14240,6 +14240,60 @@ void Sema::DefineImplicitCopyAssignment(SourceLocation CurrentLocation,
   // Builds the "this" pointer.
   ThisBuilder This;
 
+  // Just build a call to the copy constructor
+  if (getLangOpts().Blue && ClassDecl->hasUserDeclaredCopyConstructor()) {
+    CXXConstructorDecl *UCD = nullptr;
+    for (auto *I : ClassDecl->ctors()) {
+      if (I->isCopyConstructor()) {
+        UCD = I;
+        break;
+      }
+    }
+
+    if (!UCD)
+      return;
+    CXXScopeSpec SS;
+    DeclAccessPair DAP = DeclAccessPair::make(UCD, AS_public);
+    CanQualType ClassType
+      = Context.getCanonicalType(Context.getTypeDeclType(ClassDecl));
+    DeclarationName Name
+      = Context.DeclarationNames.getCXXConstructorName(
+        Context.getCanonicalType(ClassType));
+    DeclarationNameInfo DNI(Name, Loc);
+    Expr *Fn =
+      BuildMemberExpr(This.build(*this, Loc), true, Loc, &SS, Loc,
+                      UCD, DAP, false,  DNI, UCD->getType(),
+                      VK_RValue, OK_Ordinary);
+    if (!Fn)
+      return;
+    QualType ResultType = UCD->getType();
+    ExprValueKind VK = Expr::getValueKindForType(ResultType);
+    ResultType = ResultType.getNonLValueExprType(Context);
+
+    llvm::SmallVector<Expr *, 4> Args;
+    Args.push_back(OtherRef.build(*this, Loc));
+
+    CXXMemberCallExpr *CE = CXXMemberCallExpr::Create(
+      Context, Fn, Args, ResultType, VK, Loc,
+      CurFPFeatureOverrides());
+    ExprResult Call = ActOnCallExpr(getCurScope(), CE, Loc, Args, Loc);
+    if (Call.isInvalid())
+      return;
+    Statements.push_back(Call.get());
+    StmtResult Body;
+    {
+      CompoundScopeRAII CompoundScope(*this);
+      Body = ActOnCompoundStmt(Loc, Loc, Statements,
+                               /*isStmtExpr=*/false);
+      assert(!Body.isInvalid() && "Compound statement creation cannot fail");
+    }
+    CopyAssignOperator->setBody(Body.getAs<Stmt>());
+    CopyAssignOperator->markUsed(Context);
+
+    if (ASTMutationListener *L = getASTMutationListener())
+      L->CompletedImplicitDefinition(CopyAssignOperator);
+  }
+
   // Assign base classes.
   bool Invalid = false;
   for (auto &Base : ClassDecl->bases()) {
@@ -14749,6 +14803,53 @@ void Sema::DefineImplicitMoveAssignment(SourceLocation CurrentLocation,
   if (ASTMutationListener *L = getASTMutationListener()) {
     L->CompletedImplicitDefinition(MoveAssignOperator);
   }
+}
+
+bool Sema::DeclareImplicitBlueCopyConstructors(CXXRecordDecl *ClassDecl,
+                                               CXXConstructorDecl *Copy) {
+  unsigned CopyQuals;
+  Copy->isCopyConstructor(CopyQuals);
+  bool Const = CopyQuals & Qualifiers::Const;
+  SourceLocation ClassLoc = ClassDecl->getLocation();
+
+  DeclaringSpecialMember DSM(*this, ClassDecl, CXXCopyAssignment);
+  if (DSM.isAlreadyBeingDeclared())
+    return true;
+
+  DeclarationName CAName =
+    Context.DeclarationNames.getCXXOperatorName(OO_Equal);
+  DeclarationNameInfo CANameInfo(CAName, ClassLoc);
+
+  CXXMethodDecl *CopyAssignment = CXXMethodDecl::Create(
+    Context, ClassDecl, ClassLoc, CANameInfo, QualType(),
+    /*TInfo=*/nullptr, /*StorageClass=*/SC_None,
+    /*isInline=*/true, ConstexprSpecKind::Unspecified, SourceLocation());
+
+  QualType ClassType = Context.getTypeDeclType(ClassDecl);
+  QualType ArgType = ClassType;
+  clang::QualType RetType = Context.getLValueReferenceType(ArgType);
+  setupImplicitSpecialMemberType(CopyAssignment, RetType, ArgType);
+
+  CopyAssignment->setAccess(AS_public);
+  CopyAssignment->setImplicit();
+
+  llvm::SmallVector<ParmVarDecl *, 1> Params;
+  for (unsigned I = 0; I < Copy->getNumParams(); ++I)
+    Params.push_back(Copy->getParamDecl(I));
+  CopyAssignment->setParams(Params);
+
+  Scope *S = getScopeForContext(ClassDecl);
+  CheckImplicitSpecialMemberDeclaration(S, CopyAssignment);
+
+  if (S)
+    PushOnScopeChains(CopyAssignment, S, false);
+  ClassDecl->addDecl(CopyAssignment);
+
+  CopyAssignment->setBody(Copy->getBody());
+  CopyAssignment->markUsed(Context);
+  if (ASTMutationListener *L = getASTMutationListener())
+    L->CompletedImplicitDefinition(CopyAssignment);
+  return false;
 }
 
 CXXConstructorDecl *Sema::DeclareImplicitCopyConstructor(

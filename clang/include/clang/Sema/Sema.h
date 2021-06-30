@@ -6120,6 +6120,11 @@ public:
   void DefineImplicitMoveAssignment(SourceLocation CurrentLocation,
                                     CXXMethodDecl *MethodDecl);
 
+  /// Declare the implicit constructors that result from a Blue initial
+  /// copy constructor definition.
+  bool DeclareImplicitBlueCopyConstructors(CXXRecordDecl *ClassDecl,
+    CXXConstructorDecl *Copy);
+
   /// Force the declaration of any implicitly-declared members of this
   /// class.
   void ForceDeclarationOfImplicitMembers(CXXRecordDecl *Class);
