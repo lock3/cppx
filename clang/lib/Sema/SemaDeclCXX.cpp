@@ -14240,6 +14240,60 @@ void Sema::DefineImplicitCopyAssignment(SourceLocation CurrentLocation,
   // Builds the "this" pointer.
   ThisBuilder This;
 
+  // Just build a call to the copy constructor
+  if (getLangOpts().Blue && ClassDecl->hasUserDeclaredCopyConstructor()) {
+    CXXConstructorDecl *UCD = nullptr;
+    for (auto *I : ClassDecl->ctors()) {
+      if (I->isCopyConstructor()) {
+        UCD = I;
+        break;
+      }
+    }
+
+    if (!UCD)
+      return;
+    CXXScopeSpec SS;
+    DeclAccessPair DAP = DeclAccessPair::make(UCD, AS_public);
+    CanQualType ClassType
+      = Context.getCanonicalType(Context.getTypeDeclType(ClassDecl));
+    DeclarationName Name
+      = Context.DeclarationNames.getCXXConstructorName(
+        Context.getCanonicalType(ClassType));
+    DeclarationNameInfo DNI(Name, Loc);
+    Expr *Fn =
+      BuildMemberExpr(This.build(*this, Loc), true, Loc, &SS, Loc,
+                      UCD, DAP, false,  DNI, UCD->getType(),
+                      VK_RValue, OK_Ordinary);
+    if (!Fn)
+      return;
+    QualType ResultType = UCD->getType();
+    ExprValueKind VK = Expr::getValueKindForType(ResultType);
+    ResultType = ResultType.getNonLValueExprType(Context);
+
+    llvm::SmallVector<Expr *, 4> Args;
+    Args.push_back(OtherRef.build(*this, Loc));
+
+    CXXMemberCallExpr *CE = CXXMemberCallExpr::Create(
+      Context, Fn, Args, ResultType, VK, Loc,
+      CurFPFeatureOverrides());
+    ExprResult Call = ActOnCallExpr(getCurScope(), CE, Loc, Args, Loc);
+    if (Call.isInvalid())
+      return;
+    Statements.push_back(Call.get());
+    StmtResult Body;
+    {
+      CompoundScopeRAII CompoundScope(*this);
+      Body = ActOnCompoundStmt(Loc, Loc, Statements,
+                               /*isStmtExpr=*/false);
+      assert(!Body.isInvalid() && "Compound statement creation cannot fail");
+    }
+    CopyAssignOperator->setBody(Body.getAs<Stmt>());
+    CopyAssignOperator->markUsed(Context);
+
+    if (ASTMutationListener *L = getASTMutationListener())
+      L->CompletedImplicitDefinition(CopyAssignOperator);
+  }
+
   // Assign base classes.
   bool Invalid = false;
   for (auto &Base : ClassDecl->bases()) {

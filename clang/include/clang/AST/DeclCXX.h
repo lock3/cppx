@@ -922,8 +922,9 @@ public:
   /// Determine whether this class needs an implicit copy
   /// assignment operator to be lazily declared.
   bool needsImplicitCopyAssignment() const {
-    return !(data().DeclaredSpecialMembers & SMF_CopyAssignment) &&
-      !getLangOpts().Blue;
+    // return !(data().DeclaredSpecialMembers & SMF_CopyAssignment) &&
+    //   !getLangOpts().Blue;
+    return !(data().DeclaredSpecialMembers & SMF_CopyAssignment);
   }
 
   /// Determine whether we need to eagerly declare a defaulted copy
